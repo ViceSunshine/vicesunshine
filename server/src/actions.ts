@@ -3015,41 +3015,44 @@ async function deliverEmailCode(_ctx: Ctx, email: string, purpose: "verify" | "r
   // confusing fake button; the email is just the code plus the
   // "enter this code in ViceSunshine" text). Email-client-safe
   // build: table layout, inline styles, no external images.
-  // DARK-ONLY, like the ViceSunshine theme (owner's direction,
-  // Nov 20 2026, after his Gmail screenshot showed the card
-  // flipped to a light lavender/white background): the WHOLE
-  // email is dark navy — shell #0a0a12, card #12121f, code boxes
-  // #1e1e30 with white digits — no light, white or lavender
+  // DARK PURPLE FADE, top to bottom, GTA Vice City vibe
+  // (owner's direction, Nov 20 2026, 23:08 MST: make the
+  // background our theme colour, purple-ish, "like a fade
+  // away" "from the top details fading away to the bottom").
+  // The WHOLE email fades top to bottom: hot pink at the top,
+  // through neon purple, into deep purple, fading away to
+  // dark navy at the bottom. No light, white or lavender
   // surface anywhere. Gmail's app dark mode had inverted the
   // previous build (white code boxes became black, the dark card
   // became pale lavender) because it only carried CSS background
   // styles and a "dark light" color-scheme. This build defends
-  // the dark theme on every layer email clients respect:
+  // the purple fade on every layer email clients respect:
   // color-scheme / supported-color-schemes are "only dark",
   // bgcolor attributes sit on the shell, card and code boxes
-  // alongside the CSS, and a <style> block re-asserts the dark
-  // colours with !important under prefers-color-scheme: dark,
-  // Gmail's data-ogsc / data-ogsb dark-mode hooks, and the
-  // u + .vs-body Gmail selector. The card keeps its 2px hot
-  // pink -> neon purple -> teal gradient border (bgcolor
-  // fallback #9b5de5 where gradients are dropped); the VS logo
-  // block carries WHITE "VS" letters on the pink-purple
-  // gradient; under it the wordmark and a purpose headline
-  // ("Welcome to ViceSunshine!" on sign-up). The code appears
-  // ONCE, in six compact dark boxes with white digits (42x52px,
-  // 26px type, 10px radius, 6px gaps — smaller and neater than
-  // the old 58x74px boxes, per the owner; no duplicated code
-  // line — the old second copy made Gmail previews read
-  // "595732 595732..."). Under the boxes there is NO button or
-  // banner, just the line "Enter the code above in ViceSunshine
-  // to continue." Then an expiry pill, a never-share
-  // security note, and a full footer with the ViceSunshine name,
-  // official address and the unofficial-fan disclaimer. A hidden
-  // preheader carries the single line "Your verification code
-  // is: CODE" so inbox previews read cleanly and Gmail can
-  // surface its copy-code chip. Sign-in (welcome back) and reset
-  // emails share the same design with their own subject,
-  // headline and wording.
+  // alongside the CSS (bgcolor fallback is mid-purple #2a1150
+  // where gradients are dropped), and a <style> block
+  // re-asserts the purple colours with !important under
+  // prefers-color-scheme: dark, Gmail's data-ogsc / data-ogsb
+  // dark-mode hooks, and the u + .vs-body Gmail selector.
+  // The card keeps its 2px hot pink -> neon purple -> teal
+  // gradient border (bgcolor fallback #9b5de5 where gradients
+  // are dropped); the VS logo block carries WHITE "VS" letters
+  // on the pink-purple gradient; under it the wordmark and a
+  // purpose headline ("Welcome to ViceSunshine!" on sign-up).
+  // The code appears ONCE, in six compact purple boxes with
+  // white digits (42x52px, 26px type, 10px radius, 6px gaps —
+  // smaller and neater than the old 58x74px boxes, per the
+  // owner; no duplicated code line — the old second copy made
+  // Gmail previews read "595732 595732..."). Under the boxes
+  // there is NO button or banner, just the line "Enter the code
+  // above in ViceSunshine to continue." Then an expiry pill, a
+  // never-share security note, and a full footer with the
+  // ViceSunshine name, official address and the unofficial-fan
+  // disclaimer. A hidden preheader carries the single line
+  // "Your verification code is: CODE" so inbox previews read
+  // cleanly and Gmail can surface its copy-code chip. Sign-in
+  // (welcome back) and reset emails share the same design with
+  // their own subject, headline and wording.
   const subject = purpose === "reset"
     ? "ViceSunshine — here is your password reset code!"
     : purpose === "login"
@@ -3068,7 +3071,7 @@ async function deliverEmailCode(_ctx: Ctx, email: string, purpose: "verify" | "r
       ? "Your sign-in code is:"
       : "Your verification code is:";
   const digits = code.split("");
-  const boxes = digits.map((d) => `<td class="vs-box" align="center" valign="middle" bgcolor="#1e1e30" style="width:42px;height:52px;background:#1e1e30;border:1px solid #3d3d5c;border-radius:10px;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:800;color:#ffffff;">${d}</td>`).join(`<td style="width:6px;font-size:0;line-height:0;">&nbsp;</td>`);
+  const boxes = digits.map((d) => `<td class="vs-box" align="center" valign="middle" bgcolor="#3b1a6e" style="width:42px;height:52px;background:#3b1a6e;border:1px solid #9b5de5;border-radius:10px;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:800;color:#ffffff;">${d}</td>`).join(`<td style="width:6px;font-size:0;line-height:0;">&nbsp;</td>`);
   const intro = purpose === "reset"
     ? "Enter this code in ViceSunshine to set a new password. If you didn't ask for this, ignore this email — your password stays the same."
     : purpose === "login"
@@ -3083,13 +3086,13 @@ async function deliverEmailCode(_ctx: Ctx, email: string, purpose: "verify" | "r
     // !important wherever a mail app tries to invert it (Gmail
     // app dark mode exposes data-ogsc / data-ogsb hooks and the
     // u + .vs-body selector; Outlook.com uses the same hooks).
-    `<style>:root{color-scheme:only dark;supported-color-schemes:only dark}body{margin:0;padding:0;background-color:#0a0a12!important}.vs-bg{background-color:#0a0a12!important}.vs-card{background-color:#12121f!important}.vs-box{background-color:#1e1e30!important;color:#ffffff!important}.vs-pill{background-color:#1b1b2c!important;color:#e8e8f2!important}.vs-white{color:#ffffff!important}.vs-dim{color:#b8b8cc!important}.vs-faint{color:#8e8ea8!important}u + .vs-body{background-color:#0a0a12!important}u + .vs-body .vs-card{background-color:#12121f!important}[data-ogsc] .vs-bg,[data-ogsb] .vs-bg{background-color:#0a0a12!important}[data-ogsc] .vs-card,[data-ogsb] .vs-card{background-color:#12121f!important}[data-ogsc] .vs-box,[data-ogsb] .vs-box{background-color:#1e1e30!important;color:#ffffff!important}[data-ogsc] .vs-white,[data-ogsb] .vs-white{color:#ffffff!important}@media (prefers-color-scheme:dark){.vs-bg{background-color:#0a0a12!important}.vs-card{background-color:#12121f!important}.vs-box{background-color:#1e1e30!important;color:#ffffff!important}.vs-pill{background-color:#1b1b2c!important;color:#e8e8f2!important}.vs-white{color:#ffffff!important}.vs-dim{color:#b8b8cc!important}.vs-faint{color:#8e8ea8!important}}</style></head>`,
-    `<body class="vs-body vs-bg" bgcolor="#0a0a12" style="margin:0;padding:0;background:#0a0a12;color-scheme:only dark;">`,
+    `<style>:root{color-scheme:only dark;supported-color-schemes:only dark}body{margin:0;padding:0;background-color:#2a1150!important;background:linear-gradient(180deg,#FF2E88 0%,#9B5DE5 38%,#2A1150 68%,#0A0A12 100%)!important}.vs-bg{background-color:#2a1150!important;background:linear-gradient(180deg,#FF2E88 0%,#9B5DE5 38%,#2A1150 68%,#0A0A12 100%)!important}.vs-card{background-color:#1e0f33!important}.vs-box{background-color:#3b1a6e!important;color:#ffffff!important}.vs-pill{background-color:#2e1a52!important;color:#e8e8f2!important}.vs-white{color:#ffffff!important}.vs-dim{color:#d9c8f5!important}.vs-faint{color:#b9a8d8!important}u + .vs-body{background-color:#2a1150!important}u + .vs-body .vs-card{background-color:#1e0f33!important}[data-ogsc] .vs-bg,[data-ogsb] .vs-bg{background-color:#2a1150!important;background:linear-gradient(180deg,#FF2E88 0%,#9B5DE5 38%,#2A1150 68%,#0A0A12 100%)!important}[data-ogsc] .vs-card,[data-ogsb] .vs-card{background-color:#1e0f33!important}[data-ogsc] .vs-box,[data-ogsb] .vs-box{background-color:#3b1a6e!important;color:#ffffff!important}[data-ogsc] .vs-white,[data-ogsb] .vs-white{color:#ffffff!important}@media (prefers-color-scheme:dark){.vs-bg{background-color:#2a1150!important;background:linear-gradient(180deg,#FF2E88 0%,#9B5DE5 38%,#2A1150 68%,#0A0A12 100%)!important}.vs-card{background-color:#1e0f33!important}.vs-box{background-color:#3b1a6e!important;color:#ffffff!important}.vs-pill{background-color:#2e1a52!important;color:#e8e8f2!important}.vs-white{color:#ffffff!important}.vs-dim{color:#d9c8f5!important}.vs-faint{color:#b9a8d8!important}}</style></head>`,
+    `<body class="vs-body vs-bg" bgcolor="#2a1150" style="margin:0;padding:0;background:#2a1150;background:linear-gradient(180deg,#FF2E88 0%,#9B5DE5 38%,#2A1150 68%,#0A0A12 100%);color-scheme:only dark;">`,
     `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Your verification code is: ${code} — enter it in ViceSunshine within 1 minute.</div>`,
-    `<table class="vs-bg" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a12" style="background:#0a0a12;"><tr><td align="center" bgcolor="#0a0a12" style="padding:36px 16px 40px;">`,
+    `<table class="vs-bg" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#2a1150" style="background:#2a1150;background:linear-gradient(180deg,#FF2E88 0%,#9B5DE5 38%,#2A1150 68%,#0A0A12 100%);"><tr><td align="center" bgcolor="#2a1150" style="padding:36px 16px 40px;">`,
     // Gradient border wrapper: gradient cell padded 2px around the dark card
     `<table role="presentation" width="604" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:604px;"><tr><td bgcolor="#9b5de5" style="background:linear-gradient(135deg,#FF2E88 0%,#9b5de5 55%,#00d9c0 100%);border-radius:22px;padding:2px;">`,
-    `<table class="vs-card" role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#12121f" style="width:100%;max-width:600px;background:#12121f;border-radius:20px;overflow:hidden;">`,
+    `<table class="vs-card" role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#1e0f33" style="width:100%;max-width:600px;background:#1e0f33;border-radius:20px;overflow:hidden;">`,
     // Header: VS logo (white letters on the gradient) + wordmark
     `<tr><td align="center" style="padding:40px 40px 0;">`,
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="vs-white" align="center" valign="middle" bgcolor="#c13ae0" style="width:88px;height:88px;border-radius:20px;background:linear-gradient(135deg,#FF2E88 0%,#c13ae0 50%,#7c3aed 100%);font-family:Arial,Helvetica,sans-serif;font-size:38px;font-weight:900;letter-spacing:-1px;color:#ffffff;">VS</td></tr></table>`,
@@ -3099,35 +3102,35 @@ async function deliverEmailCode(_ctx: Ctx, email: string, purpose: "verify" | "r
     // Headline + intro
     `<tr><td align="center" style="padding:32px 44px 0;">`,
     `<p class="vs-white" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:25px;font-weight:800;color:#ffffff;">${headline}</p>`,
-    `<p class="vs-dim" style="margin:12px auto 0;max-width:440px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#b8b8cc;">${intro}</p>`,
+    `<p class="vs-dim" style="margin:12px auto 0;max-width:440px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#d9c8f5;">${intro}</p>`,
     `</td></tr>`,
     // Code boxes
     `<tr><td align="center" style="padding:30px 16px 0;">`,
-    `<p class="vs-faint" style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;color:#8e8ea8;">${codeLabel.toUpperCase()}</p>`,
+    `<p class="vs-faint" style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;color:#b9a8d8;">${codeLabel.toUpperCase()}</p>`,
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr>${boxes}</tr></table>`,
     `</td></tr>`,
     // No button/banner under the code (owner's direction, Nov 20
     // 2026: the pink-purple "Verify your email" pill read as a
     // confusing fake button) — just the code and this line.
     `<tr><td align="center" style="padding:20px 40px 0;">`,
-    `<p class="vs-faint" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#8e8ea8;">Enter the code above in ViceSunshine to continue.</p>`,
+    `<p class="vs-faint" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#b9a8d8;">Enter the code above in ViceSunshine to continue.</p>`,
     `</td></tr>`,
     // Expiry pill
     `<tr><td align="center" style="padding:22px 40px 0;">`,
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="vs-pill" bgcolor="#1b1b2c" style="background:#1b1b2c;border:1px solid #2e2e44;border-radius:999px;padding:8px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#e8e8f2;">This code expires in 1 minute</td></tr></table>`,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="vs-pill" bgcolor="#2e1a52" style="background:#2e1a52;border:1px solid #5b3a9e;border-radius:999px;padding:8px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#e8e8f2;">This code expires in 1 minute</td></tr></table>`,
     `</td></tr>`,
     // Security note
     `<tr><td align="center" style="padding:24px 44px 0;">`,
-    `<p class="vs-faint" style="margin:0 auto;max-width:440px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#8e8ea8;">Never share this code with anyone. ViceSunshine will never ask you for your code, password or payment details by email.</p>`,
+    `<p class="vs-faint" style="margin:0 auto;max-width:440px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#b9a8d8;">Never share this code with anyone. ViceSunshine will never ask you for your code, password or payment details by email.</p>`,
     `</td></tr>`,
     // Divider
-    `<tr><td style="padding:32px 40px 0;"><div style="height:1px;background:#26263c;font-size:0;line-height:0;">&nbsp;</div></td></tr>`,
+    `<tr><td style="padding:32px 40px 0;"><div style="height:1px;background:#4a2a7e;font-size:0;line-height:0;">&nbsp;</div></td></tr>`,
     // Footer
     `<tr><td align="center" style="padding:22px 44px 34px;">`,
     `<p class="vs-white" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:800;color:#ffffff;">ViceSunshine</p>`,
-    `<p class="vs-faint" style="margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#8e8ea8;">Sent from the official ViceSunshine account: ${OFFICIAL_VICESUNSHINE_EMAIL}<br>You received this email because this address was used on ViceSunshine.</p>`,
-    `<p style="margin:14px auto 0;max-width:460px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.6;color:#63637c;">ViceSunshine is an unofficial fan-made GTA VI community hub. Not affiliated with, endorsed by, or sponsored by Rockstar Games or Take-Two Interactive. Grand Theft Auto and GTA VI are trademarks of Take-Two Interactive.</p>`,
-    `<p style="margin:12px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#63637c;">&copy; ${year} ViceSunshine. All rights reserved.</p>`,
+    `<p class="vs-faint" style="margin:6px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#b9a8d8;">Sent from the official ViceSunshine account: ${OFFICIAL_VICESUNSHINE_EMAIL}<br>You received this email because this address was used on ViceSunshine.</p>`,
+    `<p style="margin:14px auto 0;max-width:460px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.6;color:#9a86c2;">ViceSunshine is an unofficial fan-made GTA VI community hub. Not affiliated with, endorsed by, or sponsored by Rockstar Games or Take-Two Interactive. Grand Theft Auto and GTA VI are trademarks of Take-Two Interactive.</p>`,
+    `<p style="margin:12px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#9a86c2;">&copy; ${year} ViceSunshine. All rights reserved.</p>`,
     `</td></tr>`,
     `</table>`,
     `</td></tr></table>`,
