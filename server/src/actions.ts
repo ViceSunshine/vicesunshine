@@ -949,7 +949,38 @@ async function storyHiddenKeysFor(ctx: Ctx, authorKey: string): Promise<Set<stri
 // no paid customisation and no paid effects. Credits are earned only
 // from in-app activity, level milestones, community events, seasonal awards
 // and the Premium weekly grant.
-const PREMIUM_PRICE_CAD = "CA$4.99";
+//
+// Premium pricing is LOCATION-BASED (owner's decision, Nov 21, 2026):
+// the ORIGINAL price is $4.99 USD and every other currency converts
+// from it. Conversion uses a deliberately HIGH rate (units of local
+// currency per 1 USD, above typical market rates) and rounds UP to a
+// clean .99 price point, so a local Premium price is never worth
+// less than $4.99 USD — e.g. the straight conversion for Canada
+// lands near CA$7.09 and the shown price is CA$7.99. The client
+// carries an identical copy of this table (App.tsx FX_FROM_USD) so
+// every surface shows the same amount for the same visitor; keep
+// the two in sync. A currency with no entry falls back to USD —
+// the same fallback checkout uses when Stripe has no price for a
+// currency (one Stripe price per currency in this table).
+const PREMIUM_PRICE_USD = 4.99;
+const FX_FROM_USD: Record<string, { rate: number; symbol: string }> = {
+  CAD: { rate: 1.42, symbol: "CA$" },
+  EUR: { rate: 0.95, symbol: "€" },
+  GBP: { rate: 0.82, symbol: "£" },
+  AUD: { rate: 1.55, symbol: "A$" },
+};
+function roundUpToCleanPrice(amount: number): number {
+  let candidate = Math.floor(amount) + 0.99;
+  if (candidate < amount + 0.05) candidate += 1;
+  return Math.round(candidate * 100) / 100;
+}
+function premiumPriceFor(currency: string): { code: string; amount: number; label: string } {
+  const code = (currency || "").trim().toUpperCase();
+  const fx = FX_FROM_USD[code];
+  if (!fx) return { code: "USD", amount: PREMIUM_PRICE_USD, label: `$${PREMIUM_PRICE_USD.toFixed(2)}` };
+  const amount = roundUpToCleanPrice(PREMIUM_PRICE_USD * fx.rate);
+  return { code, amount, label: `${fx.symbol}${amount.toFixed(2)}` };
+}
 
 const newsItem = z.object({
   id: z.number(),
@@ -14149,10 +14180,12 @@ export const Actions = {
       const latestFeed = [...feedRows].filter((p) => p.flagged !== 1).sort((a, b) => b.id - a.id).slice(0, 3);
 
       let account = "The player has not set up a profile yet (no wallet details available).";
+      let askerCurrency = "";
       if (args.playerKey) {
         const profRows = await db.select().from(schema.profiles).where(eq(schema.profiles.playerKey, args.playerKey));
         const prof = profRows[0];
         if (prof) {
+          askerCurrency = prof.currency ?? "";
           const memberships = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.playerKey, args.playerKey));
           account = `Signed-in player: gamertag ${prof.gamertag}, platform ${prof.platform}, Vice Credits balance ${prof.credits}, Premium ${prof.premium === 1 ? "active" : "not active"}, member of ${memberships.length} crew(s)${memberships.length ? ` (${memberships.map((m) => m.role).join(", ")})` : ""}.`;
         }
@@ -14170,7 +14203,10 @@ export const Actions = {
         "- Event Rewards — Vice Credits for the winning crew: separate from Crew Awards. Community events pay the 1st-place player's crew 150 credits (2nd 75, 3rd 50) and +10 participation credits to every other crew that showed up, once the host confirms results. Season finishes also pay credits per board (1st 1,000, 2nd 600, 3rd 300, ranks 4-10 get 100).",
         "- Joining a crew: +50 Vice Credits welcome bonus (once per crew), crew chat/feed, squads, crew events, and the XP boost.",
         "- CREW customisation is FREE and there is no Shop: customisation belongs to CREWS, never to individual profiles — there is no Customise page and no personal cosmetics anymore. Every crew customisation section holds exactly 5 free items and 3 Premium items — no more. The sections are Crew Badges, Crew Calling Cards / Banner, Crew Themes, Crew Emblems and Crew Colours, all inside Crew Settings (on the crew's page) under Crew customisation, and ONLY the crew owner (the Leader) can open or change them — Co-Leaders, members and non-members never see the controls. The equipped crew badge shows next to the crew name on the crew card and crew page; the equipped crew calling card IS the crew banner (the wide banner at the top of the crew page); the crew theme is the crew page's accent theme; the crew colour also drives the automatic crew-card header theme. There are NO Avatars and NO Avatar Effects anymore — they were removed completely, Premium ones too: a profile shows the member's own uploaded profile picture, or the default avatar if they have none. There is NO banner colour picker and no separate banner section, no avatar frames and no name colours — every name in ViceSunshine is shown in white only. Premium items (3 per section, e.g. the Premium Member / Vice Elite / Neon Legend crew badges, the animated Vice Haze / Dead Palms / Inferno crew calling cards, the Gold Vice / Ice Vice / Ultraviolet Vice crew themes and the Vice Crest crew emblem) are included with Premium and never sold separately: a Premium item can only be equipped to a crew whose OWNER has Premium, and if the owner's Premium ends, Premium items equipped on the crew are unequipped back to free defaults until Premium returns. Calling Cards are wide, bold COD-style cards (original ViceSunshine designs — dark backgrounds, neon-green leaves, skulls, fire) shown on crew homes with the crew's name on them. Three more cards are Challenge cards (Dark Vice, Skull Harvest, Vicestronaut): earned Dark-Ops style by the OWNER completing challenges counted automatically in-app (reach Level 5, make 10 Feed posts, RSVP Going to 5 events) — locked until earned, never for sale, and not part of the 5 free + 3 Premium catalogue; once unlocked the owner equips them to the crew like any other crew calling card. Season challenge cards work the same way. Create a Crew uses the same catalogue: Step 1's emblem and colour pickers ARE the Crew Emblems and Crew Colours sections (same items, same Premium rules), and Step 3 points the founder to Crew Settings for the badge, banner and theme. Every crew page shows a Bio section and a Rules & Requirements section under its header; the Leader and Co-Leaders edit them in Crew Settings → Bio & Rules (the same fields as Create a Crew Step 2), and joiners see the rules and requirements again before joining. Presence works like Discord: from the profile's Add Status bubble or Settings, the Change Online Status sheet offers Online (green dot), Idle (yellow moon — stored as Away), Do Not Disturb (red minus) and Invisible (grey — stored as Ghost: the player appears Offline to everyone else while actually online), plus 'Set a custom status' for a short custom status text shown on the profile; anyone inactive for over 5 minutes shows as Offline. Players can also upload their OWN profile picture on their profile (JPG or PNG, up to 4 MB): every upload is checked by automatic moderation BEFORE it is stored — nude, sexual or illegal pictures are blocked and never stored — and the picture shows everywhere their avatar appears until removed. Vice Credits cannot be bought — they are only earned from in-app activity, level milestones, community events, seasonal awards and the Premium weekly grant; they are used for creating a crew (500) and member contributions to a crew wallet, and never buy Rank Points, levels, rank or wins. Premium is the ONLY thing that can be paid for, and payments are NOT connected yet — checkout is coming soon, no payment is taken and Premium never starts before a successful payment.",
-        "- Premium: CA$4.99/month — the ONLY paid thing in ViceSunshine. Benefits, all enforced by the app: no ads (Premium members see no ad spaces at all), the Premium badge and identity (the custom Premium Member profile badge and Premium effects), unlimited Ask Vice, 250 Vice Credits every week while active — 1,000 a month (paid into the personal wallet; stops if Premium lapses, no back-pay), exclusive cosmetics including the gold Vice Crest crew emblem and the Premium picks in every crew customisation section, display name changes once a month (free members: once every 3 months — the username itself is permanent for everyone), early event access (Premium members can RSVP Going during an event's first 48 hours; everyone else can RSVP Going after that window), and the Premium Discord role + private Premium lounge in the official Discord server (https://discord.gg/NDH9XxyVkW): a Premium member claims it by linking their Discord username in Edit profile → Linked accounts; the site tracks who should have the role and the server bot applies it — until the bot is live the owner grants it by hand from the Owner Dashboard's Discord Premium role list, and the site shows 'Premium role pending' rather than claiming the role before it is really applied. When Premium ends, the role is removed at the same time. Crews hold unlimited members for everyone (there is no member cap, free or Premium — Premium never raises one), crew names are permanent for everyone (Premium never unlocks renaming a crew), and Premium never buys Rank Points, crew points or ranking — rankings are earned, never bought. The Database, guides, codes and the basic map are never paywalled.",
+        "- Premium: $4.99/month USD is the base price — the ONLY paid thing in ViceSunshine. Pricing is location-based: the site shows each visitor the price in their own currency (their Settings currency when they picked one, otherwise the currency auto-detected from their location), converted from $4.99 USD at a high rate and rounded UP to a clean price point, so a local price is never worth less than $4.99 USD — currently CA$7.99/month in Canada, £4.99/month in the UK, €4.99/month in the eurozone and A$7.99/month in Australia. Checkout charges in the visitor's shown currency. Benefits, all enforced by the app: no ads (Premium members see no ad spaces at all), the Premium badge and identity (the custom Premium Member profile badge and Premium effects), unlimited Ask Vice, 250 Vice Credits every week while active — 1,000 a month (paid into the personal wallet; stops if Premium lapses, no back-pay), exclusive cosmetics including the gold Vice Crest crew emblem and the Premium picks in every crew customisation section, display name changes once a month (free members: once every 3 months — the username itself is permanent for everyone), early event access (Premium members can RSVP Going during an event's first 48 hours; everyone else can RSVP Going after that window), and the Premium Discord role + private Premium lounge in the official Discord server (https://discord.gg/NDH9XxyVkW): a Premium member claims it by linking their Discord username in Edit profile → Linked accounts; the site tracks who should have the role and the server bot applies it — until the bot is live the owner grants it by hand from the Owner Dashboard's Discord Premium role list, and the site shows 'Premium role pending' rather than claiming the role before it is really applied. When Premium ends, the role is removed at the same time. Crews hold unlimited members for everyone (there is no member cap, free or Premium — Premium never raises one), crew names are permanent for everyone (Premium never unlocks renaming a crew), and Premium never buys Rank Points, crew points or ranking — rankings are earned, never bought. The Database, guides, codes and the basic map are never paywalled.",
+        askerCurrency
+          ? `- Premium price for the player asking: their saved currency is ${premiumPriceFor(askerCurrency).code}, so Premium shows as ${premiumPriceFor(askerCurrency).label}/month for them. If they ask what Premium costs, give them exactly this figure — it is the $4.99 USD base converted at the site's high rate and rounded up.`
+          : "- Premium price for the player asking: they have no currency saved in Settings, so quote the $4.99 USD base price and the location-based rule (their own currency, converted from USD at a high rate and rounded up — CA$7.99/month in Canada, £4.99 in the UK, €4.99 in the eurozone, A$7.99 in Australia).",
         "- Events: community events (car meets, races, crew meets, time trials, contests) hosted by crew Leaders whose crew has at least 10 members; find them by name or hashtag on the Events page. The hosting crew's Leader — and only that Leader — controls the event: they can edit it, switch it between Public and Private at any time, post its results and remove it completely. Lobby details are shown only to players who RSVP Going. GTA VI is single-player at launch — these are community meetups/challenges, not official in-game multiplayer.",
         "- Database: Vehicles, Weapons and Characters entries are maintained ONLY by the ViceSunshine team from official Rockstar sources and update automatically as official information changes — players cannot add, suggest or edit Database entries, and there is no suggestion form anymore. Every status badge (Confirmed in trailer / Reported / Unverified / Returning from GTA V) is generated from the entry's data; returning GTA V items are NOT confirmed for GTA VI. If a player thinks an entry is wrong, they can raise it in a support request and a human checks it against the official source.",
         "- Discord server: ViceSunshine has NO in-app voice calls and no Party Calls. Voice chat, hanging out and joining lobbies together happen on the ViceSunshine Discord server — the one Join our Discord server card is on the Create Account (Sign Up) page, in the final step after linking accounts (it appears nowhere else). The invite link is LIVE: https://discord.gg/NDH9XxyVkW — the card's Join button opens it, and it is the admin value set in Settings (Connectors, ViceSunshine Discord server — admin), so changing it there updates the card. Event pages can also show a host-shared lobby link for Going players as well.",
@@ -14193,13 +14229,13 @@ export const Actions = {
         "- Mission guides: story mission walkthroughs live in Guides, in the Missions category — open a mission guide for the walkthrough, rewards, tips, its official source link and, where one exists, a video guide. (Page: guides)",
         "- Explore Easter Eggs: open Easter Eggs (or Ideas) and tap any egg to open its page: one video or picture, whether it is Real, a Rumor or Unverified, and one source link to check. (Page: eggs)",
         "- Customise your crew (owners only): open your crew's page → Crew Settings → Crew customisation, pick a section (Crew Badges, Crew Calling Cards / Banner, Crew Themes, Crew Emblems, Crew Colours), and tap Equip — crew customisation is free; the 3 Premium items in each section need the crew OWNER to have Premium. The crew calling card is also the crew banner. There is no personal/profile customisation and no Avatars or Avatar Effects anymore. (Page: clans)",
-        "- Get Premium: open Premium to see the benefits (no ads, 250 Vice Credits every week, Premium items in crew customisation, early event access) — it is CA$4.99/month, the only paid thing in ViceSunshine. (Page: premium)",
+        "- Get Premium: open Premium to see the benefits (no ads, 250 Vice Credits every week, Premium items in crew customisation, early event access) — it is $4.99/month USD, shown in your own currency converted from USD (CA$7.99/month in Canada, £4.99 in the UK, €4.99 in the eurozone, A$7.99 in Australia), the only paid thing in ViceSunshine. (Page: premium)",
         "- See your growth: on the Home page, tap the Your Profile card — it opens your Profile analytics: a growth graph for followers, likes, views, posts, comments and saves, with what grew and what went down this week. (Page: analytics)",
         "- Change settings: tap your name/avatar at the bottom left of the sidebar (on phone, open the menu drawer and tap Settings and privacy), then Settings in the small box that opens. There you can change your username, profile privacy, password/email, language, currency and saved payment info, and read the legal pages. (Page: profile)",
         "- Report or block: tap the menu on any post or profile and choose Report — a human reviews reports. Blocked players are managed in Settings. For anything Vice cannot fix, use Contact support in this chat and a human on the team will review it.",
         "",
         "FULL WEBSITE MAP — every part of ViceSunshine Vice knows (use this to answer 'where is…', 'what is…' and 'how do I…' for ANY page, even when no how-to above covers it):",
-        "- Today / Home: daily briefing, latest update & patch, Rockstar status, today's counts (news / updates / bugs), Your Profile card and trending content. Map: fan-made CONCEPT schematic only — the official GTA VI map is NOT released, locations are unverified until launch, never present it as real or accurate. News: all GTA VI news with sources and official links. Updates: patch tracker (versions, dates, sizes, notes). Bugs: community bug tracker (report, track status, platform). Saved: everything the player saved. Ideas: community ideas & Easter-egg-style discoveries. Profile: posts / videos / stats tabs, plain site-default banner (or the member's own uploaded banner picture), profile picture (their own upload or the default avatar), stories & highlights, Following / Followers, linked PSN / Xbox / Rockstar / Discord names, Share (Instagram-style QR with Share / Copy link / Download / colour options), Edit profile, Settings entry at bottom-left. Explore: Database, Guides, Easter Eggs. GTA VI Database: Vehicles / Weapons / Characters / Locations / All entries — each section has its own instant search; detail pages show a big picture left, info right. Community: Feed (posts, stories row, auto official/trending media labelled Automatic with source links), Events, Crews / Clans & Rank (Global / Local / PlayStation / Xbox boards — that platform split is ONLY in Rank), Challenges, Messages / DMs, Player Directory, Discord tab (voice & hangouts live on Discord, invite https://discord.gg/NDH9XxyVkW). Premium (CA$4.99/month, the only paid thing), Goals / Wallet (Vice Credits balance & history), Analytics, Legal pages (Terms, Privacy, Cookies and other policies in Settings). Settings looks like Muse's: profile control at bottom-left opens a small box, then the full Settings list (account, privacy public/private, block list, language, currency auto-detect, saved payment info, Plan Free vs Premium). Sign-up is exactly: email → CREATE NEW ACCOUNT? → Create New → VERIFY YOUR EMAIL (6-digit code, 1-minute expiry, resend after 20s, no skip) → username (permanent, never changeable) → password → Profile; display name changes only once every 3 months (Premium: once a month); there is NO personal tag on a profile — the Crew tag is chosen (with its colour) when a crew is created, every member including the creator shows it in front of their name like [lol]zazz while in that crew, leaving the crew removes it and joining another crew gives that crew's tag instead; region is a searchable dropdown. No thumbs up / down anywhere. No Shop, no Crew Wars, no Party Calls in-app.",
+        "- Today / Home: daily briefing, latest update & patch, Rockstar status, today's counts (news / updates / bugs), Your Profile card and trending content. Map: fan-made CONCEPT schematic only — the official GTA VI map is NOT released, locations are unverified until launch, never present it as real or accurate. News: all GTA VI news with sources and official links. Updates: patch tracker (versions, dates, sizes, notes). Bugs: community bug tracker (report, track status, platform). Saved: everything the player saved. Ideas: community ideas & Easter-egg-style discoveries. Profile: posts / videos / stats tabs, plain site-default banner (or the member's own uploaded banner picture), profile picture (their own upload or the default avatar), stories & highlights, Following / Followers, linked PSN / Xbox / Rockstar / Discord names, Share (Instagram-style QR with Share / Copy link / Download / colour options), Edit profile, Settings entry at bottom-left. Explore: Database, Guides, Easter Eggs. GTA VI Database: Vehicles / Weapons / Characters / Locations / All entries — each section has its own instant search; detail pages show a big picture left, info right. Community: Feed (posts, stories row, auto official/trending media labelled Automatic with source links), Events, Crews / Clans & Rank (Global / Local / PlayStation / Xbox boards — that platform split is ONLY in Rank), Challenges, Messages / DMs, Player Directory, Discord tab (voice & hangouts live on Discord, invite https://discord.gg/NDH9XxyVkW). Premium ($4.99/month USD base, shown in each visitor's own currency, the only paid thing), Goals / Wallet (Vice Credits balance & history), Analytics, Legal pages (Terms, Privacy, Cookies and other policies in Settings). Settings looks like Muse's: profile control at bottom-left opens a small box, then the full Settings list (account, privacy public/private, block list, language, currency auto-detect, saved payment info, Plan Free vs Premium). Sign-up is exactly: email → CREATE NEW ACCOUNT? → Create New → VERIFY YOUR EMAIL (6-digit code, 1-minute expiry, resend after 20s, no skip) → username (permanent, never changeable) → password → Profile; display name changes only once every 3 months (Premium: once a month); there is NO personal tag on a profile — the Crew tag is chosen (with its colour) when a crew is created, every member including the creator shows it in front of their name like [lol]zazz while in that crew, leaving the crew removes it and joining another crew gives that crew's tag instead; region is a searchable dropdown. No thumbs up / down anywhere. No Shop, no Crew Wars, no Party Calls in-app.",
         "",
         "GTA KNOWLEDGE — the whole series (answer general GTA questions from this; for GTA VI only state Confirmed facts as fact, label everything else Rumor / Reported / Unverified):",
         "- The series: Grand Theft Auto by Rockstar Games (Take-Two). GTA (1997) & GTA II top-down; GTA III (2001, Liberty City) started the 3D era; GTA: Vice City (2002, set in 1986 Vice City — a neon, Miami-inspired city — starring Tommy Vercetti); GTA: San Andreas (2004, Los Santos / San Fierro / Las Venturas, CJ); GTA IV (2008, Liberty City, Niko Bellic) + Episodes; GTA V (2013, Los Santos & Blaine County, three protagonists Michael, Franklin & Trevor) and GTA Online (ongoing multiplayer, heists, businesses, vehicles & weekly updates). Core loop across the series: open-world cities, story missions, side activities, wanted system (stars / cops), driving & customising vehicles, weapons, properties & money-making, radio stations, satire of American culture, secrets & Easter eggs. Vice City (2002) is the direct ancestor of GTA VI's setting — same city name, very different era and map.",
@@ -15357,7 +15393,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       premiumSince: z.string(),
       premiumEndsAt: z.string(),
       premiumNextBilling: z.string(),
-      premiumPriceCad: z.string(),
+      premiumPriceUsd: z.number(),
       paymentsConnected: z.boolean(),
       paymentHistory: z.array(
         z.object({
@@ -15469,7 +15505,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         premiumSince: premiumState.sinceAt,
         premiumEndsAt: premiumState.endsAt,
         premiumNextBilling: premiumState.nextBillingAt,
-        premiumPriceCad: PREMIUM_PRICE_CAD,
+        premiumPriceUsd: PREMIUM_PRICE_USD,
         // Payments are not connected yet (Stripe comes later, on the
         // owner's account): no money has ever moved through ViceSunshine,
         // so the payment history is honestly empty. When Stripe is
@@ -16296,10 +16332,16 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
   }),
 
   subscribePremium: defineAction({
-    description: "Starts a Premium subscription (CA$4.99/month), optionally with one of the player's saved payment methods for one-tap checkout. Payments are NOT connected yet (Stripe test mode only), so this never takes payment and never activates Premium — it returns the honest not-connected state until the owner activates Stripe Live.",
+    description: "Starts a Premium subscription ($4.99/month USD base, priced location-based: each visitor is charged in their own currency, converted from USD at a high rate and rounded up so it is never worth less than $4.99 USD), optionally with one of the player's saved payment methods for one-tap checkout. Payments are NOT connected yet (Stripe test mode only), so this never takes payment and never activates Premium — it returns the honest not-connected state until the owner activates Stripe Live.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       paymentMethodId: z.number().int().min(0).default(0),
+      // The visitor's display currency (Settings choice or
+      // auto-detected) — checkout charges in this currency using
+      // the matching Stripe price, falling back to USD when no
+      // Stripe price exists for it. Empty = use the saved Settings
+      // currency, then USD.
+      currency: z.string().trim().max(3).default(""),
     }),
     response: z.object({ status: z.string(), message: z.string() }),
     async handler(_ctx, args) {
@@ -16320,10 +16362,11 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         if (!method) throw new Error("That saved payment method was not found — pick another or add a new one in Settings > Wallet.");
         cardNote = ` Your saved ${method.brand} •••• ${method.last4} is on file, so when checkout opens Premium starts with one tap — no re-entering your card.`;
       }
+      const local = premiumPriceFor(args.currency || rows[0].currency || "");
       return {
         status: "payments_not_connected",
         message:
-          `Payments are not connected yet — checkout coming soon. Premium is ${PREMIUM_PRICE_CAD}/month (CAD), billed through secure Stripe checkout (card, Apple Pay, Google Pay) once the owner activates it. No payment was taken and Premium was not activated — it only ever starts after a successful payment.${cardNote}`,
+          `Payments are not connected yet — checkout coming soon. Premium is ${local.label}/month (${local.code}) — the original price is $4.99 USD and every other currency is converted from it at a high rate, rounded up to a clean price point so it is never worth less than $4.99 USD. Once the owner activates payments you will be charged in ${local.code} through secure Stripe checkout (card, Apple Pay, Google Pay), using the ${local.code} Stripe price${local.code !== "USD" ? " — if no Stripe price exists for a currency, the $4.99 USD price is used instead" : ""}. No payment was taken and Premium was not activated — it only ever starts after a successful payment.${cardNote}`,
       };
     },
   }),
@@ -17051,9 +17094,9 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       totalUsers: z.number(),
       newUsers7d: z.number(),
       premiumMembers: z.number(),
-      premiumPriceCad: z.number(),
+      premiumPriceUsd: z.number(),
       paymentsConnected: z.boolean(),
-      revenueTakenCad: z.number(),
+      revenueTakenUsd: z.number(),
       clanCount: z.number(),
       feedPostCount: z.number(),
       eventCount: z.number(),
@@ -17114,13 +17157,13 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         totalUsers: profiles.length,
         newUsers7d: profiles.filter((pr) => pr.createdAt.getTime() >= weekAgo).length,
         premiumMembers: profiles.filter((pr) => pr.premium === 1).length,
-        premiumPriceCad: 4.99,
+        premiumPriceUsd: PREMIUM_PRICE_USD,
         // Honest revenue state: Premium checkout is not connected
         // yet (Stripe is in test mode), so no sale has ever been
         // taken through ViceSunshine — the dashboard says so instead
         // of inventing a revenue figure.
         paymentsConnected: false,
-        revenueTakenCad: 0,
+        revenueTakenUsd: 0,
         clanCount: clans.length,
         feedPostCount: feedPosts.length,
         eventCount: events.length,

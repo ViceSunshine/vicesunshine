@@ -1963,6 +1963,9 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [accountMenuOpen]);
   const [key, setKey] = useState<string>(() => playerKey());
+  // The visitor's own currency (Settings choice, else auto-detected)
+  // — drives the location-based Premium price in the account menu.
+  const displayCurrency = useDisplayCurrency(key);
   // Log out takes effect IN PLACE, with no reload: Settings writes
   // the signed-out tombstone, then this swaps the shell to the fresh
   // guest key playerKey() hands out while the tombstone is stored,
@@ -2369,10 +2372,10 @@ export function App() {
         <span>Wallet</span>
         {creditBalance !== null && <span className="pop-nav-right">{creditBalance.toLocaleString()} VC</span>}
       </button>
-      <button type="button" className="pop-nav-item" role="menuitem" onClick={() => go("premium")} aria-label={premium ? "Premium — active on your account" : "Premium — CA$4.99 per month"}>
+      <button type="button" className="pop-nav-item" role="menuitem" onClick={() => go("premium")} aria-label={premium ? "Premium — active on your account" : `Premium — ${premiumPriceLabel(displayCurrency)} per month`}>
         <span className="pop-nav-icon"><MuseStyleIcon name="premium" size={18} /></span>
         <span>Premium</span>
-        <span className="pop-nav-right">{premium ? "Active" : "CA$4.99/mo"}</span>
+        <span className="pop-nav-right">{premium ? "Active" : `${premiumPriceLabel(displayCurrency)}/mo`}</span>
       </button>
       {isOwner && (
         <button type="button" className="pop-nav-item" role="menuitem" onClick={() => go("owner")} aria-label="Owner Dashboard — owner account only">
@@ -4650,6 +4653,7 @@ function AutomationLine() {
 
 function OwnerView({ playerKey }: { playerKey: string }) {
   const qc = useQueryClient();
+  const displayCurrency = useDisplayCurrency(playerKey);
   const [msg, setMsg] = useState("");
   const dash = useQuery({ queryKey: ["owner", playerKey], queryFn: () => api.getOwnerDashboard({ playerKey }) });
   const auto = useQuery({ queryKey: ["automation"], queryFn: () => api.getAutomationStatus({}) });
@@ -4718,10 +4722,10 @@ function OwnerView({ playerKey }: { playerKey: string }) {
       <section className="card mb-5 p-5" aria-label="Premium and revenue">
         <h3 className="font-extrabold tracking-tight">Premium &amp; revenue</h3>
         {d.paymentsConnected ? (
-          <p className="mt-1 text-sm text-[var(--dim)]">Revenue taken so far: <strong className="text-[var(--text)]">CA${d.revenueTakenCad.toFixed(2)}</strong> · Premium is CA${d.premiumPriceCad.toFixed(2)}/month · {d.premiumMembers} active Premium members.</p>
+          <p className="mt-1 text-sm text-[var(--dim)]">Revenue taken so far: <strong className="text-[var(--text)]">{moneyFromUsd(d.revenueTakenUsd, displayCurrency)}</strong> · Premium is {premiumPriceLabel(displayCurrency)}/month in your currency ({displayCurrency}) — the base price is $4.99 USD and each visitor is charged in their own currency · {d.premiumMembers} active Premium members.</p>
         ) : (
           <p className="mt-1 text-sm leading-relaxed text-[var(--dim)]">
-            Revenue taken so far: <strong className="text-[var(--text)]">CA$0.00</strong> — Premium checkout is not connected yet (Stripe is still in test mode and no payment method is on file), so no sale has ever been taken through ViceSunshine. Premium is CA${d.premiumPriceCad.toFixed(2)}/month, and {d.premiumMembers} {d.premiumMembers === 1 ? "member currently has" : "members currently have"} Premium. Real sales will appear here once payments go live — nothing is estimated or invented.
+            Revenue taken so far: <strong className="text-[var(--text)]">{moneyFromUsd(d.revenueTakenUsd, displayCurrency)}</strong> — Premium checkout is not connected yet (Stripe is still in test mode and no payment method is on file), so no sale has ever been taken through ViceSunshine. Premium is {premiumPriceLabel(displayCurrency)}/month in your currency ({displayCurrency}; the base price is $4.99 USD and each visitor sees and pays their own currency), and {d.premiumMembers} {d.premiumMembers === 1 ? "member currently has" : "members currently have"} Premium. Real sales will appear here once payments go live — nothing is estimated or invented.
           </p>
         )}
       </section>
@@ -9473,6 +9477,7 @@ function MapView({ playerKey, gamertag, go, onBack }: { playerKey: string; gamer
 
 function EggsView({ search, savedStore, playerKey, openEgg, premium, goPremium }: { search: string; savedStore?: ReturnType<typeof useSaved>; playerKey: string; openEgg: (id: number) => void; premium: boolean; goPremium: () => void }) {
   const qc = useQueryClient();
+  const displayCurrency = useDisplayCurrency(playerKey);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
@@ -9598,7 +9603,7 @@ function EggsView({ search, savedStore, playerKey, openEgg, premium, goPremium }
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-[var(--dim)]">One plan, every page ad-free — Feed, Map, Database and right here.</p>
                 <div className="mt-auto pt-4">
-                  <button type="button" className="btn-primary" onClick={goPremium} aria-label="See ViceSunshine Premium — CA$4.99 per month, no ads">Premium — CA$4.99/mo</button>
+                  <button type="button" className="btn-primary" onClick={goPremium} aria-label={`See ViceSunshine Premium — ${premiumPriceLabel(displayCurrency)} per month, no ads`}>Premium — {premiumPriceLabel(displayCurrency)}/mo</button>
                 </div>
               </article>
             )];
@@ -13867,16 +13872,51 @@ function detectedCurrency(): string {
   return "CAD";
 }
 
-// Display-currency helper: prices are set in CAD; when the player's
-// Settings currency (or auto-detected location) is another currency,
-// prices are also shown converted at an approximate rate, clearly
-// labelled — checkout is always in CAD.
-const FX_FROM_CAD: Record<string, { rate: number; symbol: string }> = {
-  USD: { rate: 0.73, symbol: "$" },
-  EUR: { rate: 0.68, symbol: "€" },
-  GBP: { rate: 0.58, symbol: "£" },
-  AUD: { rate: 1.12, symbol: "A$" },
+// Premium pricing is LOCATION-BASED (owner's decision, Nov 21,
+// 2026): the ORIGINAL price is $4.99 USD and every other currency
+// converts from it. The visitor's currency is their Settings
+// currency when they picked one, otherwise the auto-detected one
+// above. Conversion uses a deliberately HIGH rate (units of local
+// currency per 1 USD, above typical market rates) and rounds UP to
+// a clean .99 price point, so a local Premium price is never worth
+// less than $4.99 USD — e.g. the straight conversion for Canada
+// lands near CA$7.09 and the shown price is CA$7.99. The server
+// carries an identical copy of this table (actions.ts FX_FROM_USD)
+// so every surface — banner, Premium page, Settings, Owner
+// Dashboard, Ask Vice, checkout — shows the same amount for the
+// same visitor; keep the two in sync. A currency with no entry
+// falls back to the $4.99 USD price, the same fallback checkout
+// uses when Stripe has no price for a currency.
+const PREMIUM_PRICE_USD = 4.99;
+const FX_FROM_USD: Record<string, { rate: number; symbol: string }> = {
+  CAD: { rate: 1.42, symbol: "CA$" },
+  EUR: { rate: 0.95, symbol: "€" },
+  GBP: { rate: 0.82, symbol: "£" },
+  AUD: { rate: 1.55, symbol: "A$" },
 };
+function roundUpToCleanPrice(amount: number): number {
+  let candidate = Math.floor(amount) + 0.99;
+  if (candidate < amount + 0.05) candidate += 1;
+  return Math.round(candidate * 100) / 100;
+}
+function premiumPriceFor(currency: string): { code: string; amount: number; label: string } {
+  const code = (currency || "").trim().toUpperCase();
+  const fx = FX_FROM_USD[code];
+  if (!fx) return { code: "USD", amount: PREMIUM_PRICE_USD, label: `$${PREMIUM_PRICE_USD.toFixed(2)}` };
+  const amount = roundUpToCleanPrice(PREMIUM_PRICE_USD * fx.rate);
+  return { code, amount, label: `${fx.symbol}${amount.toFixed(2)}` };
+}
+function premiumPriceLabel(currency: string): string {
+  return premiumPriceFor(currency).label;
+}
+// Plain conversion for money figures that are not a price point
+// (e.g. revenue): same high-rate table, no .99 rounding.
+function moneyFromUsd(amountUsd: number, currency: string): string {
+  const code = (currency || "").trim().toUpperCase();
+  const fx = FX_FROM_USD[code];
+  if (!fx) return `$${amountUsd.toFixed(2)}`;
+  return `${fx.symbol}${(amountUsd * fx.rate).toFixed(2)}`;
+}
 function useDisplayCurrency(playerKey: string): string {
   const settings = useQuery({
     queryKey: ["settings", playerKey],
@@ -13885,13 +13925,6 @@ function useDisplayCurrency(playerKey: string): string {
     staleTime: 60_000,
   });
   return settings.data?.currency || detectedCurrency();
-}
-function priceIn(priceCad: string, currency: string): string {
-  if (!currency || currency === "CAD") return priceCad;
-  const fx = FX_FROM_CAD[currency];
-  const amount = Number((priceCad.match(/[0-9]+(\.[0-9]+)?/) ?? ["0"])[0]);
-  if (!fx || !amount) return priceCad;
-  return `${priceCad} (approx. ${fx.symbol}${(amount * fx.rate).toFixed(2)} ${currency})`;
 }
 
 function SettingsToggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -14253,7 +14286,7 @@ function SettingsView({ playerKey, gamertag, go, openLegal, onClose, initialSect
     onError: (e) => setCardMsg(e.message),
   });
   const oneTapPremium = useMutation({
-    mutationFn: async (paymentMethodId: number) => await api.subscribePremium({ playerKey, paymentMethodId }),
+    mutationFn: async (paymentMethodId: number) => await api.subscribePremium({ playerKey, paymentMethodId, currency: currency || detectedCurrency() }),
     onSuccess: (res) => setWalletMsg(res.message),
     onError: (e) => setWalletMsg(e.message),
   });
@@ -14609,7 +14642,7 @@ function SettingsView({ playerKey, gamertag, go, openLegal, onClose, initialSect
             <div className="mt-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="stat-tile"><div className="num">{w ? w.balance.toLocaleString() : "…"}</div><div className="lbl">Vice Credits</div></div>
-                <div className="stat-tile"><div className="num">{d.premium ? "Premium" : "Free"}</div><div className="lbl">{d.premium ? "250 VC every week" : "Plan — CA$4.99/mo for Premium"}</div></div>
+                <div className="stat-tile"><div className="num">{d.premium ? "Premium" : "Free"}</div><div className="lbl">{d.premium ? "250 VC every week" : `Plan — ${premiumPriceLabel(d.currency || detectedCurrency())}/mo for Premium`}</div></div>
               </div>
 
               <h4 className="mt-6 text-sm font-bold text-[var(--dim)]">Saved payment methods</h4>
@@ -14698,7 +14731,7 @@ function SettingsView({ playerKey, gamertag, go, openLegal, onClose, initialSect
                 <div className="mt-2 grid gap-3">
                   <div className="set-row">
                     <span className="min-w-0 flex-1">
-                      <span className="set-row-title block">Premium — {priceIn(w?.premiumPriceCad ?? "CA$4.99", d.currency || detectedCurrency())}/month</span>
+                      <span className="set-row-title block">Premium — {premiumPriceLabel(d.currency || detectedCurrency())}/month</span>
                       <span className="set-row-sub block">{d.premium ? "Already active on your account" : `Pay with ${defaultMethod.brand} •••• ${defaultMethod.last4} — one tap, nothing to fill in`}</span>
                     </span>
                     {!d.premium && (
@@ -20747,6 +20780,7 @@ function CrewCustomisationPanel({ clanId, playerKey, clanName, clanColor, clanTa
   goPremium?: () => void;
 }) {
   const qc = useQueryClient();
+  const displayCurrency = useDisplayCurrency(playerKey);
   const [msg, setMsg] = useState("");
   const customise = useQuery({
     queryKey: ["crewCustomise", playerKey, clanId],
@@ -20833,7 +20867,7 @@ function CrewCustomisationPanel({ clanId, playerKey, clanName, clanColor, clanTa
                 <button type="button" className="btn-ghost w-full" style={{ minHeight: 44, fontSize: 14 }} onClick={() => goPremium?.()} aria-label={`${item.name} — included with Premium: the crew owner needs Premium to equip it`}>
                   Included with Premium
                 </button>
-                <p className="mt-2 text-xs text-[var(--dim)]">Premium items equip only while the crew&apos;s owner has Premium (CA$4.99/month) — never sold separately.</p>
+                <p className="mt-2 text-xs text-[var(--dim)]">Premium items equip only while the crew&apos;s owner has Premium ({premiumPriceLabel(displayCurrency)}/month) — never sold separately.</p>
               </div>
             ) : (
               <button type="button" className="btn-primary btn-accent w-full" style={{ minHeight: 44, fontSize: 14 }} disabled={equip.isPending} onClick={() => { setMsg(""); equip.mutate(item); }} aria-label={item.premiumOnly ? `Equip the ${item.name} — included with the crew owner's Premium` : `Equip the ${item.name} to ${clanName} for free`}>
@@ -24520,6 +24554,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     queryKey: ["profile", playerKey],
     queryFn: () => api.getProfile({ playerKey }),
   });
+  const displayCurrency = useDisplayCurrency(playerKey);
   const [gamertag, setGamertag] = useState("");
   const [plat, setPlat] = useState<"PS5" | "Xbox" | "Both">("PS5");
   const [region, setRegion] = useState("");
@@ -25796,7 +25831,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
           <button
             type="button"
             onClick={() => { setEditing(false); go("premium"); }}
-            aria-label={me?.premium ? "Premium is active on your account — open Premium to manage it" : "Switch to professional — go Premium, CA$4.99 per month. No ads, exclusive effects, 250 Vice Credits every week and the Premium Discord role + private Premium lounge"}
+            aria-label={me?.premium ? "Premium is active on your account — open Premium to manage it" : `Switch to professional — go Premium, ${premiumPriceLabel(displayCurrency)} per month. No ads, exclusive effects, 250 Vice Credits every week and the Premium Discord role + private Premium lounge`}
             className="w-full text-left"
             style={{
               display: "block",
@@ -25819,7 +25854,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", background: "var(--amber)", color: "#241a02", borderRadius: 999, padding: "3px 9px", lineHeight: 1.2 }}>Premium</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "var(--amber)" }}>{me?.premium ? "Active on your account" : "CA$4.99 / month"}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "var(--amber)" }}>{me?.premium ? "Active on your account" : `${premiumPriceLabel(displayCurrency)} / month`}</span>
                   </span>
                   <span style={{ display: "block", marginTop: 5, fontSize: 17, fontWeight: 900, letterSpacing: "-0.01em", lineHeight: 1.2, color: "#fff" }}>
                     {me?.premium ? "You're Premium — Professional is on" : "Switch to professional"}
@@ -25834,7 +25869,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 13, flexWrap: "wrap" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 42, padding: "9px 18px", borderRadius: 999, background: "var(--amber)", color: "#241a02", fontSize: 14, fontWeight: 900, lineHeight: 1 }}>
-                  {me?.premium ? "Manage Premium" : "Go Premium — CA$4.99/mo"}
+                  {me?.premium ? "Manage Premium" : `Go Premium — ${premiumPriceLabel(displayCurrency)}/mo`}
                 </span>
                 {!me?.premium && <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--amber)" }}>Cancel any time</span>}
               </span>
@@ -26074,7 +26109,7 @@ function LegalView({
             <h3 className={h}>Accuracy labels</h3>
             <p className={p}>Database entries are labelled Confirmed in trailer, Reported, Unverified, or Returning from GTA V (not confirmed for GTA VI), and news is labelled Official, Patch, Rumor or Community. A label is our honest best reading of the source linked on the item — check the official Rockstar site to double-confirm anything that matters.</p>
             <h3 className={h}>Vice Credits and Premium</h3>
-            <p className={p}>Vice Credits are an in-app cosmetic currency with no cash value. They can never buy Rank Points, seasonal rank or wins. Hitting a Rank Point milestone pays Vice Credits at the milestones listed under Rewards &amp; Rank Points on the About page — paid once per milestone, and earned only from activity inside ViceSunshine (events, posts and recruiting), never from an in-game GTA VI level. Premium (CA$4.99/month, billed in CAD through secure checkout once payments are connected) is ad-free and adds cosmetic and convenience extras described on the Premium page. You can cancel Premium at any time; it stays active until the end of the paid month, weekly Premium credits stop after that date, and lapsed weeks are never paid retroactively. Vice Credits cannot be bought — there are no credit packs; credits are only earned in ViceSunshine or granted weekly with Premium. If a Premium payment fails or you need a refund, contact support through Ask Vice: a human reviews every refund request, and refunds are never promised automatically.</p>
+            <p className={p}>Vice Credits are an in-app cosmetic currency with no cash value. They can never buy Rank Points, seasonal rank or wins. Hitting a Rank Point milestone pays Vice Credits at the milestones listed under Rewards &amp; Rank Points on the About page — paid once per milestone, and earned only from activity inside ViceSunshine (events, posts and recruiting), never from an in-game GTA VI level. Premium ($4.99/month USD — the base price; the site shows it in your own currency, converted from USD at a high rate and rounded up to a clean price point so it is never worth less than the USD price, and checkout charges that shown currency through secure checkout once payments are connected) is ad-free and adds cosmetic and convenience extras described on the Premium page. You can cancel Premium at any time; it stays active until the end of the paid month, weekly Premium credits stop after that date, and lapsed weeks are never paid retroactively. Vice Credits cannot be bought — there are no credit packs; credits are only earned in ViceSunshine or granted weekly with Premium. If a Premium payment fails or you need a refund, contact support through Ask Vice: a human reviews every refund request, and refunds are never promised automatically.</p>
             <h3 className={h}>Advertising</h3>
             <p className={p}>When ads go live on our own domain they will be served by Google AdSense and clearly separated from community content. Crypto, gambling and account-selling ads are permanently banned here, and sponsored community events come only from gaming-gear, VPN and drink brands.</p>
           </div>
@@ -26204,7 +26239,7 @@ function PremiumView({ playerKey, go, onBack }: { playerKey: string; go: (t: Tab
   const [subMsg, setSubMsg] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const subscribe = useMutation({
-    mutationFn: async () => await api.subscribePremium({ playerKey, paymentMethodId: defaultMethod?.id ?? 0 }),
+    mutationFn: async () => await api.subscribePremium({ playerKey, paymentMethodId: defaultMethod?.id ?? 0, currency: displayCurrency }),
     onSuccess: (r) => setSubMsg(r.message),
     onError: (e) => setSubMsg(e instanceof Error ? e.message : "Something went wrong — please try again."),
   });
@@ -26247,8 +26282,8 @@ function PremiumView({ playerKey, go, onBack }: { playerKey: string; go: (t: Tab
           </ul>
         </div>
         <div className="card p-5" style={{ borderColor: "var(--amber)" }}>
-          <h3 className="font-display uppercase text-[var(--amber)]">Premium — {priceIn(w?.premiumPriceCad ?? "CA$4.99", displayCurrency)}/month</h3>
-          <p className="mt-1 text-xs font-semibold text-[var(--dim)]">Recurring monthly subscription, priced in CAD. Checkout (when it opens) is secure Stripe checkout — card, Apple Pay, Google Pay — and shows the total in your currency before you pay.</p>
+          <h3 className="font-display uppercase text-[var(--amber)]">Premium — {premiumPriceLabel(displayCurrency)}/month</h3>
+          <p className="mt-1 text-xs font-semibold text-[var(--dim)]">Recurring monthly subscription. The original price is $4.99 USD — you see it in {premiumPriceFor(displayCurrency).code}, converted from USD at a high rate and rounded up to a clean price point, so it is never worth less than $4.99 USD. Checkout (when it opens) is secure Stripe checkout — card, Apple Pay, Google Pay — and charges you in {premiumPriceFor(displayCurrency).code}.</p>
           <p className="mt-3 rounded-xl bg-[var(--surface2)] p-3 text-base font-extrabold text-[var(--text)]">250 Vice Credits every week — 1,000 a month, while your membership is active</p>
           {w?.premiumActive && !cancelling && (
             <p className="mt-2 text-sm font-semibold text-[var(--accent2)]" role="status">Your Premium is active{w.premiumSince ? ` since ${w.premiumSince}` : ""}. Next billing date: {w.premiumNextBilling || "—"}. Next weekly payout: {w.premiumNextPayout}. Each grant appears in your wallet history as "Premium weekly credits".</p>
@@ -26290,7 +26325,7 @@ function PremiumView({ playerKey, go, onBack }: { playerKey: string; go: (t: Tab
           <div className="mt-4">
             {!w?.premiumActive && (
               <button type="button" className="btn-primary btn-accent" disabled={subscribe.isPending} onClick={() => { setSubMsg(""); subscribe.mutate(); }} aria-label={defaultMethod ? `Subscribe to Premium with your saved ${defaultMethod.brand} card ending in ${defaultMethod.last4}` : "Subscribe to Premium"}>
-                {subscribe.isPending ? "Checking…" : defaultMethod ? `Subscribe with ${defaultMethod.brand} •••• ${defaultMethod.last4} — one tap` : `Subscribe — ${priceIn(w?.premiumPriceCad ?? "CA$4.99", displayCurrency)}/month`}
+                {subscribe.isPending ? "Checking…" : defaultMethod ? `Subscribe with ${defaultMethod.brand} •••• ${defaultMethod.last4} — one tap` : `Subscribe — ${premiumPriceLabel(displayCurrency)}/month`}
               </button>
             )}
             {!w?.premiumActive && (
