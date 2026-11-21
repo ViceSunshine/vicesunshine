@@ -15,7 +15,12 @@ const actions = await import("../src/actions");
 const defs = (actions as Record<string, unknown>).Actions as Record<string, unknown> | undefined;
 if (!defs || typeof defs !== "object") throw new Error("server/src/actions.ts did not export the named Actions module");
 
-const DIST = `${process.env.SPACE_DIR ?? process.cwd()}/client/dist`;
+// Built client lives in the app directory (/app/client/dist in the
+// Docker image), NOT under SPACE_DIR. SPACE_DIR is the Railway data
+// volume (/data) and holds only app.db + blobs — it never contains
+// client/dist. Using SPACE_DIR here made the server look in
+// /data/client/dist and always answer "Client not built" on Railway.
+const DIST = `${process.cwd()}/client/dist`;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
