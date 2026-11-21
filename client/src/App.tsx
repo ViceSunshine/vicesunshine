@@ -2402,7 +2402,7 @@ export function App() {
             {tab === "profile" && <ProfileView playerKey={key} search={globalSearch} go={go} onBack={goBack} savedStore={savedStoreGated} trackedStore={trackedStoreGated} openEgg={(id) => openEgg(id)} />}
             {tab === "profile" && <AdSlot slot="profile-bottom" format="banner" premium={premium} />}
             {tab === "analytics" && <ProfileAnalyticsView playerKey={key} go={go} onBack={goBack} onSettings={() => openSettings("general")} />}
-            {tab === "messages" && <MessagesView playerKey={key} gamertag={gamertag} go={go} />}
+            {tab === "messages" && <MessagesView playerKey={key} gamertag={gamertag} go={go} onBack={goBack} />}
             {tab === "premium" && <PremiumView playerKey={key} go={go} />}
             {tab === "owner" && isOwner && <OwnerView playerKey={key} />}
             {tab === "owner" && !isOwner && (<p className="card p-5 text-sm text-[var(--dim)]">This area is restricted to the ViceSunshine owner account.</p>)}
@@ -19812,7 +19812,7 @@ function initialsOf(name: string): string {
   return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
-function MessagesView({ playerKey, gamertag, go }: { playerKey: string; gamertag: string; go: (t: Tab, search?: string) => void }) {
+function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; gamertag: string; go: (t: Tab, search?: string) => void; onBack: () => void }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showRequests, setShowRequests] = useState(false);
@@ -19838,15 +19838,10 @@ function MessagesView({ playerKey, gamertag, go }: { playerKey: string; gamertag
     queryFn: () => api.listDmConversations({ playerKey, search }),
     enabled: Boolean(gamertag),
   });
-  // X Chat-style Suggested people for the empty inbox: crewmates,
-  // people you follow, and people followed by people you follow
-  // first (the listDmPeople ordering), minus anyone already in
-  // the conversation list.
-  const suggested = useQuery({
-    queryKey: ["dm-people", playerKey, ""],
-    queryFn: () => api.listDmPeople({ playerKey, search: "" }),
-    enabled: Boolean(gamertag),
-  });
+  // No Suggested people here (owner's direction, Nov 20 2026):
+  // the empty inbox stays empty — no recommendations. People you
+  // already follow still appear under Following below, so you can
+  // start a chat with them.
   const thread = useQuery({
     queryKey: ["dm-thread", playerKey, openKey],
     queryFn: () => api.listDmThread({ playerKey, otherKey: openKey }),
@@ -19954,8 +19949,6 @@ function MessagesView({ playerKey, gamertag, go }: { playerKey: string; gamertag
   const allItems = convs.data?.items ?? [];
   const requests = allItems.filter((i) => i.request);
   const items = showRequests ? requests : allItems.filter((i) => !i.request);
-  const convoKeys = new Set(allItems.map((i) => i.otherKey));
-  const suggestedRows = (suggested.data?.items ?? []).filter((person) => !convoKeys.has(person.playerKey)).slice(0, 8);
   const allGroups = convs.data?.groups ?? [];
   const personalGroups = allGroups.filter((g) => g.kind === "group");
   const crewChats = allGroups.filter((g) => g.kind === "crew");
@@ -20007,8 +20000,9 @@ function MessagesView({ playerKey, gamertag, go }: { playerKey: string; gamertag
       <div className="dm-shell dm-fill">
         {/* ---- Left column ---- */}
         <div className={`dm-list-col ${openAny ? "hidden min-[860px]:flex" : "flex"}`}>
-          <div className="flex items-center gap-2 px-4 pb-1 pt-4">
-            <h2 className="min-w-0 flex-1 truncate text-[20px] font-extrabold tracking-tight">Chat</h2>
+          <div className="flex items-center gap-2 px-5 pb-1 pt-5">
+            <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl hover:bg-[var(--surface2)]" style={{ minHeight: 40 }} onClick={onBack} aria-label="Back">←</button>
+            <h2 className="min-w-0 flex-1 truncate text-[22px] font-extrabold tracking-tight">Chat</h2>
             {showDms && (
             <div className="relative flex-none">
               <button type="button" className="flex items-center gap-1.5 rounded-full border border-[var(--border-strong)] px-3.5 text-[13.5px] font-bold" style={{ minHeight: 36 }} aria-haspopup="menu" aria-expanded={filterOpen} onClick={() => setFilterOpen((v) => !v)} aria-label={`Chat filter: ${showRequests ? "Requests" : "All"} — change filter`}>
@@ -20032,13 +20026,13 @@ function MessagesView({ playerKey, gamertag, go }: { playerKey: string; gamertag
               <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /><path d="M12 8v6M9 11h6" /></svg>
             </button>
           </div>
-          <div className="px-4 pb-1 pt-2">
+          <div className="px-5 pb-1 pt-2">
             <label className="sr-only" htmlFor="dm-search">Search messages</label>
             <div className="relative">
               <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--dim)]" aria-hidden="true">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></svg>
               </span>
-              <input id="dm-search" className="field" style={{ borderRadius: 999, paddingLeft: 38, minHeight: 42 }} {...FIELDS.listDmConversations.search} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" autoComplete="off" />
+              <input id="dm-search" className="field" style={{ borderRadius: 999, paddingLeft: 38, minHeight: 48 }} {...FIELDS.listDmConversations.search} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" autoComplete="off" />
             </div>
           </div>
           <div className="flex px-2" role="tablist" aria-label="Message categories">
@@ -20078,32 +20072,11 @@ function MessagesView({ playerKey, gamertag, go }: { playerKey: string; gamertag
             )}
             {convs.data && showDms && items.length === 0 && personalGroups.length === 0 && !showRequests && !search && (
               <div>
-                <div className="px-6 py-9 text-center">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mx-auto text-[var(--dim)]"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>
-                  <p className="mt-3 text-[16px] font-extrabold tracking-tight">Your inbox is empty</p>
-                  <p className="mt-1 text-[13.5px] leading-relaxed text-[var(--dim)]">Conversations you have will show up here</p>
+                <div className="px-6 py-16 text-center">
+                  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mx-auto text-[var(--dim)]"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>
+                  <p className="mt-4 text-[18px] font-extrabold tracking-tight">Your inbox is empty</p>
+                  <p className="mt-1.5 text-[14.5px] leading-relaxed text-[var(--dim)]">Conversations you have will show up here</p>
                 </div>
-                <div className="mx-4 border-t border-[var(--border)]" aria-hidden="true" />
-                <h3 className="px-4 pb-1 pt-4 text-[16px] font-extrabold tracking-tight">Suggested</h3>
-                {suggested.isPending && <p className="px-4 py-2 text-sm text-[var(--dim)]">Loading suggestions…</p>}
-                {suggested.data && suggestedRows.length === 0 && (
-                  <p className="px-4 py-2 text-sm leading-relaxed text-[var(--dim)]">No suggestions yet — crewmates and people you follow will appear here.</p>
-                )}
-                {suggestedRows.map((person) => (
-                  <div key={person.playerKey} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className="relative flex-none">
-                      <CosmeticAvatar name={person.gamertag} size={44} avatarUrl={person.avatarUrl} effect={person.avatarEffect} />
-                      <span className="absolute bottom-0 right-0"><PresenceDot status={person.presence} size={11} ring /></span>
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14.5px] font-bold">{person.displayName.trim() || person.gamertag}</span>
-                      <span className="block truncate text-[13px] text-[var(--dim)]">{person.relation || `@${person.gamertag}`}</span>
-                    </span>
-                    <button type="button" className="flex-none rounded-full bg-[var(--surface3)] px-4 text-[13px] font-bold hover:bg-[var(--border-strong)]" style={{ minHeight: 34 }} onClick={() => openDm(person.playerKey)} aria-label={`Chat with ${person.gamertag}`}>
-                      Chat
-                    </button>
-                  </div>
-                ))}
               </div>
             )}
             {showDms && personalGroups.map((g) => groupRow(g))}
