@@ -70,4 +70,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`ViceSunshine standalone server listening on http://localhost:${server.port}`);
+console.log(`ViceSunshine standalone server listening on http://0.0.0.0:${server.port}`);
