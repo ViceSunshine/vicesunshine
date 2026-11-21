@@ -14831,10 +14831,15 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
 
   if (!gamertag) {
     return (
-      <section className="card mb-6 p-6 text-center" aria-label="Create — you need an account to post">
+      <section className="fixed inset-0 z-[80] overflow-y-auto bg-black" aria-label="Create — you need an account to post">
+        <div className="mx-auto flex min-h-full w-full max-w-[680px] items-center justify-center px-4 py-6">
+      <div className="card w-full p-6 text-center">
         <h3 className="text-lg font-extrabold tracking-tight">Create posts, stories and clips</h3>
         <p className="mx-auto mt-2 max-w-[420px] text-sm leading-relaxed text-[var(--dim)]">You need your own ViceSunshine account to post — it takes a minute, and everything you publish saves to your account forever.</p>
         <button type="button" className="btn-primary mt-4" onClick={() => go("signup")} aria-label="Create your account to start posting">Create account</button>
+        <button type="button" className="btn-ghost mt-3 w-full" style={{ minHeight: 48 }} onClick={onClose} aria-label="Close — back to For you">Close</button>
+      </div>
+        </div>
       </section>
     );
   }
@@ -14969,7 +14974,12 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
   );
 
   return (
-    <section className="mb-6" aria-label="Create — step by step: capture, preview, edit, then details">
+    {/* Full-screen creator (owner's direction, Nov 20 2026): the
+        creator covers the whole screen — no footer, no bottom bar,
+        nothing under it — on laptop and phone alike. Closing it
+        (the X on the camera) goes back to For you. */}
+    <section className="fixed inset-0 z-[80] overflow-y-auto bg-black" aria-label="Create — step by step: capture, preview, edit, then details">
+      <div className="mx-auto w-full max-w-[680px] px-4 pb-6 pt-4">
       {/* Stepper — one step at a time, never everything at once.
           Hidden on the capture step: the camera is full-screen,
           like Instagram's camera. */}
@@ -15190,6 +15200,7 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
 
       {error && <p className="mt-3 text-sm font-semibold text-[var(--amber)]" role="alert">{error}</p>}
       {doneMsg && <p className="mt-3 text-sm font-semibold text-[var(--accent2)]" role="status">{doneMsg}</p>}
+      </div>
     </section>
   );
 }
