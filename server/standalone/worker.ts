@@ -11,7 +11,8 @@
 //                                    under the limit; game not fully released yet so slower
 //                                    updates are fine; budget guard caps Tavily at 900)
 //   feed-media      refreshFeedMedia     every 3d
-//   clips           refreshTikTokClips   every 3d
+//   clips          DISABLED Nov 21, 2026 — Clips section being removed (TikTok reposts do not play);
+//                job removed from the list below, code still in git history if Clips comes back
 //   db-sync         refreshDbEntries     every 3d
 //   bugs            refreshBugs          every 3d
 //   eggs            refreshEggContent    every 3d
@@ -53,7 +54,6 @@ interface Job { name: string; action: string; everyMs: number; run: () => Promis
 const jobs: Job[] = [
   { name: "news", action: "refreshNews", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshNews") },
   { name: "feed-media", action: "refreshFeedMedia", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshFeedMedia") },
-  { name: "clips", action: "refreshTikTokClips", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshTikTokClips") },
   { name: "db-sync", action: "refreshDbEntries", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshDbEntries") },
   { name: "bugs", action: "refreshBugs", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshBugs") },
   { name: "eggs", action: "refreshEggContent", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshEggContent") },
