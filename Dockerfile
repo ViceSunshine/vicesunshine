@@ -4,7 +4,10 @@
 # the image as the live database. On first boot the container copies
 # the seed app.db + blobs/ from /app/seed-data into /data if the
 # volume is empty.
-FROM oven/bun:1.3.10-slim
+# Bun 1.4+ required: bun.lock is lockfileVersion 2, which Bun 1.3.x
+# cannot parse ("Unknown lockfile version"). Pinned to 1.4.4, the
+# version that generated this lockfile.
+FROM oven/bun:1.4.4-slim
 WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
