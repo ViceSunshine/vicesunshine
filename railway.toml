@@ -1,0 +1,18 @@
+# ViceSunshine on Railway.
+# 1) Create a Railway project from this repo.
+# 2) Add a Volume, mount path /data (this is where app.db + blobs live).
+# 3) Set variables: RESEND_API_KEY (see README), EMAIL_FROM.
+# 4) Deploy the web service from this file; add a second service for
+#    the worker (same repo, start command: bun run server/standalone/worker.ts).
+# 5) Generate a domain, then point vicesunshine.com at it in Spaceship (README).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "sh -c \"if [ ! -f /data/app.db ]; then echo 'Seeding /data from snapshot...'; cp -a /app/seed-data/app.db /data/app.db 2>/dev/null; cp -a /app/seed-data/blobs /data/blobs 2>/dev/null; fi; SPACE_DIR=/data bun run server/standalone/server.ts\""
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

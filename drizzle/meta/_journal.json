@@ -1,0 +1,461 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1795061813323,
+      "tag": "0001_initial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1795061813323,
+      "tag": "0002_leonida_hub_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795061954996,
+      "tag": "0003_linked_accounts_and_community_feed",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795062183790,
+      "tag": "0004_viceverse_bylines_and_bug_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795063565609,
+      "tag": "0005_add_clan_emblem",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795066291707,
+      "tag": "0006_vice_credits_rank_points_seasons_shop",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795066417881,
+      "tag": "0007_premium_weekly_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795067004122,
+      "tag": "0008_feed_post_title",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795067004122,
+      "tag": "0009_event_lobby_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795067004122,
+      "tag": "0010_database_entries_vehicles_weapons_characters",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795067004122,
+      "tag": "0011_db_entry_type_manufacturer_and_ratings",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1795067839830,
+      "tag": "0012_db_entry_artwork",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795068384005,
+      "tag": "0013_avatars_and_emblem_effects",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1795068684870,
+      "tag": "0014_support_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1795069751513,
+      "tag": "0015_voice_channels_and_lfg_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1795069969880,
+      "tag": "0016_feed_auto_posts_source_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1795070994058,
+      "tag": "0017_feed_reposts",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795071311943,
+      "tag": "0018_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1795072328967,
+      "tag": "0019_party_direct_calls_and_clan_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1795072619717,
+      "tag": "0020_premium_ends_at_for_cancellation",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1795075035404,
+      "tag": "0021_settings_privacy_referrals_blocked_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1795076377182,
+      "tag": "0022_saved_payment_methods",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1795077282858,
+      "tag": "0023_profile_private_note_and_wishlist",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1795082831905,
+      "tag": "0024_discord_server_joins",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795084490711,
+      "tag": "0025_mission_source_and_guide_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1795085286491,
+      "tag": "0026_feed_post_editorial_image",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1795091535675,
+      "tag": "0027_premium_avatar_effect",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1795092081822,
+      "tag": "0028_profile_presence_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1795092377626,
+      "tag": "0029_calling_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1795093006474,
+      "tag": "0030_community_events_visibility_hashtags_host_clan",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1795093006474,
+      "tag": "0031_event_invite_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1795112954026,
+      "tag": "0032_custom_avatar_upload_and_custom_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1795114084950,
+      "tag": "0033_rename_viceverse_to_vicesunshine_in_stored_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1795115804712,
+      "tag": "0034_rename_clan_wording_to_crew_in_stored_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1795115914870,
+      "tag": "0035_rename_clan_wording_to_crew_in_seeded_example_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1795118793370,
+      "tag": "0036_egg_detail_media_and_egg_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1795121786932,
+      "tag": "0037_set_live_discord_invite_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1795122918634,
+      "tag": "0038_email_verification_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1795123054343,
+      "tag": "0039_drop_email_verification_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1795123982635,
+      "tag": "0040_feed_views_comment_likes_replies_and_stories",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1795125499458,
+      "tag": "0041_profile_follows",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1795126039678,
+      "tag": "0042_direct_messages_and_pins",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1795126858569,
+      "tag": "0043_search_terms_trending_counts",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1795128651275,
+      "tag": "0044_feed_saves_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1795130025202,
+      "tag": "0045_rockstar_social_club_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1795132938557,
+      "tag": "0046_follow_events_and_rockstar_status_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1795137661819,
+      "tag": "0047_profile_location_website_and_story_highlights",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1795138774399,
+      "tag": "0048_account_passwords_two_factor_and_account_saves",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1795140014115,
+      "tag": "0049_story_hidden_from_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1795140825448,
+      "tag": "0050_profile_birth_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1795140825448,
+      "tag": "0051_username_change_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1795144873721,
+      "tag": "0052_account_phone_email_verification_and_reset_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1795150698197,
+      "tag": "0053_move_missions_into_guides_and_drop_missions_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1795150860405,
+      "tag": "0054_rewrite_missions_section_references_in_guide_bodies",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1795151672424,
+      "tag": "0055_group_chats_and_crew_chats",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1795152192563,
+      "tag": "0056_event_pictures_and_kicked_attendees",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1795152192563,
+      "tag": "0057_event_chats_and_chat_member_mute",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1795157937172,
+      "tag": "0058_bug_tracker_automatic_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1795158841983,
+      "tag": "0059_db_entry_drivetrain",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1795160168387,
+      "tag": "0060_profile_clan_tag_and_crew_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1795203645493,
+      "tag": "0061_player_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1795214322838,
+      "tag": "0062_add_bug_votes_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "6",
+      "when": 1795216626367,
+      "tag": "0063_profile_custom_banner_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1795218218989,
+      "tag": "0064_name_change_cooldown_stamps",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "6",
+      "when": 1795220408378,
+      "tag": "0065_db_entries_auto_discovered_flag",
+      "breakpoints": true
+    }
+  ]
+}

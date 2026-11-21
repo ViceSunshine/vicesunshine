@@ -1,0 +1,20 @@
+{
+  "entry": "client/dist/index.html",
+  "managedCronJobs": [
+    "leonida-hub-daily-news-refresh",
+    "leonida-hub-artwork-generation",
+    "leonida-hub-daily-feed-media",
+    "viceverse-auto-news-hourly",
+    "viceverse-auto-feed-media",
+    "viceverse-auto-moderation-sweep",
+    "viceverse-auto-db-sync",
+    "viceverse-auto-clips-refresh",
+    "vicesunshine-rockstar-status",
+    "vicesunshine-auto-bugs-refresh",
+    "vicesunshine-db-live-sync"
+  ],
+  "name": "ViceSunshine",
+  "platformVersion": 29,
+  "runtime": "typescript",
+  "slug": "leonida-hub"
+}

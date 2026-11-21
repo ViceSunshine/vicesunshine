@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Empty inline icon: stops the browser fetching /favicon.ico, which
+         lives outside the space's routes and fails auth. -->
+    <link rel="icon" href="data:," />
+    <title>ViceSunshine — Unofficial GTA VI Fan Community</title>
+    <meta
+      name="description"
+      content="ViceSunshine is an unofficial fan community for Grand Theft Auto VI players — news, patch tracker, bug reports, crews, LFG and events. Not affiliated with Rockstar Games or Take-Two Interactive."
+    />
+    <script src="./src/main.tsx" type="module"></script>
+    <!-- Critical first-paint styles: the boot message below must be readable
+         immediately, before the CSS bundle arrives, so a slow or blocked
+         load never looks like a blank blue screen. -->
+    <style>
+      body { background: #0b0b14; margin: 0; }
+      .boot-msg {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 24px;
+        text-align: center;
+        color: #f4f1ea;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .boot-msg .boot-name { font-size: 26px; font-weight: 800; letter-spacing: 0.02em; }
+      .boot-msg .boot-name span { color: #ff2e88; }
+      .boot-msg p { margin: 0; color: #9b97ad; line-height: 1.5; max-width: 340px; }
+    </style>
+  </head>
+  <body>
+    <div
+      data-generated-space-root=""
+      data-generated-space-slug="leonida-hub"
+    >
+      <!-- Boot placeholder: React replaces this on mount. If the script
+           bundle never loads, the user still sees this message instead of
+           an empty dark screen. -->
+      <div class="boot-msg" role="status">
+        <div class="boot-name">Vice<span>Verse</span></div>
+        <p>Loading the hub…</p>
+        <p>
+          If this screen doesn’t change after a few seconds, part of the page
+          couldn’t load — check your connection, then close and reopen
+          ViceSunshine.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

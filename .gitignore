@@ -1,0 +1,7 @@
+node_modules
+client/dist
+server/dist
+.bun-cache
+.env
+app.db-shm
+app.db-wal

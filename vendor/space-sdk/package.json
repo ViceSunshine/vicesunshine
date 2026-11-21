@@ -1,0 +1,18 @@
+{
+  "name": "@hatch/space-sdk",
+  "version": "0.0.0-standalone",
+  "description": "Standalone replacement for the Muse platform SDK (@hatch/space-sdk). Same public surface the ViceSunshine code imports — defineAction, z, createActionClient, spaceQueryClient, fileToBase64, actionFields, buildClient — re-implemented on plain HTTP + Bun SQLite. This is NOT the Muse SDK; it only exists so the copied ViceSunshine source can run outside Muse without changing its logic.",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": { "types": "./index.ts", "import": "./index.ts" },
+    "./client": { "types": "./client.ts", "import": "./client.ts" },
+    "./fields": { "types": "./fields.ts", "import": "./fields.ts" },
+    "./build": { "types": "./build.ts", "import": "./build.ts" }
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.100.10",
+    "zod": "4.4.3"
+  }
+}
