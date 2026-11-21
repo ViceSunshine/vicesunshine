@@ -16,19 +16,54 @@
 }
 
 /* Phone type trim (owner's direction): on phone screens the whole
-   text scale steps down a touch so headings and boxes fit without
-   anything popping off the right edge. Desktop sizes are untouched. */
+   text scale steps down so headings and boxes fit without
+   anything popping off the right edge — the owner asked for the
+   phone fonts minimised overall (Nov 21 2026 fit pass), so the
+   scale steps down a further notch than the first trim. Desktop
+   sizes are untouched. Form fields keep their own 16px (see
+   .field), so inputs never trigger focus zoom. */
 @media (max-width: 640px) {
   :root {
-    --text-xs: 11.5px; --text-xs--line-height: 17px;
-    --text-sm: 13px; --text-sm--line-height: 20px;
-    --text-base: 15px; --text-base--line-height: 24px;
-    --text-lg: 17px; --text-lg--line-height: 26px;
-    --text-xl: 19px; --text-xl--line-height: 28px;
-    --text-2xl: 24px; --text-2xl--line-height: 32px;
-    --text-3xl: 29px; --text-3xl--line-height: 35px;
-    --text-4xl: 36px; --text-4xl--line-height: 41px;
+    --text-xs: 11px; --text-xs--line-height: 16px;
+    --text-sm: 12.5px; --text-sm--line-height: 19px;
+    --text-base: 14.5px; --text-base--line-height: 23px;
+    --text-lg: 16px; --text-lg--line-height: 24px;
+    --text-xl: 18px; --text-xl--line-height: 26px;
+    --text-2xl: 22px; --text-2xl--line-height: 29px;
+    --text-3xl: 26px; --text-3xl--line-height: 32px;
+    --text-4xl: 32px; --text-4xl--line-height: 37px;
   }
+  /* A long unbroken word in a heading (a username, a place name)
+     wraps instead of painting over whatever sits beside it. */
+  h1, h2, h3, h4 { overflow-wrap: break-word; }
+  /* Bare single-column grids (a `grid` stack with no column
+     template of its own): the implicit column otherwise sizes to
+     the widest row's un-truncated content and can push the whole
+     stack past the phone's edge, cutting rows off on the right.
+     Pinning the column to minmax(0, 1fr) keeps every stack
+     exactly the width of its container; grids that declare
+     their own columns are untouched. */
+  .grid:not([class*="grid-cols"]) { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Settings on phone (fit pass, Nov 21 2026): two measured spills
+   at 390px, both fixed here — desktop and tablet keep the exact
+   Muse layout.
+   1) The section nav is a horizontal row on phone, but
+      .set-nav-item's width: 100% made every item a full panel
+      wide (356px), so the row scrolled one giant item at a
+      time. In the phone nav row the items size to their label,
+      as designed. (The Log out button lives outside the <nav>
+      and keeps its full width.)
+   2) Bare grids inside the panel (the account rows, the data
+      rows) sized their implicit column to a row's longest
+      un-truncated line — 427px on a 390px phone — so the rows
+      ran off the right edge and their text was cut. The column
+      is pinned to the panel width and the rows truncate inside
+      it, as they do on desktop. */
+@media (max-width: 767px) {
+  .settings-nav nav .set-nav-item { width: auto; }
+  .settings-panel .grid:not([class*="grid-cols"]) { grid-template-columns: minmax(0, 1fr); }
 }
 
 :root {
@@ -65,8 +100,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-sans);
    bottom edge have nothing extra to drag. The ONE scroller is the
    main column inside the shell (overflow-y auto, overscroll
    contained), whose scroll range is exactly its own content. */
-html, body { height: 100%; overflow-x: clip; overscroll-behavior: none; }
-body { overflow-y: hidden; }
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 [data-generated-space-root] { height: 100%; overflow: hidden; }
 .hatch-space-root { height: 100%; overflow: hidden; }
 
@@ -125,6 +159,16 @@ body { overflow-y: hidden; }
   box-shadow: 0 0 55px rgba(255, 46, 136, 0.28), 0 0 90px rgba(155, 93, 229, 0.16);
 }
 .ideas-hero-inner { border-radius: 22px; overflow: hidden; background: #0b0b1e; }
+/* Saved hero fade (owner's direction): the picture is at full
+   strength at the top of the page and melts away as it goes down —
+   a mask gradient, so the artwork dissolves into the page
+   background instead of ending at a hard card edge. Applied to the
+   artwork, its neon tint and its dark legibility shade alike, so
+   all three layers fade together. */
+.saved-fade-mask {
+  -webkit-mask-image: linear-gradient(to bottom, #000 38%, transparent 96%);
+  mask-image: linear-gradient(to bottom, #000 38%, transparent 96%);
+}
 .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
 /* Filled Vice gradient button — hot pink → neon purple with white
    bold text. Used for the "All news" button beside Latest &
@@ -148,7 +192,7 @@ body { overflow-y: hidden; }
    .btn-ghost so it wins at equal specificity. */
 .btn-compact { padding: 7px 14px; min-height: 36px; font-size: 13px; }
 
-/* Home quick actions (Open the Feed / Watch Clips / GTA VI Database /
+/* Home quick actions (Open the Feed / GTA VI Database /
    Latest News) — PHONE ONLY (owner's direction): all four sit next to
    each other in ONE row, made smaller so they fit side by side
    instead of wrapping 2-over-2. Desktop keeps the full-size pills
@@ -190,6 +234,32 @@ body { overflow-y: hidden; }
 .xrow .xrow-sub { display: block; margin-top: 1px; font-size: 13px; color: var(--dim); }
 label.flabel { display: block; font-size: 13px; font-weight: 600; color: var(--dim); margin: 16px 0 8px; letter-spacing: 0.01em; }
 
+/* Edit profile sheet — phone fit (owner bug fix): on phone the box
+   inside the Birth date section (the native date input) stuck out
+   past its parent box on the right and out of the sheet. A native
+   date input carries an intrinsic minimum width that ignores
+   width: 100%, and grid items refuse to shrink below their
+   content, so one wide box could push the whole sheet wider than
+   the phone. Phone only (max-width 640px — laptop is untouched):
+   every box in the sheet is border-box and capped at the sheet's
+   width, form controls and grid children may shrink below their
+   intrinsic size, the date input is a block that fills its parent
+   box exactly, and the sheet itself clips anything still wider
+   instead of letting it stick out on the right. */
+@media (max-width: 640px) {
+  .edit-profile-sheet { overflow-x: hidden; }
+  .edit-profile-sheet *, .edit-profile-sheet *::before, .edit-profile-sheet *::after { box-sizing: border-box; }
+  .edit-profile-sheet form { min-width: 0; max-width: 100%; }
+  .edit-profile-sheet .grid > * { min-width: 0; }
+  .edit-profile-sheet .field,
+  .edit-profile-sheet .xfield,
+  .edit-profile-sheet .xrow { max-width: 100%; }
+  .edit-profile-sheet input,
+  .edit-profile-sheet textarea,
+  .edit-profile-sheet select { min-width: 0; max-width: 100%; }
+  .edit-profile-sheet input[type="date"] { display: block; width: 100%; }
+}
+
 .map-pin { position: absolute; transform: translate(-50%,-100%) scale(var(--pin-inv, 1)); cursor: pointer; background: none; border: none; padding: 8px; min-height: 44px; min-width: 44px; display: flex; align-items: flex-start; justify-content: center; }
 .map-pin .dot { width: 14px; height: 14px; border-radius: 999px 999px 999px 2px; transform: rotate(-45deg); border: 2px solid #0a0a12; display: block; }
 
@@ -214,6 +284,12 @@ label.flabel { display: block; font-size: 13px; font-weight: 600; color: var(--d
 .map-notice { left: 50%; }
 @media (min-width: 1024px) {
   .map-notice-shift { left: calc(50% + 166px); }
+}
+/* Phone: the centred notice pill used to sit on top of the
+   coordinates pill in the bottom-right corner. Lift it one
+   control-row up so both stay fully readable. */
+@media (max-width: 700px) {
+  .map-notice { bottom: 4.1rem; }
 }
 
 @layer base { button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) { min-height: 2.75rem; } }
@@ -253,7 +329,6 @@ label.flabel { display: block; font-size: 13px; font-weight: 600; color: var(--d
    most. No gradient, no second colour: soft pink fill, pink border,
    pink bar on the left edge, bright bold label. */
 .sidebar-link[aria-pressed="true"] { background: rgba(255,46,136,0.13); color: var(--text); border-color: rgba(255,46,136,0.45); box-shadow: inset 3px 0 0 var(--accent); font-weight: 700; }
-.sidebar-link-locked { opacity: 0.45; cursor: not-allowed; }
 .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; padding: 6px 12px; min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: transparent; cursor: pointer; font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
 .side-head:hover { color: var(--text); background: var(--surface2); }
 .side-head[aria-expanded="true"] { color: var(--text); }
@@ -314,6 +389,17 @@ label.flabel { display: block; font-size: 13px; font-weight: 600; color: var(--d
    before while the animation runs. */
 @keyframes vv-page-in { from { opacity: 0; padding-top: 12px; } to { opacity: 1; padding-top: 0; } }
 .page-enter { animation: vv-page-in 0.38s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+
+/* Long-list rendering (performance pass, Nov 21 2026): with
+   content-visibility the browser skips layout and paint entirely
+   for off-screen cards — the Database lists render hundreds of
+   entry cards at once, and painting all of them was a steady
+   source of scroll lag on phones. `auto` intrinsic size means the
+   real height is remembered after first render, so the scrollbar
+   stays honest. Applied to the card's inner button so the card's
+   own hover shadow (painted by the outer article) is never
+   clipped by the paint containment. */
+.cv-skip { content-visibility: auto; contain-intrinsic-size: auto 300px; }
 @media (prefers-reduced-motion: reduce) { .page-enter { animation: none; } }
 
 /* Instant tactile feedback — controls respond the moment they are
@@ -331,22 +417,28 @@ button { -webkit-tap-highlight-color: transparent; }
   .sidebar-link:active, .bottom-nav-btn:active, .pop-nav-item:active, .set-nav-item:active { transform: none; }
 }
 
-/* Instagram-style bottom sheets (Comments, Story composer) and the
-   Story viewer: the sheet slides up from the bottom, the backdrop
-   fades in, and a story's progress segment fills linearly. */
-@keyframes vv-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-.comments-sheet { animation: vv-sheet-up 0.32s cubic-bezier(0.32, 0.72, 0.24, 1) both; }
-/* Top sheet (followers / following lists): a smaller box that
-   drops in from the top of the screen instead of rising from
-   the bottom. */
-@keyframes vv-sheet-down { from { transform: translateY(-28px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.top-sheet { animation: vv-sheet-down 0.3s cubic-bezier(0.32, 0.72, 0.24, 1) both; }
+/* Centred modal dialogs (owner's direction, Nov 21 2026): NO
+   bottom sheets anywhere — no box, sheet or modal slides up from
+   the bottom of the screen. Every dialog opens as a CENTRED
+   overlay (or a full page), so the shared sheet class now pops
+   gently into the centre: a short fade with a small scale/rise
+   that never travels from any screen edge. The followers /
+   following lists use the same centred opening. */
+@keyframes vv-modal-in { from { opacity: 0; transform: scale(0.96) translateY(10px); } to { opacity: 1; transform: none; } }
+.comments-sheet { animation: vv-modal-in 0.24s cubic-bezier(0.32, 0.72, 0.24, 1) both; }
+.top-sheet { animation: vv-modal-in 0.24s cubic-bezier(0.32, 0.72, 0.24, 1) both; }
 @keyframes vv-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .sheet-backdrop { animation: vv-fade-in 0.25s ease both; }
+/* Notifications panel (owner's direction, Nov 21 2026): NOT a
+   bottom sheet — it slides in from the RIGHT side of the screen
+   to the middle, covering the right half of the screen at full
+   height. */
+@keyframes vv-panel-right { from { transform: translateX(102%); } to { transform: translateX(0); } }
+.notif-panel { animation: vv-panel-right 0.32s cubic-bezier(0.32, 0.72, 0.24, 1) both; }
 @keyframes vv-story-progress { from { width: 0%; } to { width: 100%; } }
 .story-progress-fill { animation-name: vv-story-progress; animation-timing-function: linear; animation-fill-mode: forwards; }
 @media (prefers-reduced-motion: reduce) {
-  .comments-sheet, .top-sheet, .sheet-backdrop, .story-progress-fill { animation: none; }
+  .comments-sheet, .top-sheet, .sheet-backdrop, .story-progress-fill, .notif-panel { animation: none; }
   .story-progress-fill { width: 100%; }
 }
 /* Customise organised by type: one headed section per item type, each
@@ -470,6 +562,107 @@ button { -webkit-tap-highlight-color: transparent; }
    Plain CSS because .btn-primary is unlayered and would beat Tailwind's hidden. */
 .vice-fab { display: none !important; }
 @media (min-width: 1024px) { .vice-fab { display: inline-flex !important; } }
+/* Shrink/expand morph (pill <-> 64px "Vc" circle), made smoother and
+   prettier at the owner's direction (Nov 21 2026). Behaviour is
+   unchanged — the button rests as the small circle and expands ONLY
+   while hovered or keyboard-focused (React flips .is-expanded) —
+   but the motion is now one choreographed ease instead of a
+   measured pixel snap:
+   - every moving part shares one soft decelerating curve
+     (cubic-bezier(0.22, 1, 0.36, 1)) over ~0.5s, growing leftward
+     from the pinned bottom-right corner;
+   - the pill's width comes from the label itself: .vice-fab-reveal
+     is a grid whose column eases 0fr -> 1fr (exactly the label's
+     natural width, no JS measuring, so the first hover is as
+     smooth as every later one) while the side padding opens in
+     step and the label fades/slides in just behind the growth;
+   - the "Vc" monogram melts away with a slight shrink as the pill
+     opens, and settles back in as it closes;
+   - the pill wears the Vice gradient (hot pink -> neon purple,
+     the same one as .btn-vice) with a hairline light rim, a soft
+     top sheen and a layered neon glow that deepens — with a gentle
+     1.03 lift — while expanded.
+   Reduced-motion users get an instant swap instead. */
+.vice-fab {
+  /* Pinned to the bottom-right corner of the screen (owner's
+     direction, Nov 21 2026): this MUST stay position: fixed —
+     an earlier pass set position: relative here for the absolute
+     "Vc" monogram, which unlayered CSS let beat Tailwind's
+     `fixed` class and dragged the button into the page flow at
+     the bottom-left, half-clipped. Fixed positioning still
+     anchors the absolutely-positioned monogram inside it. The
+     circle is 64px (up from 52px) so the "Vc" fits nicely with
+     breathing room, per the owner's direction. */
+  position: fixed;
+  right: 24px; bottom: 24px; z-index: 40;
+  width: 64px; min-width: 64px; height: 64px; min-height: 64px;
+  padding: 0; gap: 0; overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(120deg, #ff2e88, #9b5de5);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -10px 18px rgba(90, 10, 60, 0.22),
+    0 10px 26px rgba(255, 46, 136, 0.38),
+    0 4px 12px rgba(155, 93, 229, 0.28);
+  transform-origin: right center;
+  transition:
+    padding 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.vice-fab.is-expanded {
+  width: auto;
+  padding: 0 24px;
+  transform: scale(1.03);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -10px 18px rgba(90, 10, 60, 0.22),
+    0 16px 38px rgba(255, 46, 136, 0.5),
+    0 6px 18px rgba(155, 93, 229, 0.38);
+}
+.vice-fab:active { transform: scale(0.97); }
+.vice-fab.is-expanded:active { transform: scale(1); }
+.vice-fab-reveal {
+  display: grid; grid-template-columns: 0fr; opacity: 0;
+  transition:
+    grid-template-columns 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease;
+}
+.vice-fab.is-expanded .vice-fab-reveal {
+  grid-template-columns: 1fr; opacity: 1;
+  transition:
+    grid-template-columns 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.3s ease 0.14s;
+}
+.vice-fab-label {
+  min-width: 0; overflow: hidden; white-space: nowrap;
+  font-weight: 800; letter-spacing: 0.01em;
+  transform: translateX(8px);
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.vice-fab.is-expanded .vice-fab-label { transform: translateX(0); }
+.vice-fab-vc {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px;
+  font-weight: 800; letter-spacing: 0.01em;
+  opacity: 1; transform: scale(1);
+  transition:
+    opacity 0.28s ease 0.1s,
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.vice-fab.is-expanded .vice-fab-vc {
+  opacity: 0; transform: scale(0.55);
+  transition:
+    opacity 0.16s ease,
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vice-fab, .vice-fab-reveal, .vice-fab-label, .vice-fab-vc { transition: none; }
+}
 
 /* Settings — EXACTLY Muse's structure (owner's direction, from
    Ben's screenshots of Muse's own shell), recoloured to the
@@ -496,6 +689,13 @@ button { -webkit-tap-highlight-color: transparent; }
 .set-nav-item .set-nav-icon { display: inline-flex; flex: none; color: var(--dim); }
 .set-nav-item[aria-pressed="true"] { background: #232333; color: var(--text); border-color: var(--accent); font-weight: 600; }
 .set-nav-item[aria-pressed="true"] .set-nav-icon { color: var(--accent); }
+/* Desktop two-column layout (matches Tailwind's md: breakpoint):
+   a nav label wraps inside its own column instead of running under
+   the detail panel — nowrap is only for the phone's horizontal
+   scrolling nav row, where each item sizes to its label. */
+@media (min-width: 768px) {
+  .set-nav-item { white-space: normal; min-width: 0; }
+}
 .set-card { background: #232333; border: 1px solid transparent; border-radius: 16px; padding: 18px 20px; }
 .set-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: #232333; border: 1px solid transparent; border-radius: 16px; padding: 16px 20px; min-height: 64px; }
 button.set-row { cursor: pointer; }
@@ -697,9 +897,9 @@ button.set-row:hover { border-color: var(--border-strong); }
 .ig-count { display: inline-flex; align-items: baseline; gap: 5px; background: none; border: none; cursor: pointer; color: var(--text); font-size: 15px; padding: 6px 2px; min-height: 44px; }
 .ig-count b { font-weight: 800; font-size: 16px; }
 .ig-count span { color: var(--text); }
-.ig-tabbar { border-top: 1px solid var(--border); display: flex; justify-content: center; gap: clamp(18px, 6vw, 56px); }
+.ig-tabbar { border-top: 1px solid var(--border); display: flex; justify-content: space-evenly; }
 .ig-tab {
-  display: inline-flex; align-items: center; justify-content: center; width: 52px; min-height: 52px;
+  display: inline-flex; align-items: center; justify-content: center; flex: 1 1 0; min-height: 60px; padding: 6px 0;
   background: none; border: none; border-top: 1.5px solid transparent; margin-top: -1px; cursor: pointer; color: var(--dim2);
   transition: color 0.15s ease;
 }
@@ -852,8 +1052,8 @@ button.set-row:hover { border-color: var(--border-strong); }
   background: linear-gradient(90deg, #ff2e88, #9d4edd);
 }
 /* The sidebar never scrolls and the account trigger is pinned at
-   its bottom: on short viewports the three thin ad strips step
-   aside so the trigger always fits. */
-@media (max-height: 760px) {
+   its bottom: on short viewports the two medium-rectangle sidebar
+   ad units step aside so the trigger always fits. */
+@media (max-height: 780px) {
   .sidebar-ad-stack { display: none; }
 }

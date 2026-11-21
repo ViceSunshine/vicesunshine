@@ -10,6 +10,18 @@
 //   GET  /*              client/dist static files, SPA fallback to index.html
 import { isAction } from "@hatch/space-sdk";
 import { createCtx, getBlobs } from "./ctx";
+import { runMigrations } from "./migrate";
+
+// Apply pending database migrations BEFORE anything touches the DB:
+// the code may need schema from migrations newer than the database
+// (on Railway the volume DB predates the deployed code). A failure
+// aborts startup loudly instead of serving broken code.
+try {
+  runMigrations();
+} catch (e) {
+  console.error("[migrations] FAILED — server will not start:", e instanceof Error ? e.message : String(e));
+  process.exit(1);
+}
 
 const actions = await import("../src/actions");
 const defs = (actions as Record<string, unknown>).Actions as Record<string, unknown> | undefined;

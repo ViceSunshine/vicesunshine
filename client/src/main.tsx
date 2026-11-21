@@ -22,7 +22,7 @@ class RootErrorBoundary extends Component<
       return (
         <div
           style={{
-            minHeight: "100vh",
+            minHeight: "100dvh",
             background: "#0b0b14",
             color: "#f4f1ea",
             fontFamily: "system-ui, sans-serif",
@@ -76,7 +76,7 @@ const rootEl = document.querySelector<HTMLElement>("[data-generated-space-root]"
 if (!rootEl) {
   // Never fail silently to a blank page: say what happened, in plain sight.
   document.body.innerHTML =
-    '<div style="min-height:100vh;background:#0b0b14;color:#f4f1ea;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center"><p>ViceSunshine could not start on this device. Please close and reopen it.</p></div>';
+    '<div style="min-height:100dvh;background:#0b0b14;color:#f4f1ea;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center"><p>ViceSunshine could not start on this device. Please close and reopen it.</p></div>';
 } else {
   // If you edit this file: keep `<QueryClientProvider client={spaceQueryClient}>`
   // wrapping the app (every space shares the SDK's QueryClient), and keep

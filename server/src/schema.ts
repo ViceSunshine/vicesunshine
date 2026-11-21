@@ -190,10 +190,18 @@ export const profiles = sqliteTable("profiles", {
   themeAccent: text("theme_accent").notNull().default(""),
   avatarFrame: text("avatar_frame").notNull().default(""),
   avatarId: text("avatar_id").notNull().default(""),
-  // Premium-only animated avatar effect (migration 0027): one of
-  // fire / neon-surge / lightning / ice / gold-aura / shadow, or ""
-  // for none. Only ever set by equipCosmetic for a Premium-only
-  // effect item, which requires an active Premium membership.
+  // LEGACY avatar effect column (migration 0027): Avatars and
+  // Avatar Effects were REMOVED from ViceSunshine entirely
+  // (migration 0071) — the catalogue sections, their equip state
+  // and every render are gone, and this column was cleared to ""
+  // for every profile. Nothing writes or reads it anymore; it
+  // stays only so existing rows keep loading. The same applies to
+  // the legacy personal-cosmetic columns badge / callingCard /
+  // themeAccent / avatarId below and above: personal customisation
+  // no longer exists — customisation belongs to crews (see the
+  // clans table's badge / themeAccent / callingCard / emblem /
+  // color columns). A profile's picture is the member's own
+  // uploaded picture (customAvatarBlobKey) or the default avatar.
   avatarEffect: text("avatar_effect").notNull().default(""),
   // Custom avatar picture (migration 0032): the player's OWN uploaded
   // profile picture, stored as an owned blob. Every upload is checked
@@ -254,21 +262,40 @@ export const profiles = sqliteTable("profiles", {
   // applied at checkout (never stacks).
   bio: text("bio").notNull().default(""),
   displayName: text("display_name").notNull().default(""),
-  // X-style Edit profile fields (migration 0047): the location line
-  // and website link shown under the bio on the profile. Free text
-  // the player types — screened by moderation in updateProfile
-  // before it is stored, like the bio.
+  // Location / website columns (migration 0047) — Location is a
+  // live profile field again (owner's direction, Nov 21 2026:
+  // leave Location, remove Website only): updateProfile accepts
+  // and stores it, getProfile / getSocialProfile / getSettings
+  // return it, and it renders under the bio. Website stays a
+  // LEGACY column: no action accepts or returns it, nothing
+  // renders it, and updateProfile writes "" on every save so
+  // stored values are cleared. The column stays only so existing
+  // rows keep loading.
   location: text("location").notNull().default(""),
   website: text("website").notNull().default(""),
   // Birth date (migration 0050), stored as YYYY-MM-DD text, "" when
-  // unset. Private: only ever returned by getProfile to the owner
-  // themself (the X-style Edit profile sheet's Birth date row) —
-  // never shown on the public profile.
+  // unset. Private by default: only ever returned by getProfile to
+  // the owner themself (the X-style Edit profile sheet's Birth date
+  // row) — UNLESS the owner flips the Birth date visibility switch
+  // on (showDob below), which is the one way it shows publicly.
   dob: text("dob").notNull().default(""),
-  // Personal clan tag (migration 0060): the player's own short tag,
-  // set in Edit profile and shown as [TAG] next to their name. It is
-  // theirs to change as often as they like — no limit, no cooldown —
-  // and it is separate from any crew's tag.
+  // Per-field visibility switches (migration 0066, owner's
+  // direction Nov 21 2026): a switch button in Edit profile on the
+  // Birth date and Location fields decides whether that field
+  // shows on the public profile. Bio deliberately has NO switch.
+  // showDob starts OFF (birth dates were never public before), so
+  // existing rows keep exactly the privacy they had; showLocation
+  // starts ON because a set location already showed publicly.
+  showDob: integer("show_dob").notNull().default(0),
+  showLocation: integer("show_location").notNull().default(1),
+  // LEGACY personal tag column (migration 0060) — no longer read
+  // or written by any action. The personal tag was removed
+  // (owner's direction, Nov 21 2026): there is no tag on a profile.
+  // The Crew tag lives on the crew itself (clans.tag + clans.color,
+  // chosen when the crew is created) and is derived live from the
+  // member's crew membership, so it appears in front of their name
+  // while they are in the crew and disappears when they leave.
+  // The column stays only so existing rows keep loading.
   clanTag: text("clan_tag").notNull().default(""),
   // Username-change tracking (migration 0051) for the About
   // account sheet: how many times the gamertag has actually been
@@ -365,6 +392,20 @@ export const clans = sqliteTable("clans", {
   // by the Leader next to the bio (description) and shown on the
   // crew profile for members and visitors.
   rules: text("rules").notNull().default(""),
+  // Crew customisation (migration 0071): customisation belongs to
+  // CREWS now, never to individual profiles. The equipped crew badge
+  // (a catalogue badge value, shown next to the crew name on the
+  // crew card and crew page) and the equipped crew theme accent
+  // (a catalogue theme hex, the crew page's accent theme). Only the
+  // crew OWNER (Leader) equips them, from Crew Settings.
+  badge: text("badge").notNull().default(""),
+  themeAccent: text("theme_accent").notNull().default(""),
+  // Join requirements (migration 0071): free-text lines the crew
+  // writes (one per line — platform, activity, mic…), shown with
+  // the rules on the crew page and again in the join flow. Edited
+  // with the bio and rules in Crew Settings → Bio & Rules (Leader
+  // and Co-Leaders), and first written in Create a Crew Step 2.
+  requirements: text("requirements").notNull().default(""),
   platform: text("platform", { enum: ["PS5", "Xbox", "Both"] })
     .notNull()
     .default("Both"),
@@ -376,7 +417,10 @@ export const clans = sqliteTable("clans", {
   })
     .notNull()
     .default("Public"),
-  maxMembers: integer("max_members").notNull().default(50),
+  // LEGACY member-cap column: crew membership is UNLIMITED for
+  // every crew now — nothing reads this as a limit, and new crews
+  // store 0 ("no cap"). Kept only so existing rows keep loading.
+  maxMembers: integer("max_members").notNull().default(0),
   eventsHeld: integer("events_held").notNull().default(0),
   wins: integer("wins").notNull().default(0),
   faction: text("faction").notNull().default(""),
@@ -387,6 +431,15 @@ export const clans = sqliteTable("clans", {
   bannerStyle: text("banner_style").notNull().default(""),
   // Equipped clan calling card design key (migration 0029).
   callingCard: text("calling_card").notNull().default(""),
+  // Crew card header background (migration 0072): the Leader's OWN
+  // uploaded picture for the crew card's header area, stored as an
+  // owned blob (JPG/PNG, moderation-checked before storage, cropped
+  // to the header shape client-side before upload). "" = no custom
+  // picture: the header background is then automatic — the crew's
+  // equipped calling card artwork when it has one (that artwork IS
+  // the crew's old banner, so nothing uploaded is ever lost), else
+  // a gradient matched to the crew's colour.
+  headerBlobKey: text("header_blob_key").notNull().default(""),
   emblemEffect: text("emblem_effect").notNull().default(""),
   nameColor: text("name_color").notNull().default(""),
   // When 1, Elders may also create / rename / reorder / delete this
@@ -621,10 +674,12 @@ export const feedViews = sqliteTable("feed_views", {
   createdAt: ts("created_at"),
 });
 
-// Server-side record of a Feed save, written alongside the saver's
-// on-device Saved list so the post author's profile analytics can
-// count real saves received. One row per (post, saver); removed when
-// the saver un-saves. Saving your own post is never recorded.
+// Server-side record of a Feed save: this is the saver's Saved
+// library for posts and clips (read back by listSavedFeedPosts), and
+// the post author's profile analytics count real saves received from
+// it too. One row per (post, saver); removed when the saver un-saves.
+// Saving your own post IS recorded (it belongs in your own library);
+// analytics always exclude self-saves from the author's counts.
 export const feedSaves = sqliteTable("feed_saves", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   postId: integer("post_id").notNull(),
@@ -717,6 +772,13 @@ export const storyHighlights = sqliteTable("story_highlights", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   playerKey: text("player_key").notNull(),
   title: text("title").notNull(),
+  // Chosen cover (migration 0068): the New highlight screen's big
+  // circle. coverStoryId points at one of the player's own stories
+  // picked as the cover; coverBlobKey is a picture uploaded from
+  // the player's album for the cover. Both empty/0 = the default
+  // cover (the highlight's first story picture).
+  coverStoryId: integer("cover_story_id").notNull().default(0),
+  coverBlobKey: text("cover_blob_key").notNull().default(""),
   createdAt: ts("created_at"),
 });
 
@@ -724,6 +786,22 @@ export const storyHighlightItems = sqliteTable("story_highlight_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   highlightId: integer("highlight_id").notNull(),
   storyId: integer("story_id").notNull(),
+  createdAt: ts("created_at"),
+});
+
+// Album media (migration 0069): pictures and videos a player has
+// added to their own ViceSunshine album from their device album
+// (album access is automatic — every device pick joins the album;
+// there is no grant or toggle). The media bytes live in blobs
+// (uploaded through uploadFeedMedia, which records ownership in
+// meta); this table is just the player's album membership list,
+// so every picker (New post, New clip, Add to story) can show
+// their WHOLE album — posts, clips, stories and these additions.
+export const albumMedia = sqliteTable("album_media", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerKey: text("player_key").notNull(),
+  mediaUrl: text("media_url").notNull(),
+  mediaType: text("media_type", { enum: ["image", "video"] }).notNull(),
   createdAt: ts("created_at"),
 });
 
@@ -854,6 +932,26 @@ export const seasonWinners = sqliteTable("season_winners", {
 export const meta = sqliteTable("meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull().default(""),
+});
+
+// Automatic self-correction log (migration 0070): every fix the
+// correction pass applies when new official / well-sourced GTA VI
+// reporting proves something ViceSunshine already had stored was
+// wrong — a Database entry, a news story, a team guide or a map
+// label name. One row per corrected field, with the before/after
+// values and the source that proved the change, so every
+// automatic fix stays auditable. Written only by
+// runCorrectionPass in actions.ts; nothing else inserts here.
+export const contentCorrections = sqliteTable("content_corrections", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  targetType: text("target_type").notNull().default(""),
+  targetLabel: text("target_label").notNull().default(""),
+  field: text("field").notNull().default(""),
+  oldValue: text("old_value").notNull().default(""),
+  newValue: text("new_value").notNull().default(""),
+  sourceName: text("source_name").notNull().default(""),
+  sourceUrl: text("source_url").notNull().default(""),
+  createdAt: ts("created_at"),
 });
 
 export const dbEntries = sqliteTable("db_entries", {
@@ -1085,6 +1183,21 @@ export const profileFollows = sqliteTable("profile_follows", {
   createdAt: ts("created_at"),
 });
 
+// Follow requests to PRIVATE accounts (migration 0067): one row =
+// requester_key has asked to follow following_key and is waiting.
+// Following a public account never creates a row here — it follows
+// straight away. A private account's owner accepts (the request row
+// is deleted and a real profile_follows row is created — one-way:
+// the owner does NOT have to follow back for the requester to see
+// the profile) or declines (the row is just deleted). The requester
+// can also cancel their own pending request (setFollow follow=false).
+export const followRequests = sqliteTable("follow_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  requesterKey: text("requester_key").notNull(),
+  followingKey: text("following_key").notNull(),
+  createdAt: ts("created_at"),
+});
+
 // Signed follow history: one row per follow (+1) and unfollow (−1),
 // written by setFollow at the moment the change happens. The current
 // profile_follows rows alone can only ever show growth — an unfollow
@@ -1190,4 +1303,39 @@ export const supportRequests = sqliteTable("support_requests", {
   details: text("details").notNull().default(""),
   status: text("status").notNull().default("Open"),
   createdAt: ts("created_at"),
+});
+
+// Discord Premium role sync state (migration 0073): one row per
+// player who has ever been in scope for the Premium Discord role.
+// This is the bot-ready handoff for the "Premium" role in the
+// official ViceSunshine Discord server (which unlocks the private
+// Premium lounge). The SITE owns `desired` — recomputed from the
+// player's real Premium state and linked Discord name whenever the
+// profile / wallet is read, on sign-in, and when the owner opens
+// the dashboard: "grant" = Premium active AND Discord linked,
+// "remove" = anything else. The BOT owns `botStatus` — it only
+// moves when the bot itself confirms through ackDiscordRoleSync
+// that it applied (or failed to apply) the change, so the site
+// never claims a role was granted before a bot confirmed it.
+// Until a bot exists, the Owner Dashboard renders these rows as
+// the manual grant/remove list for the owner. A row whose desired
+// state the bot has not confirmed yet reads botStatus "pending";
+// "failed" keeps the desired state and stores the bot's note so
+// the next sync retries it.
+export const discordRoleSync = sqliteTable("discord_role_sync", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerKey: text("player_key").notNull(),
+  // Snapshot of the linked Discord username the role applies to.
+  discordId: text("discord_id").notNull().default(""),
+  desired: text("desired", { enum: ["grant", "remove"] })
+    .notNull()
+    .default("remove"),
+  botStatus: text("bot_status", {
+    enum: ["pending", "granted", "removed", "failed"],
+  })
+    .notNull()
+    .default("pending"),
+  botNote: text("bot_note").notNull().default(""),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
 });
