@@ -14483,10 +14483,15 @@ function ClipsView({ playerKey, gamertag, go, onOpenProfile }: { playerKey: stri
 
 type CreatorDest = "post" | "story" | "clip";
 
-/* Feed Creator (owner's direction, Instagram creator layout in
-   ViceSunshine style): the Create tab opens a camera creator —
-   a live camera preview with a big capture button, flip camera,
-   and a gallery thumbnail to upload from the device instead.
+/* Feed Creator (owner's direction, Instagram camera layout in
+   ViceSunshine style, Nov 20 2026): the + button opens a
+   full-screen camera — X top left, Create (text post) and Effects
+   on the left rail, big capture button with gallery thumbnail
+   left and flip camera right, POST / STORY / CLIPS mode bar
+   underneath. Boomerang, Layout, flash, settings, Instants and
+   Reels are NOT in ViceSunshine, so they are not shown. A live
+   camera preview with a big capture button and a gallery
+   thumbnail to upload from the device instead.
    At the bottom the player picks where it publishes BEFORE
    publishing: Post (Feed post), Story (24 hours) or Clips
    (a video in the Clips reel). Captured and uploaded media go
@@ -14547,6 +14552,13 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
   const [dest, setDest] = useState<CreatorDest>("post");
   const [postCat, setPostCat] = useState<"Post" | "Meme" | "Funny" | "Gameplay" | "Car Meet" | "Tutorial" | "Discussion" | "Screenshot">("Post");
   const [facing, setFacing] = useState<"user" | "environment">("environment");
+  // Instagram camera rail (owner's direction, Nov 20 2026): only the
+  // features ViceSunshine actually has — Create (text post) and
+  // Effects (the same 5 presets as the Edit step). Boomerang and
+  // Layout are not in ViceSunshine, so they are not shown.
+  const [camPreset, setCamPreset] = useState<CreatorItem["preset"]>("none");
+  const [effectsOpen, setEffectsOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(true);
   const [camState, setCamState] = useState<"starting" | "live" | "denied">("starting");
   const [recording, setRecording] = useState(false);
   const [caption, setCaption] = useState("");
@@ -14600,7 +14612,7 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
   const addBlob = (blob: Blob, kind: "image" | "video", duration = 0) => {
     const item: CreatorItem = {
       blob, kind, url: URL.createObjectURL(blob), duration,
-      exposure: 100, contrast: 100, saturate: 100, shadow: 0, preset: "none",
+      exposure: 100, contrast: 100, saturate: 100, shadow: 0, preset: camPreset,
     };
     setItems((prev) => {
       const next = [...prev, item].slice(0, 4);
@@ -14847,7 +14859,7 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
   );
 
   const stage = (withFilter: boolean) => (
-    <div className="relative w-full overflow-hidden rounded-[24px] bg-black" style={{ aspectRatio: "3/4", maxHeight: "min(78dvh, 640px)", margin: "0 auto" }}>
+    <div className="relative w-full overflow-hidden rounded-[24px] bg-black" style={step === "capture" ? { aspectRatio: "9/16", maxHeight: "min(92dvh, 900px)", margin: "0 auto" } : { aspectRatio: "3/4", maxHeight: "min(78dvh, 640px)", margin: "0 auto" }}>
       {step === "capture" && (
         <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" autoPlay muted playsInline aria-label="Live camera preview" style={{ display: camState === "live" ? "block" : "none" }} />
       )}
@@ -14869,20 +14881,40 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
         <p className="absolute inset-x-5 bottom-6 text-center text-[17px] font-extrabold leading-snug text-white" style={{ textShadow: "0 2px 12px rgba(0,0,0,0.85)" }}>{caption}</p>
       )}
       <button type="button" className="absolute left-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-2xl leading-none text-white" style={{ background: "rgba(0,0,0,0.45)", minHeight: 44 }} onClick={onClose} aria-label="Close the creator — back to For you">×</button>
-      {step === "capture" && camState === "live" && (
-        <button type="button" className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.45)", minHeight: 44 }} onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} aria-label={`Flip camera — currently ${facing === "user" ? "front" : "back"}, tap for the ${facing === "user" ? "back" : "front"} camera`}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9a8 8 0 0 1 14.5-3L20 7.5M20 15a8 8 0 0 1-14.5 3L4 16.5" /><path d="M20 3v4.5h-4.5M4 21v-4.5h4.5" /></svg>
+      {step === "capture" && railOpen && (
+        <div className="absolute left-3 top-1/2 flex -translate-y-1/2 flex-col gap-6" aria-label="Camera tools">
+          <button type="button" className="flex items-center gap-3 text-left text-white" style={{ minHeight: 44 }} onClick={() => { setError(""); setStep("details"); }} aria-label="Create a text post — skip the camera and write instead">
+            <span className="text-[26px] font-bold leading-none" aria-hidden="true">Aa</span>
+            <span className="text-[15px] font-bold" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>Create</span>
+          </button>
+          <button type="button" className="flex items-center gap-3 text-left text-white" style={{ minHeight: 44 }} onClick={() => setEffectsOpen((v) => !v)} aria-expanded={effectsOpen} aria-label="Effects — pick a look for your next photo or video">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.7 4.6L18.5 9l-4.8 1.4L12 15l-1.7-4.6L5.5 9l4.8-1.4L12 3Z" /><path d="M19 14l.9 2.4 2.4.9-2.4.9L19 20.6l-.9-2.4-2.4-.9 2.4-.9L19 14Z" /><path d="M5 15l.8 2.1 2.1.8-2.1.8L5 20.8l-.8-2.1-2.1-.8 2.1-.8L5 15Z" /></svg>
+            <span className="text-left leading-tight">
+              <span className="block rounded px-1 text-[9px] font-extrabold uppercase tracking-wide" style={{ background: "#fff", color: "#111", width: "fit-content" }}>New</span>
+              <span className="text-[15px] font-bold" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>Effects{camPreset !== "none" ? ` · ${camPreset === "neon" ? "Neon" : camPreset === "sunset" ? "Sunset" : camPreset === "mono" ? "Mono" : "Cool"}` : ""}</span>
+            </span>
+          </button>
+          <button type="button" className="flex h-11 w-11 items-center justify-center text-white" style={{ minHeight: 44 }} onClick={() => setRailOpen(false)} aria-label="Hide the camera tools">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+        </div>
+      )}
+      {step === "capture" && !railOpen && (
+        <button type="button" className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-white" style={{ minHeight: 44 }} onClick={() => setRailOpen(true)} aria-label="Show the camera tools">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
         </button>
+      )}
+      {step === "capture" && effectsOpen && (
+        <div className="absolute left-[72px] top-1/2 flex -translate-y-1/2 flex-col gap-1 rounded-2xl p-2" style={{ background: "rgba(0,0,0,0.72)" }} role="radiogroup" aria-label="Effects">
+          {(["none", "neon", "sunset", "mono", "cool"] as const).map((id) => (
+            <button key={id} type="button" role="radio" aria-checked={camPreset === id} className="rounded-xl px-3 py-2 text-left text-[14px] font-bold text-white" style={{ background: camPreset === id ? "var(--accent)" : "transparent", minHeight: 40 }} onClick={() => { setCamPreset(id); setEffectsOpen(false); }}>
+              {id === "none" ? "No effect" : id === "neon" ? "Neon" : id === "sunset" ? "Sunset" : id === "mono" ? "Mono" : "Cool"}
+            </button>
+          ))}
+        </div>
       )}
       {step === "capture" && (
         <div className="absolute inset-x-0 bottom-0 p-4" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 100%)" }}>
-          <div className="mb-3 flex justify-center gap-2" role="tablist" aria-label="Camera mode — photo or video">
-            {(["photo", "video"] as const).map((m) => (
-              <button key={m} type="button" role="tab" aria-selected={camMode === m} onClick={() => setCamMode(m)} className="rounded-full px-4 py-1.5 text-[13px] font-extrabold uppercase tracking-wide" style={{ background: camMode === m ? "#fff" : "rgba(0,0,0,0.5)", color: camMode === m ? "#111" : "#fff", minHeight: 36 }} aria-label={m === "photo" ? "Take a photo" : "Record a video"}>
-                {m}
-              </button>
-            ))}
-          </div>
           <div className="flex items-end justify-between">
             <label id="creator-gallery-pick" className="flex h-12 w-12 flex-none cursor-pointer items-center justify-center overflow-hidden rounded-[10px] text-white" style={{ border: "2px solid rgba(255,255,255,0.85)", background: "rgba(0,0,0,0.4)", minHeight: 48 }} aria-label="Upload photos or videos from your device instead of using the camera — you can pick several">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" fill="currentColor" stroke="none" /><path d="M4 18l5-5 4 4 3-3 4 4" /></svg>
@@ -14903,8 +14935,11 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
                 <span className="block rounded-full bg-white" style={{ width: 56, height: 56 }} aria-hidden="true" />
               </button>
             )}
-            <span className="w-12 flex-none text-center text-[11px] font-bold text-white/85" aria-live="polite">{recording ? "REC" : ""}</span>
+            <button type="button" className="flex h-12 w-12 flex-none items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.45)", minHeight: 48 }} onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} aria-label={`Flip camera — currently ${facing === "user" ? "front" : "back"}, tap for the ${facing === "user" ? "back" : "front"} camera`}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9a8 8 0 0 1 14.5-3L20 7.5M20 15a8 8 0 0 1-14.5 3L4 16.5" /><path d="M20 3v4.5h-4.5M4 21v-4.5h4.5" /></svg>
+            </button>
           </div>
+          {recording && <p className="mt-2 text-center text-[11px] font-bold text-white/85" aria-live="polite">REC</p>}
         </div>
       )}
     </div>
@@ -14922,7 +14957,10 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
 
   return (
     <section className="mb-6" aria-label="Create — step by step: capture, preview, edit, then details">
-      {/* Stepper — one step at a time, never everything at once. */}
+      {/* Stepper — one step at a time, never everything at once.
+          Hidden on the capture step: the camera is full-screen,
+          like Instagram's camera. */}
+      {step !== "capture" && (
       <ol className="mb-3 flex items-center gap-1.5" aria-label="Posting steps">
         {stepNames.map((n, i) => (
           <li key={n} className="flex flex-1 items-center gap-1.5" aria-current={i === stepIdx ? "step" : undefined}>
@@ -14932,14 +14970,31 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
           </li>
         ))}
       </ol>
+      )}
 
       {step === "capture" && (
         <>
           {stage(false)}
-          <p className="mt-3 text-center text-sm text-[var(--dim)]">Take a live photo or video, or pick from your library — you can pick several at once. Next you preview it, then edit, then add your title and description.</p>
-          <button type="button" className="btn-ghost mt-3 w-full" style={{ minHeight: 48 }} onClick={() => { setError(""); setStep("details"); }} aria-label="Write a text post instead — skip to the details step">
-            Write a text post instead
-          </button>
+          {/* Mode bar under the camera (owner's direction, Nov 20
+              2026): only where ViceSunshine can publish — Post,
+              Story, Clips. No Instants, no Reels. Picking one sets
+              both the destination and photo/video mode. */}
+          <div className="mt-3 flex items-center justify-center gap-7" role="tablist" aria-label="Choose where to publish — Post, Story or Clips">
+            {(["post", "story", "clip"] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={dest === id}
+                onClick={() => { setDest(id); setCamMode(id === "clip" ? "video" : "photo"); setError(""); }}
+                className="text-[14px] font-extrabold uppercase tracking-[0.14em]"
+                style={{ color: dest === id ? "#fff" : "rgba(255,255,255,0.45)", minHeight: 44 }}
+                aria-label={id === "post" ? "Post — a photo or video in the Feed" : id === "story" ? "Story — a photo or video for 24 hours" : "Clips — a video in the Clips reel"}
+              >
+                {id === "post" ? "Post" : id === "story" ? "Story" : "Clips"}
+              </button>
+            ))}
+          </div>
         </>
       )}
 
