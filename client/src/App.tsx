@@ -14973,11 +14973,11 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
     </label>
   );
 
+  // Full-screen creator (owner's direction, Nov 20 2026): the
+  // creator covers the whole screen — no footer, no bottom bar,
+  // nothing under it — on laptop and phone alike. Closing it
+  // (the X on the camera) goes back to For you.
   return (
-    {/* Full-screen creator (owner's direction, Nov 20 2026): the
-        creator covers the whole screen — no footer, no bottom bar,
-        nothing under it — on laptop and phone alike. Closing it
-        (the X on the camera) goes back to For you. */}
     <section className="fixed inset-0 z-[80] overflow-y-auto bg-black" aria-label="Create — step by step: capture, preview, edit, then details">
       <div className="mx-auto w-full max-w-[680px] px-4 pb-6 pt-4">
       {/* Stepper — one step at a time, never everything at once.
