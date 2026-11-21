@@ -4642,7 +4642,7 @@ function AutomationLine() {
 }
 
 /* --------------------------- OWNER DASHBOARD --------------------------- */
-// Visible only to the owner account (the first / creator account):
+// Visible only to the owner account (officialvicesunshine):
 // the server enforces it — getOwnerDashboard throws for everyone
 // else, and the app only renders this view when getProfile reports
 // isOwner. Sales / Premium revenue, new players, the moderation
@@ -4675,7 +4675,7 @@ function OwnerView({ playerKey }: { playerKey: string }) {
   if (dash.isError || !dash.data) {
     return (
       <EmptyNote>
-        {dash.error?.message ?? "The Owner Dashboard could not be loaded."} It is only available to the ViceSunshine owner account — the first account created in ViceSunshine, signed in on its own device.
+        {dash.error?.message ?? "The Owner Dashboard could not be loaded."} It is only available to the ViceSunshine owner account — officialvicesunshine, signed in on its own device.
       </EmptyNote>
     );
   }
@@ -4702,7 +4702,7 @@ function OwnerView({ playerKey }: { playerKey: string }) {
     : [];
   return (
     <div>
-      <SectionTitle sub="Only you see this — it opens for the owner account (the first account created in ViceSunshine) and no one else. Sales, players, reports and moderation, with the controls to step in when needed.">
+      <SectionTitle sub="Only you see this — it opens for the owner account (officialvicesunshine) and no one else. Sales, players, reports and moderation, with the controls to step in when needed.">
         Owner Dashboard
       </SectionTitle>
       {msg && <p className="mb-3 text-sm font-semibold text-[var(--accent2)]" role="status">{msg}</p>}
@@ -4829,9 +4829,31 @@ function OwnerView({ playerKey }: { playerKey: string }) {
         )}
       </section>
 
+      <section className="card mb-5 p-5" aria-label="Recent public posts">
+        <h3 className="font-extrabold tracking-tight">Recent public posts</h3>
+        <p className="mt-1 text-sm text-[var(--dim)]">The newest posts on the public Feed — everything here is public, so you can monitor all of it.</p>
+        {d.recentPosts.length === 0 ? (
+          <p className="mt-2 text-sm text-[var(--dim)]">No public posts yet.</p>
+        ) : (
+          <ul className="mt-2 divide-y divide-[var(--border)]">
+            {d.recentPosts.map((p) => (
+              <li key={p.id} className="py-2.5">
+                <p className="flex flex-wrap items-center gap-2 text-sm">
+                  <strong>{p.author}</strong>
+                  <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] font-bold">{p.kind}</span>
+                  {p.flagged && <span className="rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ background: "var(--amber)", color: "#241a02" }}>Flagged</span>}
+                  <span className="text-xs text-[var(--dim)]">{timeAgo(p.createdAt)}</span>
+                </p>
+                <p className="mt-0.5 text-sm text-[var(--dim)]">{p.excerpt}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="card mb-5 p-5" aria-label="Moderation queue">
         <h3 className="font-extrabold tracking-tight">Moderation queue</h3>
-        {d.flaggedPosts.length === 0 && d.flaggedBugs.length === 0 && d.reportedPlayers.length === 0 && d.flaggedProfiles.length === 0 ? (
+        {d.flaggedPosts.length === 0 && d.flaggedBugs.length === 0 && d.reportedPlayers.length === 0 && d.flaggedProfiles.length === 0 && d.reportedMessages.length === 0 ? (
           <p className="mt-1 text-sm text-[var(--dim)]">Queue is clear — nothing is flagged right now. Flagged posts are hidden from the Feed (their author still sees them) until you clear or remove them.</p>
         ) : (
           <>
@@ -4860,6 +4882,19 @@ function OwnerView({ playerKey }: { playerKey: string }) {
               <div key={rp.playerKey} className="mt-2.5 rounded-xl border border-[var(--border)] p-3.5">
                 <p className="text-sm"><strong>{rp.gamertag}</strong> <span className="text-xs text-[var(--dim)]">· {rp.reports} report{rp.reports === 1 ? "" : "s"} · {rp.reasons.join(", ")}{rp.latestAt ? ` · latest ${timeAgo(rp.latestAt)}` : ""}</span></p>
                 {rp.latestDetails && <p className="mt-1 text-sm text-[var(--dim)]">“{rp.latestDetails}”</p>}
+              </div>
+            ))}
+          </>
+        )}
+        {d.reportedMessages.length > 0 && (
+          <>
+            <h4 className="mt-4 text-sm font-extrabold tracking-tight">Reported private messages</h4>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--dim)]">Private messages are never monitored — the only ones shown here are messages a player in that conversation reported, so you can deal with the report. Nothing unreported ever appears.</p>
+            {d.reportedMessages.map((rm) => (
+              <div key={`${rm.messageId}-${rm.reporter}`} className="mt-2.5 rounded-xl border border-[var(--border)] p-3.5">
+                <p className="text-sm"><strong>{rm.sender}</strong> <span className="text-xs text-[var(--dim)]">· reported by {rm.reporter} · {rm.reason} · {timeAgo(rm.createdAt)}</span></p>
+                <p className="mt-1 text-sm text-[var(--dim)]">“{rm.body}”</p>
+                {rm.details && <p className="mt-1 text-sm text-[var(--dim)]">Reporter note: “{rm.details}”</p>}
               </div>
             ))}
           </>
@@ -22482,6 +22517,24 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
     },
     onError: (e) => setSendError(e.message),
   });
+  // Report a private message: private DMs are never screened or
+  // monitored — reporting is the only way one specific message is
+  // ever shared with anyone else. The owner sees just that
+  // reported message in the moderation queue; the rest of the
+  // private chat is never exposed.
+  const [reportMsgId, setReportMsgId] = useState(0);
+  const [dmReportReason, setDmReportReason] = useState("Harassment");
+  const [dmReportDetail, setDmReportDetail] = useState("");
+  const [dmReportDone, setDmReportDone] = useState("");
+  const reportDm = useMutation({
+    mutationFn: async () => await api.reportDirectMessage({ playerKey, messageId: reportMsgId, reason: dmReportReason as "Spam" | "Harassment" | "Hate speech" | "Illegal content" | "False information" | "Bad name" | "Bad words" | "Breaking the rules" | "Something else", details: dmReportDetail.trim() }),
+    onSuccess: () => {
+      setReportMsgId(0);
+      setDmReportDetail("");
+      setDmReportDone("Reported — thanks. The owner can now review that one message in the moderation queue. Nothing else from this private chat is shared, and the other person is not told who reported it.");
+    },
+    onError: (e) => setSendError(e.message),
+  });
   const pin = useMutation({
     mutationFn: async (input: { otherKey: string; pinned: boolean }) => await api.toggleDmPin({ playerKey, otherKey: input.otherKey, pinned: input.pinned }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dm-conversations"] }),
@@ -22577,7 +22630,7 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
   const group = groupThread.data?.group ?? null;
   const groupMessages = groupThread.data?.messages ?? [];
   const groupMembers = groupThread.data?.group?.members ?? [];
-  const openDm = (k: string) => { setOpenGroupId(0); setMembersOpen(false); setShowRequests(false); setOpenKey(k); };
+  const openDm = (k: string) => { setOpenGroupId(0); setMembersOpen(false); setShowRequests(false); setReportMsgId(0); setDmReportDone(""); setOpenKey(k); };
   const openGroup = (id: number) => { setOpenKey(""); setMembersOpen(false); setGError(""); setOpenGroupId(id); };
   // Pressing the profile picture or name at the top of a chat
   // (owner's direction — all chats, all profiles) opens that
@@ -22933,8 +22986,49 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
                 {messages.map((m) => (
                   <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
                     <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                    {!m.mine && reportMsgId !== m.id && (
+                      <button type="button" className="mt-0.5 pl-1 text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} onClick={() => { setReportMsgId(m.id); setDmReportDone(""); }} aria-label={`Report this message from ${other?.gamertag ?? "this player"} to the owner for review`}>
+                        Report
+                      </button>
+                    )}
+                    {!m.mine && reportMsgId === m.id && (
+                      <form
+                        className="mt-1.5 w-full max-w-[340px] rounded-2xl border border-[var(--border)] p-3.5"
+                        onSubmit={(e) => { e.preventDefault(); setSendError(""); reportDm.mutate(); }}
+                        aria-label={`Report this message from ${other?.gamertag ?? "this player"}`}
+                      >
+                        <span className="flabel" style={{ marginTop: 0 }} id={`dm-report-why-${m.id}`}>Why are you reporting this message?</span>
+                        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`dm-report-why-${m.id}`}>
+                          {["Harassment", "Illegal content", "Hate speech", "Spam", "Bad words", "False information", "Breaking the rules", "Something else"].map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              role="radio"
+                              aria-checked={dmReportReason === r}
+                              className="chip-btn"
+                              style={dmReportReason === r ? { background: "var(--accent)", borderColor: "var(--accent)", color: "#fff" } : undefined}
+                              onClick={() => setDmReportReason(r)}
+                            >
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                        <label className="sr-only" htmlFor={`dm-report-detail-${m.id}`}>Anything the owner should know (optional)</label>
+                        <input id={`dm-report-detail-${m.id}`} className="field mt-2.5" {...FIELDS.reportDirectMessage.details} value={dmReportDetail} onChange={(e) => setDmReportDetail(e.target.value)} placeholder="Anything else? (optional)" autoComplete="off" />
+                        <p className="mt-2 text-[12px] leading-relaxed text-[var(--dim)]">Only this one message is shared with the owner so they can deal with the report — the rest of this private chat stays private, and {other?.gamertag ?? "the other person"} is not told who reported it.</p>
+                        <div className="mt-2.5 flex flex-wrap gap-2">
+                          <button type="submit" className="btn-primary" style={{ minHeight: 40, padding: "6px 16px", fontSize: 13 }} disabled={reportDm.isPending} aria-label="Send this message report to the owner">
+                            {reportDm.isPending ? "Sending…" : "Report message"}
+                          </button>
+                          <button type="button" className="btn-ghost" style={{ minHeight: 40, padding: "6px 14px", fontSize: 13 }} onClick={() => setReportMsgId(0)} aria-label="Cancel reporting this message">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 ))}
+                {dmReportDone && <p className="mt-1 rounded-xl border border-[var(--border)] bg-[var(--surface2)] px-3 py-2.5 text-[12.5px] font-semibold text-[var(--accent2)]" role="status">{dmReportDone}</p>}
                 {messages.length > 0 && lastMineSeen && <p className="pr-1 text-right text-[11.5px] font-semibold text-[var(--dim)]">Seen</p>}
               </div>
               <form

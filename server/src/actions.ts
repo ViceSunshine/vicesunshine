@@ -4404,14 +4404,26 @@ function screenMediaUrl(url: string): string | null {
 }
 
 // ---- Owner access ----
-// The Owner is the first / creator account: the earliest profile
-// ever created in ViceSunshine. The owner signs in with that normal
-// account on their own device — there is no separate login or
-// secret site — and only that account can call the owner actions
-// or see the Owner Dashboard.
+// The Owner is the officialvicesunshine account — the account made
+// with the email officialvicesunshine@gmail.com (username/gamertag
+// officialvicesunshine). ownerProfileRow resolves it in that order:
+// the profile with that email first, then the profile with that
+// username/gamertag, and only if neither exists (e.g. a fresh test
+// copy with no such account) does it fall back to the earliest
+// profile ever created, so owner actions never break entirely.
+// Exactly ONE account can ever be the Owner: the owner signs in
+// with that normal account on their own device — there is no
+// separate login, no secret site and no way to switch the owner to
+// another account. The OWNER badge, isOwner and the Owner
+// Dashboard gating all derive from this one function.
+const OWNER_GAMERTAG = "officialvicesunshine";
 async function ownerProfileRow(ctx: Ctx) {
   const db = ctx.db<typeof schema>();
   const rows = await db.select().from(schema.profiles).orderBy(schema.profiles.id);
+  const byEmail = rows.find((r) => r.email.trim().toLowerCase() === OFFICIAL_VICESUNSHINE_EMAIL);
+  if (byEmail) return byEmail;
+  const byGamertag = rows.find((r) => r.gamertag.trim().toLowerCase() === OWNER_GAMERTAG);
+  if (byGamertag) return byGamertag;
   return rows[0] ?? null;
 }
 
@@ -13939,6 +13951,50 @@ export const Actions = {
     },
   }),
 
+  reportDirectMessage: defineAction({
+    description: "Reports ONE private direct message to the owner for review. Private one-to-one DMs are never screened or monitored — this is the only way private message content is ever shown to anyone else: when a participant reports a specific message, that reported message (and only it) appears in the Owner Dashboard moderation queue so the owner can deal with the report. Only a participant in the conversation can report, never their own message; one report per player per message. Group and crew chat messages are not covered here — those are shared spaces with their own moderation.",
+    request: z.object({
+      playerKey: z.string().min(1).max(80),
+      messageId: z.number().int().positive(),
+      reason: z.enum(["Spam", "Harassment", "Hate speech", "Illegal content", "False information", "Bad name", "Bad words", "Breaking the rules", "Something else"]),
+      details: z.string().trim().max(300).default(""),
+    }),
+    response: okResponse,
+    async handler(ctx, args): Promise<Ok> {
+      const db = ctx.db<typeof schema>();
+      const profs = await db.select().from(schema.profiles);
+      if (!profs.some((p) => p.playerKey === args.playerKey)) throw new Error("Create your profile first — reporting only works when you're signed in.");
+      const msgRows = await db.select().from(schema.directMessages).where(eq(schema.directMessages.id, args.messageId));
+      const msg = msgRows[0];
+      // Only private one-to-one DMs (group_id 0) can be reported
+      // this way — group / crew chats are shared spaces, not
+      // private messages.
+      if (!msg || msg.groupId !== 0) throw new Error("That message could not be found.");
+      if (msg.senderKey !== args.playerKey && msg.recipientKey !== args.playerKey) throw new Error("You can only report messages from your own conversations.");
+      if (msg.senderKey === args.playerKey) throw new Error("You can't report your own message.");
+      if (args.details) assertClean(args.details);
+      const existing = await db
+        .select()
+        .from(schema.dmReports)
+        .where(
+          and(
+            eq(schema.dmReports.messageId, args.messageId),
+            eq(schema.dmReports.reporterKey, args.playerKey),
+          ),
+        );
+      if (!existing[0]) {
+        await db.insert(schema.dmReports).values({
+          messageId: args.messageId,
+          reporterKey: args.playerKey,
+          reason: args.reason,
+          details: args.details,
+        });
+      }
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+
   hideFeedPost: defineAction({
     description: "Hides a feed post for this player only.",
     request: z.object({
@@ -16988,7 +17044,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
   }),
 
   getOwnerDashboard: defineAction({
-    description: "Owner-only dashboard data for the ViceSunshine owner account (the first / creator account): player counts and newest players, Premium members and revenue state, content counts, the moderation queue (flagged Feed posts and bugs with report counts), recent reports, open support requests, and the Discord Premium role list (Premium members, their linked Discord usernames and the exact grant/removal state from the bot-ready sync table — the manual grant list until the Discord bot is live). Throws for every non-owner account.",
+    description: "Owner-only dashboard data for the ViceSunshine owner account (officialvicesunshine): player counts and newest players (sign-ups), Premium members and revenue state, content counts, the most recent public Feed posts, the moderation queue (flagged Feed posts and bugs with report counts, reported players, and private messages a participant has reported — the only private DM content ever shown, since unreported private DMs are never screened or exposed), recent reports, open support requests, and the Discord Premium role list (Premium members, their linked Discord usernames and the exact grant/removal state from the bot-ready sync table — the manual grant list until the Discord bot is live). Throws for every non-owner account.",
     request: z.object({ playerKey: z.string().min(1).max(80) }),
     response: z.object({
       ownerGamertag: z.string(),
@@ -17008,6 +17064,13 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       flaggedBugs: z.array(z.object({ id: z.number(), title: z.string(), reports: z.number() })),
       supportRequests: z.array(z.object({ id: z.number(), gamertag: z.string(), topic: z.string(), details: z.string(), status: z.string(), createdAt: z.string() })),
       recentReports: z.array(z.object({ postId: z.number(), reason: z.string(), createdAt: z.string() })),
+      // The most recent public Feed posts (originals only), so the
+      // owner can monitor everything public at a glance.
+      recentPosts: z.array(z.object({ id: z.number(), author: z.string(), kind: z.string(), excerpt: z.string(), flagged: z.boolean(), createdAt: z.string() })),
+      // Private messages a participant has reported — the ONLY
+      // private DM content the dashboard ever carries. Unreported
+      // private messages are never read into this response.
+      reportedMessages: z.array(z.object({ messageId: z.number(), sender: z.string(), reporter: z.string(), reason: z.string(), details: z.string(), body: z.string(), createdAt: z.string() })),
       reportedPlayers: z.array(z.object({ playerKey: z.string(), gamertag: z.string(), reports: z.number(), reasons: z.array(z.string()), latestDetails: z.string(), latestAt: z.string() })),
       flaggedProfiles: z.array(z.object({ gamertag: z.string(), displayName: z.string(), reason: z.string() })),
       // The Discord Premium role list: every member the owner may
@@ -17022,7 +17085,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
       const owner = await assertOwner(ctx, args.playerKey);
-      const [profiles, clans, feedPosts, events, reports, bugs, support, playerReports] = await Promise.all([
+      const [profiles, clans, feedPosts, events, reports, bugs, support, playerReports, dmReportRows] = await Promise.all([
         db.select().from(schema.profiles),
         db.select().from(schema.clans),
         db.select().from(schema.feedPosts),
@@ -17031,7 +17094,14 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         db.select().from(schema.bugs),
         db.select().from(schema.supportRequests),
         db.select().from(schema.playerReports),
+        db.select().from(schema.dmReports),
       ]);
+      // Resolve ONLY the messages that were actually reported —
+      // no other private message is ever read for this dashboard.
+      const reportedMsgIds = [...new Set(dmReportRows.map((r) => r.messageId))];
+      const reportedMsgRows = reportedMsgIds.length
+        ? (await db.select().from(schema.directMessages)).filter((m) => reportedMsgIds.includes(m.id))
+        : [];
       const bugReports = await db.select().from(schema.bugReports);
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const byNewest = [...profiles].sort((a, b) => b.id - a.id);
@@ -17117,6 +17187,38 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
           .sort((a, b) => b.id - a.id)
           .slice(0, 10)
           .map((r) => ({ postId: r.postId, reason: r.reason, createdAt: r.createdAt.toISOString() })),
+        recentPosts: feedPosts
+          .filter((pr) => pr.repostOfId === 0)
+          .sort((a, b) => b.id - a.id)
+          .slice(0, 15)
+          .map((pr) => ({
+            id: pr.id,
+            author: pr.author,
+            kind: pr.kind,
+            excerpt: (pr.title || pr.body).slice(0, 140),
+            flagged: pr.flagged === 1,
+            createdAt: pr.createdAt.toISOString(),
+          })),
+        reportedMessages: (() => {
+          const msgById = new Map(reportedMsgRows.map((m) => [m.id, m]));
+          const profileByKey = new Map(profiles.map((pr) => [pr.playerKey, pr]));
+          return [...dmReportRows]
+            .sort((a, b) => b.id - a.id)
+            .slice(0, 20)
+            .flatMap((r) => {
+              const m = msgById.get(r.messageId);
+              if (!m) return [];
+              return [{
+                messageId: m.id,
+                sender: profileByKey.get(m.senderKey)?.gamertag ?? "Unknown player",
+                reporter: profileByKey.get(r.reporterKey)?.gamertag ?? "Unknown player",
+                reason: r.reason,
+                details: r.details,
+                body: m.body.slice(0, 500),
+                createdAt: r.createdAt.toISOString(),
+              }];
+            });
+        })(),
         discordPremiumList: await (async () => {
           // Opening the dashboard re-checks the role sync state
           // for everyone in scope (Premium members and anyone with

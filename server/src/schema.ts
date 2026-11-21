@@ -827,6 +827,22 @@ export const playerReports = sqliteTable("player_reports", {
   createdAt: ts("created_at"),
 });
 
+// Direct-message reports (migration 0074): private one-to-one DMs
+// are never screened or monitored — the ONLY way a private message
+// is ever shown to anyone else is when a participant in that
+// conversation reports that specific message. One row per reporter
+// per message; the reported message (and only it) appears in the
+// Owner Dashboard moderation queue so the owner can deal with the
+// report. Unreported private messages are never exposed anywhere.
+export const dmReports = sqliteTable("dm_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  messageId: integer("message_id").notNull(),
+  reporterKey: text("reporter_key").notNull(),
+  reason: text("reason").notNull().default(""),
+  details: text("details").notNull().default(""),
+  createdAt: ts("created_at"),
+});
+
 export const feedHidden = sqliteTable("feed_hidden", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   postId: integer("post_id").notNull(),
