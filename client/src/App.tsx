@@ -13822,7 +13822,7 @@ function TikTokPlayer({
    that opens the notifications list: who followed you, who liked
    your story, who liked / commented on / reposted your posts —
    grouped Today / This week / Earlier, like the reference. */
-function SocialTopBar({ playerKey, gamertag, go, onOpenProfile, searchValue, onSearchChange, searchPlaceholder, searchLabel }: {
+function SocialTopBar({ playerKey, gamertag, go, onOpenProfile, searchValue, onSearchChange, searchPlaceholder, searchLabel, onCreate }: {
   playerKey: string;
   gamertag: string;
   go: (t: Tab) => void;
@@ -13831,6 +13831,9 @@ function SocialTopBar({ playerKey, gamertag, go, onOpenProfile, searchValue, onS
   onSearchChange: (v: string) => void;
   searchPlaceholder: string;
   searchLabel: string;
+  // Optional + button at the top left (Feed only, owner's direction,
+  // Nov 20 2026): opens the creator, like Instagram's +.
+  onCreate?: () => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -13870,7 +13873,19 @@ function SocialTopBar({ playerKey, gamertag, go, onOpenProfile, searchValue, onS
   const iconBtn = "relative flex h-11 w-11 flex-none items-center justify-center rounded-full text-white transition-colors hover:bg-[var(--surface2)]";
   return (
     <div className="mb-3">
-      <div className="flex items-center justify-end gap-1.5">
+      <div className={`flex items-center gap-1.5 ${onCreate ? "justify-between" : "justify-end"}`}>
+        {onCreate && (
+          <button
+            type="button"
+            className={iconBtn}
+            style={{ minHeight: 44 }}
+            aria-label="Create — open the creator to post a photo, story or clip"
+            onClick={onCreate}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+        )}
+        <div className="flex items-center gap-1.5">
         <button
           type="button"
           className={iconBtn}
@@ -13904,6 +13919,7 @@ function SocialTopBar({ playerKey, gamertag, go, onOpenProfile, searchValue, onS
             </span>
           )}
         </button>
+        </div>
       </div>
       {searchOpen && (
         <div className="mt-1">
@@ -15148,15 +15164,18 @@ function FeedView({
         onSearchChange={setFeedSearch}
         searchPlaceholder="Search the Feed — posts, people, clips…"
         searchLabel="Search Community Feed content"
+        onCreate={() => { setFeedTab("create"); setCreatorSeq((n) => n + 1); scrollPageToTopSoon(); }}
       />
-      {/* Feed header tabs (owner's direction): Create sits to the
-          LEFT of For you and opens the camera creator; For you /
-          Following are the post lists. There is NO Refresh button —
-          pressing the tab you are already on again resets that tab:
-          back to the top with the latest posts, every time. */}
+      {/* Feed header tabs (owner's direction, Nov 20 2026): the
+          Create tab is gone — creating is the + button at the top
+          left of the Feed, which opens the camera creator. Only
+          For you / Following are tabs now. There is NO Refresh
+          button — pressing the tab you are already on again resets
+          that tab: back to the top with the latest posts, every
+          time. */}
       <div className="mb-4 border-b border-[var(--border)]">
-        <div className="flex" role="tablist" aria-label="Feed views — Create, For you and Following. Press the tab you are on again to reset it and load the latest posts.">
-          {([["create", "Create"], ["foryou", "For you"], ["following", "Following"]] as const).map(([id, label]) => (
+        <div className="flex" role="tablist" aria-label="Feed views — For you and Following. Press the tab you are on again to reset it and load the latest posts.">
+          {([["foryou", "For you"], ["following", "Following"]] as const).map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -15251,7 +15270,7 @@ function FeedView({
             ? "Nothing here yet — posts from people you follow, and your own posts, show on this tab. Add people from their story ball or their profile and their posts land here."
             : sourceFilter === "Automatic"
               ? "No automatic posts yet — the daily refresh adds new official and trending GTA VI videos here. Press the For you tab again any time to load the latest."
-              : "Nothing here yet — be the first to post from the Create tab."}
+              : "Nothing here yet — tap the + at the top left to be the first to post."}
         </EmptyNote>
       )}
       {renderCards(allItems)}
