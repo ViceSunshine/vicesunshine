@@ -5,13 +5,17 @@
 // service up and WORKER_BASE_URL set (default http://localhost:3000).
 //
 // Schedule (matches Muse):
-//   news            refreshNews          every 6h  (slowed Nov 21, 2026: free Tavily key, 1,000/month)
-//   feed-media      refreshFeedMedia     every 6h
-//   clips           refreshTikTokClips   every 6h
-//   db-sync         refreshDbEntries     every 6h
-//   bugs            refreshBugs          every 6h
-//   eggs            refreshEggContent    every 6h
-//   moderation      automationSweep      every 6h
+//   news            refreshNews          every 3d
+//                                    (slowed Nov 21, 2026: free Tavily key, 1,000/month,
+//                                    ~100 credits per full round, ~9 rounds/month = ~900, safely
+//                                    under the limit; game not fully released yet so slower
+//                                    updates are fine; budget guard caps Tavily at 900)
+//   feed-media      refreshFeedMedia     every 3d
+//   clips           refreshTikTokClips   every 3d
+//   db-sync         refreshDbEntries     every 3d
+//   bugs            refreshBugs          every 3d
+//   eggs            refreshEggContent    every 3d
+//   moderation      automationSweep      every 3d
 //   rockstar        refreshRockstarStatus every 5m — UNCHANGED, it is a direct fetch and uses no search credits (the action itself
 //                   throttles to one real check per 60s, and a check
 //                   requested in the last 3 minutes blocks duplicates,
@@ -47,13 +51,13 @@ async function call(action: string, args: Record<string, unknown> = {}): Promise
 
 interface Job { name: string; action: string; everyMs: number; run: () => Promise<unknown> }
 const jobs: Job[] = [
-  { name: "news", action: "refreshNews", everyMs: 6 * 60 * 60_000, run: () => call("refreshNews") },
-  { name: "feed-media", action: "refreshFeedMedia", everyMs: 6 * 60 * 60_000, run: () => call("refreshFeedMedia") },
-  { name: "clips", action: "refreshTikTokClips", everyMs: 6 * 60 * 60_000, run: () => call("refreshTikTokClips") },
-  { name: "db-sync", action: "refreshDbEntries", everyMs: 6 * 60 * 60_000, run: () => call("refreshDbEntries") },
-  { name: "bugs", action: "refreshBugs", everyMs: 6 * 60 * 60_000, run: () => call("refreshBugs") },
-  { name: "eggs", action: "refreshEggContent", everyMs: 6 * 60 * 60_000, run: () => call("refreshEggContent") },
-  { name: "moderation-sweep", action: "automationSweep", everyMs: 6 * 60 * 60_000, run: () => call("automationSweep") },
+  { name: "news", action: "refreshNews", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshNews") },
+  { name: "feed-media", action: "refreshFeedMedia", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshFeedMedia") },
+  { name: "clips", action: "refreshTikTokClips", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshTikTokClips") },
+  { name: "db-sync", action: "refreshDbEntries", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshDbEntries") },
+  { name: "bugs", action: "refreshBugs", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshBugs") },
+  { name: "eggs", action: "refreshEggContent", everyMs: 3 * 24 * 60 * 60_000, run: () => call("refreshEggContent") },
+  { name: "moderation-sweep", action: "automationSweep", everyMs: 3 * 24 * 60 * 60_000, run: () => call("automationSweep") },
   { name: "rockstar", action: "refreshRockstarStatus", everyMs: 5 * 60_000, run: () => call("refreshRockstarStatus") },
 ];
 
