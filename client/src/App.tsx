@@ -3095,12 +3095,12 @@ export function App() {
           onSignedOut={handleSignedOut}
         />
       )}
-      {/* Notifications HALF PANEL (owner's direction, Nov 21
+      {/* Notifications PANEL (owner's direction, Nov 21
           2026): the bell's panel, rendered at the shell root so
           it floats over whichever page is showing — Feed, Clips
-          or anywhere else — at about half the screen height.
-          Opening a profile from inside it closes the panel first,
-          then opens that profile. */}
+          or anywhere else — full page on phone, right-half
+          panel on desktop. Opening a profile from inside it
+          closes the panel first, then opens that profile. */}
       {notifPanelOpen && (
         <NotificationsPanel
           playerKey={key}
@@ -15449,15 +15449,14 @@ function SocialTopBar({ playerKey, gamertag, go, searchValue, onSearchChange, se
   );
 }
 
-/* Notifications HALF PANEL (owner's direction, Nov 21 2026):
+/* Notifications PANEL (owner's direction, Nov 21 2026):
    pressing the bell in the Feed / Clips top bar opens THIS — a
-   panel that slides in from the RIGHT side of the screen to the
-   middle, covering the right half of the screen at full height
-   over the current page, never a full page and NEVER a bottom
-   sheet (the owner corrected the earlier bottom-sheet version
-   himself: "it should come out from the right side of the screen
-   to the middle, it should cover half the screen and it should
-   not come from the bottom"). Inside it sits the exact same
+   panel that slides in from the RIGHT side of the screen. On
+   phone it is a FULL page covering the entire screen (100%
+   width, full height, Feed not visible behind); on
+   laptop/desktop it covers the right half of the screen at
+   full height over the current page, and it is NEVER a bottom
+   sheet. Inside it sits the exact same
    Notifications content as ever (NotificationsView below): the
    filter chips, the Follow requests row, and every notification
    type — follows, follow requests, post likes, story likes,
@@ -15483,7 +15482,7 @@ function NotificationsPanel({ playerKey, gamertag, go, onOpenProfile, onClose }:
   return (
     <div className="fixed inset-0 z-[96]" role="dialog" aria-modal="true" aria-label="Notifications">
       <button type="button" className="sheet-backdrop absolute inset-0 h-full w-full cursor-default bg-black/60" style={{ minHeight: 0 }} aria-label="Close notifications" onClick={onClose} />
-      <div className="notif-panel absolute inset-y-0 right-0 flex w-1/2 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--surface)] shadow-2xl">
+      <div className="notif-panel absolute inset-y-0 right-0 flex w-full flex-col overflow-hidden bg-[var(--surface)] shadow-2xl lg:w-1/2 lg:border-l lg:border-[var(--border)]">
         <div
           className="relative flex-none cursor-grab touch-none px-4 pb-1 pt-2.5"
           onPointerDown={(e) => { dragXRef.current = e.clientX; }}
