@@ -14559,6 +14559,15 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
   const [camPreset, setCamPreset] = useState<CreatorItem["preset"]>("none");
   const [effectsOpen, setEffectsOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
+  // Instagram picker screens (owner's direction, Nov 20 2026):
+  // the bottom bar has only Post and Story. Pressing one opens
+  // its picker — "New post" or "Add to story" — on laptop and
+  // phone alike. The camera restarts when the picker closes.
+  const [picker, setPicker] = useState<null | "post" | "story">(null);
+  const [camSeq, setCamSeq] = useState(0);
+  // "Add Yours" prompt written on the story as its sticker.
+  const [storySticker, setStorySticker] = useState("");
+  const [addYoursOpen, setAddYoursOpen] = useState(false);
   const [camState, setCamState] = useState<"starting" | "live" | "denied">("starting");
   const [recording, setRecording] = useState(false);
   const [caption, setCaption] = useState("");
@@ -14607,7 +14616,7 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
       }
     })();
     return () => { cancelled = true; stopCamera(); };
-  }, [step, facing, gamertag]);
+  }, [step, facing, gamertag, camSeq]);
 
   const addBlob = (blob: Blob, kind: "image" | "video", duration = 0) => {
     const item: CreatorItem = {
@@ -14691,8 +14700,10 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
     if (made.length > 0) {
       setItems((prev) => [...prev, ...made].slice(0, 4));
       setSel(items.length);
-      stopCamera();
-      setStep("preview");
+      if (!picker) {
+        stopCamera();
+        setStep("preview");
+      }
     }
   };
 
@@ -14767,10 +14778,10 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
       }
       if (dest === "story") {
         if (finals.length === 0) {
-          await api.createStory({ playerKey, author: gamertag, mediaUrl: "", text: caption.trim(), sticker: "" });
+          await api.createStory({ playerKey, author: gamertag, mediaUrl: "", text: caption.trim(), sticker: storySticker.trim() });
         }
         for (const f of finals) {
-          await api.createStory({ playerKey, author: gamertag, mediaUrl: f.url, text: caption.trim(), sticker: "" });
+          await api.createStory({ playerKey, author: gamertag, mediaUrl: f.url, text: caption.trim(), sticker: storySticker.trim() });
         }
         return "story";
       }
@@ -14797,6 +14808,8 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
       setSel(0);
       setCaption("");
       setTitle("");
+      setStorySticker("");
+      setAddYoursOpen(false);
       setStep("capture");
       qc.invalidateQueries({ queryKey: ["feed"] });
       qc.invalidateQueries({ queryKey: ["stories"] });
@@ -14972,26 +14985,105 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, autoUpload
       </ol>
       )}
 
-      {step === "capture" && (
+      {step === "capture" && picker && (
+        <div aria-label={picker === "post" ? "New post — pick from your library" : "Add to story — pick from your library"}>
+          {/* Header: X / title / Next (New post only), like Instagram. */}
+          <div className="flex items-center gap-2">
+            <button type="button" className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-white" style={{ background: "rgba(255,255,255,0.08)", minHeight: 44 }} onClick={() => { setPicker(null); setCamSeq((n) => n + 1); }} aria-label="Close the picker — back to the camera">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg>
+            </button>
+            <h3 className="flex-1 text-center text-[19px] font-extrabold tracking-tight text-white">{picker === "post" ? "New post" : "Add to story"}</h3>
+            {picker === "post" ? (
+              <button type="button" className="flex-none rounded-full px-4 py-2 text-[15px] font-extrabold" style={{ background: items.length > 0 ? "var(--accent)" : "rgba(255,255,255,0.12)", color: "#fff", minHeight: 44, opacity: items.length > 0 ? 1 : 0.6 }} disabled={items.length === 0} onClick={() => { setPicker(null); setStep("preview"); }} aria-label="Next — preview your post">
+                Next
+              </button>
+            ) : (
+              <span className="w-11 flex-none" aria-hidden="true" />
+            )}
+          </div>
+          {/* Add to story boxes (owner's direction): Add Yours and
+              Collage only. Music is not in ViceSunshine — there is
+              no music library — so it is not shown. */}
+          {picker === "story" && (
+            <>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button type="button" className="rounded-2xl p-4 text-center" style={{ background: "var(--surface2)", minHeight: 110 }} onClick={() => setAddYoursOpen((v) => !v)} aria-expanded={addYoursOpen} aria-label="Add Yours — write a prompt that rides on your story">
+                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full" style={{ background: "#fff" }} aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 2.5 21 6.5 17 10.5 13 6.5Z" /><path d="M3 21c.6-3.2 2.6-5.2 5.8-5.8C8.2 18.4 6.2 20.4 3 21Z" /><path d="M8 15.5 15.5 8" /></svg>
+                  </span>
+                  <span className="mt-2 block text-[15px] font-extrabold text-white">Add Yours</span>
+                </button>
+                <label className="cursor-pointer rounded-2xl p-4 text-center" style={{ background: "var(--surface2)", minHeight: 110 }} aria-label="Collage — pick several photos for one story set">
+                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full" style={{ background: "var(--surface3)" }} aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.5" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1.5" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.5" /><rect x="13" y="13" width="7.5" height="7.5" rx="1.5" /></svg>
+                  </span>
+                  <span className="mt-2 block text-[15px] font-extrabold text-white">Collage</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple className="sr-only" aria-label="Choose several photos or videos for your story collage" onChange={(e) => { void onFiles(e.target.files); e.target.value = ""; }} />
+                </label>
+              </div>
+              {addYoursOpen && (
+                <div className="mt-3">
+                  <label className="flabel" htmlFor="creator-add-yours">Your prompt — shows on the story</label>
+                  <input id="creator-add-yours" className="field" value={storySticker} onChange={(e) => setStorySticker(e.target.value)} placeholder="e.g. Show your ride" aria-label="Add Yours prompt for your story" />
+                </div>
+              )}
+            </>
+          )}
+          {/* Recents + Select, then the grid. A website cannot list
+              your device's photos by itself — the grid shows the
+              camera tile, anything you have picked this time, and
+              a tile that opens your own library picker. */}
+          <div className="mt-5 flex items-center justify-between">
+            <span className="text-[19px] font-extrabold text-white">Recents</span>
+            <button type="button" className="flex items-center gap-2 rounded-full px-4 py-2 text-[14px] font-extrabold text-white" style={{ background: "var(--surface2)", minHeight: 44 }} onClick={() => document.getElementById("picker-library-pick")?.click()} aria-label="Select photos or videos from your library">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" /><rect x="8" y="8" width="8" height="8" rx="2" /></svg>
+              Select
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-[3px]">
+            <button type="button" className="relative flex aspect-square items-center justify-center" style={{ background: "#1c1c26" }} onClick={() => { setPicker(null); setCamSeq((n) => n + 1); }} aria-label="Camera — back to the live camera">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="14" r="3.5" /></svg>
+            </button>
+            {items.map((it, j) => (
+              <button key={it.url} type="button" className="relative aspect-square overflow-hidden" style={{ outline: j === sel ? "3px solid var(--accent)" : "none", outlineOffset: -3 }} onClick={() => { setSel(j); if (picker === "story") { setPicker(null); setStep("preview"); } }} aria-label={`${it.kind === "video" ? "Video" : "Photo"} ${j + 1} — ${picker === "story" ? "use it for your story" : "select it for your post"}`}>
+                {it.kind === "video"
+                  ? <video src={it.url} className="h-full w-full object-cover" muted playsInline aria-hidden="true" />
+                  : <img src={it.url} alt="" className="h-full w-full object-cover" />}
+                {j === sel && picker === "post" && <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }} aria-hidden="true">✓</span>}
+              </button>
+            ))}
+            <label className="relative flex aspect-square cursor-pointer flex-col items-center justify-center gap-1.5" style={{ background: "var(--surface2)" }} aria-label="Open your library — pick photos or videos from your device">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" fill="currentColor" stroke="none" /><path d="M4 18l5-5 4 4 3-3 4 4" /></svg>
+              <span className="text-[12px] font-bold text-[var(--dim)]">Your library</span>
+              <input id="picker-library-pick" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple className="sr-only" aria-label="Choose photos or videos from your device — you can pick several" onChange={(e) => { void onFiles(e.target.files); e.target.value = ""; }} />
+            </label>
+          </div>
+          {items.length === 0 && (
+            <p className="mt-3 text-center text-sm text-[var(--dim)]">Your library opens on your own phone or computer — pick a photo or video and it lands in this grid.</p>
+          )}
+        </div>
+      )}
+      {step === "capture" && !picker && (
         <>
           {stage(false)}
           {/* Mode bar under the camera (owner's direction, Nov 20
-              2026): only where ViceSunshine can publish — Post,
-              Story, Clips. No Instants, no Reels. Picking one sets
-              both the destination and photo/video mode. */}
-          <div className="mt-3 flex items-center justify-center gap-7" role="tablist" aria-label="Choose where to publish — Post, Story or Clips">
-            {(["post", "story", "clip"] as const).map((id) => (
+              2026): only Post and Story — the two features in the
+              bottom bar. No Instants, no Reels, no Live, no Clips
+              here (a video can still become a Clip in the Details
+              step). Pressing one opens its picker screen. */}
+          <div className="mt-3 flex items-center justify-center gap-7" role="tablist" aria-label="Choose — Post or Story">
+            {(["post", "story"] as const).map((id) => (
               <button
                 key={id}
                 type="button"
                 role="tab"
                 aria-selected={dest === id}
-                onClick={() => { setDest(id); setCamMode(id === "clip" ? "video" : "photo"); setError(""); }}
+                onClick={() => { setDest(id); setCamMode("photo"); setError(""); stopCamera(); setPicker(id); }}
                 className="text-[14px] font-extrabold uppercase tracking-[0.14em]"
                 style={{ color: dest === id ? "#fff" : "rgba(255,255,255,0.45)", minHeight: 44 }}
-                aria-label={id === "post" ? "Post — a photo or video in the Feed" : id === "story" ? "Story — a photo or video for 24 hours" : "Clips — a video in the Clips reel"}
+                aria-label={id === "post" ? "Post — open the New post picker" : "Story — open the Add to story picker"}
               >
-                {id === "post" ? "Post" : id === "story" ? "Story" : "Clips"}
+                {id === "post" ? "Post" : "Story"}
               </button>
             ))}
           </div>
