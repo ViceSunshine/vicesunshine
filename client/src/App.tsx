@@ -721,13 +721,6 @@ const COMMUNITY_NAV: { id: Tab; label: string; icon: string }[] = [
   // at the bottom left of the sidebar, which opens the Settings
   // modal. Nothing settings- or account-related is a sidebar link.
 ];
-const BOTTOM_NAV: { id: Tab; label: string }[] = [
-  { id: "feed", label: "Feed" },
-  { id: "home", label: "Today" },
-  { id: "saved", label: "Saved" },
-  { id: "profile", label: "Profile" },
-  { id: "clans", label: "Crews" },
-];
 
 // Which sidebar dropdown a tab lives in. Navigation FOLLOWS the
 // player (owner's direction): pressing a link anywhere — "View in
@@ -2255,6 +2248,10 @@ export function App() {
                     <span className="sr-only">Locked — create an account first to open your Profile</span>
                   </div>
                 ) : (<button key={n.id} type="button" className="sidebar-link" aria-pressed={navTab === n.id} aria-current={navTab === n.id ? "page" : undefined} onClick={() => go(n.id)}><NavIcon name={n.icon} />{n.label}</button>))}
+                {/* Ask Vice lives in the sidebar now (owner's direction,
+                    Nov 20 2026): the phone bottom bar is gone, so the
+                    AI helper is reached from Your agent instead. */}
+                <button type="button" className="sidebar-link" aria-label="Ask Vice, the ViceSunshine AI helper" style={{ color: "var(--accent2)" }} onClick={() => setViceOpen(true)}><NavIcon name="help" />Ask Vice</button>
               </div>
             )}
           </nav>
@@ -2469,29 +2466,10 @@ export function App() {
         </main>
       </div>
 
-      {/* Mobile bottom navigation — 5 large, thumb-reachable targets.
-          A shell row (flex-none), NOT a fixed overlay: it takes its
-          own height in the 100dvh column, so the main scroller never
-          needs dead bottom padding to clear it and the page bottom
-          is exactly the end of the content. */}
-      <nav aria-label="Primary" className="z-40 flex-none border-t border-[var(--border)] bg-[rgba(10,10,18,0.97)] pb-safe backdrop-blur lg:hidden">
-        <div className="flex px-2">
-          {BOTTOM_NAV.map((n) => n.id === "profile" && !gamertag ? (
-            <div key={n.id} className="bottom-nav-btn" aria-disabled="true" title="Profile unlocks once you create an account" style={{ color: "var(--dim)", opacity: 0.5, cursor: "not-allowed" }}>
-              <span className="bar" aria-hidden="true" />{n.label}
-              <span className="sr-only">Locked — create an account first to open your Profile</span>
-            </div>
-          ) : (
-            <button key={n.id} type="button" onClick={() => go(n.id)} aria-pressed={navTab === n.id} className="bottom-nav-btn" style={{ color: navTab === n.id ? "var(--text)" : "var(--dim)" }}>
-              <span className="bar" aria-hidden="true" />{n.label}
-            </button>
-          ))}
-          <button type="button" onClick={() => setViceOpen(true)} aria-label="Ask Vice, the ViceSunshine AI helper" className="bottom-nav-btn" style={{ color: "var(--accent2)" }}>
-            <span className="bar" aria-hidden="true" style={{ background: "var(--accent2)" }} />Ask Vice
-          </button>
-        </div>
-      </nav>
-
+      {/* ---- Phone bottom nav removed at the owner's direction,
+          Nov 20 2026: no bottom bar on phone (Feed / Today / Saved /
+          Profile / Crews / Ask Vice). Phone navigation is the top bar
+          + drawer; desktop sidebar is unchanged. ---- */}
       <button
         type="button"
         onClick={() => setViceOpen(true)}
@@ -2548,6 +2526,10 @@ export function App() {
                         <span className="sr-only">Locked — create an account first to open your Profile</span>
                       </div>
                     ) : (<button key={n.id} type="button" className="sidebar-link" aria-pressed={navTab === n.id} onClick={() => go(n.id)}><NavIcon name={n.icon} />{n.label}</button>))}
+                    {/* Ask Vice in the phone drawer too (owner's
+                        direction, Nov 20 2026): the phone bottom bar
+                        is gone, so the AI helper is reached here. */}
+                    <button type="button" className="sidebar-link" aria-label="Ask Vice, the ViceSunshine AI helper" style={{ color: "var(--accent2)" }} onClick={() => { setDrawerOpen(false); setViceOpen(true); }}><NavIcon name="help" />Ask Vice</button>
                   </div>
                 )}
                 <button type="button" className="side-head mt-3" aria-expanded={exploreNavOpen} onClick={() => toggleNavSection("explore")}>
