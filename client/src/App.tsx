@@ -21239,8 +21239,6 @@ function ProfileView({ playerKey, search, go, onBack, savedStore, trackedStore, 
   const bannerVideoRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-  // Discord-style tabs: Main / Activity / Customise (your current look).
-  const [ptab, setPtab] = useState<"activity" | "customise">("activity");
   const [editing, setEditing] = useState(false);
   // Linked accounts live on their own page (owner's direction):
   // pressing the Linked accounts row in Edit profile swaps the
@@ -22149,152 +22147,11 @@ function ProfileView({ playerKey, search, go, onBack, savedStore, trackedStore, 
         </section>
       )}
 
-      {/* ---- Your ViceSunshine details: Activity / Customise
-          (events, points, transactions, your look) below the
-          spacious Instagram header. The old Main tab's cards —
-          tracked news, credits balance, member since, friends,
-          crew, level, reputation, events attended — were removed
-          at the owner's direction: only the top of the profile
-          stays. ---- */}
-      {me && (
-        <section className="mt-10" aria-label="Your ViceSunshine details">
-          {/* ---- Tabs: Main / Activity / Customise ---- */}
-          {me && (
-            <div className="mt-5 flex border-b border-[var(--border)]" role="tablist" aria-label="Profile tabs">
-              {([["activity", "Activity"], ["customise", "Customise"]] as const).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={ptab === id}
-                  className="flex-1 pb-3 pt-1 text-[15px] font-bold"
-                  style={{
-                    color: ptab === id ? "var(--accent2)" : "var(--dim)",
-                    borderBottom: ptab === id ? "3px solid var(--accent2)" : "3px solid transparent",
-                    marginBottom: -1,
-                    minHeight: 44,
-                  }}
-                  onClick={() => setPtab(id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* ---- ACTIVITY tab ---- */}
-          {me && ptab === "activity" && (
-            <div className="mt-5 grid gap-3">
-              <div className={cardShell}>
-                <p className={cardLabel}>My events</p>
-                {(myEvents.data?.items ?? []).filter((e) => e.myRsvp).length === 0 ? (
-                  <p className="mt-1.5 text-sm leading-relaxed text-[var(--dim)]">No event RSVPs yet — RSVP Going to a community event and it shows up here, with its lobby details on the event page.</p>
-                ) : (
-                  <ul className="mt-2 grid gap-2">
-                    {(myEvents.data?.items ?? []).filter((e) => e.myRsvp).map((e) => (
-                      <li key={e.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--surface)] px-3 py-2 text-sm">
-                        <span className="font-bold">{e.title}</span>
-                        <span className="text-[var(--dim)]">{e.type} · {e.myRsvp} · {e.going} going</span>
-                        <button type="button" className="btn-ghost ml-auto" style={{ minHeight: 36, padding: "4px 12px", fontSize: 12 }} onClick={() => go("events")}>Open event</button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className={cardShell}>
-                <p className={cardLabel}>My crews</p>
-                {(wallet.data?.clanWallets ?? []).length === 0 ? (
-                  <p className="mt-1.5 text-sm leading-relaxed text-[var(--dim)]">You are not in a crew yet. Joining one pays a +50 Vice Credits welcome bonus and unlocks crew chat, squads and crew events.</p>
-                ) : (
-                  <ul className="mt-2 grid gap-2">
-                    {(wallet.data?.clanWallets ?? []).map((c) => (
-                      <li key={c.clanId} className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--surface)] px-3 py-2 text-sm">
-                        <span className="font-bold">{c.clanName}</span>
-                        <span className="text-[var(--dim)]">{c.myRole} · crew wallet {c.walletCredits} VC</span>
-                        <button type="button" className="btn-ghost ml-auto" style={{ minHeight: 36, padding: "4px 12px", fontSize: 12 }} onClick={() => go("clans")}>Open crews</button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {wallet.data?.hasProfile && <ContributeForm playerKey={playerKey} clans={wallet.data.clanWallets} balance={wallet.data.balance} />}
-              </div>
-
-              {wallet.data && wallet.data.myPoints.length > 0 && (
-                <div className={cardShell}>
-                  <p className={cardLabel}>Recent points</p>
-                  <ul className="mt-2 grid gap-1.5">
-                    {wallet.data.myPoints.slice(0, 8).map((pt) => (
-                      <li key={pt.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--surface)] px-3 py-2 text-sm">
-                        <span className="font-bold" style={{ color: "var(--accent2)" }}>+{pt.points}</span>
-                        <span className="min-w-0 flex-1 truncate">{pt.title}{pt.clanName ? ` · ${pt.clanName}` : ""}</span>
-                        <span className="text-xs text-[var(--dim)]">{new Date(pt.createdAt).toLocaleDateString()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className={cardShell}>
-                <p className={cardLabel}>Transaction history</p>
-                {wallet.data && wallet.data.transactions.length === 0 && (
-                  <p className="mt-1.5 text-sm text-[var(--dim)]">No transactions yet. Your history starts with 500 welcome credits.</p>
-                )}
-                <ul className="mt-2 grid gap-1.5">
-                  {wallet.data?.transactions.slice(0, 15).map((t) => (
-                    <li key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--surface)] px-3 py-2 text-sm">
-                      <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: t.category === "Spent" ? "var(--amber)" : "var(--accent2)" }}>{t.category}</span>
-                      <span className="min-w-0 flex-1">{t.reason}{t.clanName ? ` · ${t.clanName} wallet` : ""}</span>
-                      <span className="font-bold" style={{ color: t.amount < 0 ? "var(--amber)" : "var(--accent2)" }}>{t.amount > 0 ? `+${t.amount}` : t.amount}</span>
-                      <span className="text-xs text-[var(--dim)]">{new Date(t.createdAt).toLocaleDateString()}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {/* ---- CUSTOMISE tab: your current look, all free ---- */}
-          {me && ptab === "customise" && (
-            <div className="mt-5 grid gap-3">
-              {equippedItems.length === 0 ? (
-                <div className={cardShell}>
-                  <p className="text-[15px] font-bold">Your look is the default — for now</p>
-                  <p className="mt-1 text-sm leading-relaxed text-[var(--dim)]">Every Customise section has 5 free avatars, effects, banners, colours, badges, calling cards and themes — and Premium members also get the 3 Premium picks in each section. Pick a look and it shows here and everywhere your profile appears.</p>
-                  <button type="button" className="btn-primary btn-accent mt-3" style={{ minHeight: 44, padding: "8px 18px", fontSize: 14 }} onClick={() => go("customise")}>Open Customise</button>
-                </div>
-              ) : (
-                <div>
-                  <ul className="grid gap-2">
-                    {[...equippedItems].sort((a, b) => (["avatar", "effect", "bannerColor", "badge", "callingCard"].indexOf(a.kind) - ["avatar", "effect", "bannerColor", "badge", "callingCard"].indexOf(b.kind))).map((i) => (
-                      <li key={i.id} className={`${cardShell} flex min-h-[72px] items-center gap-3`}>
-                        <span className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-xl bg-[var(--surface)]" aria-hidden="true">
-                          {i.kind === "avatar" && i.imageUrl ? <img src={i.imageUrl} alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" /> : i.kind === "avatar" ? <CosmeticAvatar name={i.name} size={40} /> : i.kind === "effect" ? <CosmeticAvatar name={me.gamertag} size={40} effect={i.value} /> : i.kind === "color" || i.kind === "theme" ? <span className="block h-8 w-8 rounded-full border border-[var(--border)]" style={{ background: i.value }} /> : i.kind === "badge" ? <span className="px-1 text-center text-[10px] font-extrabold leading-tight">{i.value}</span> : i.kind === "callingCard" ? <span className="block h-8 w-12 overflow-hidden rounded-md border border-[var(--border)]" style={{ background: cardDesignOf(i.value)?.background ?? "var(--surface2)" }} /> : <span className="text-sm font-extrabold" style={i.value.startsWith("#") ? { color: i.value } : undefined}>{i.value}</span>}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-bold">{i.name}</span>
-                          <span className="block text-[13px] text-[var(--dim)]">{KIND_LABEL[i.kind] ?? i.kind} · Equipped</span>
-                        </span>
-                        {i.premiumOnly ? (
-                          <span className="flex-none rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ border: "1px solid var(--amber)", color: "var(--amber)" }}>Premium</span>
-                        ) : (
-                          <span className="flex-none rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ background: "var(--accent2)", color: "#04211d" }}>Free</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  <button type="button" className="btn-ghost mt-3" onClick={() => go("customise")}>Change your look in Customise</button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!me && (
-            <p className="mt-4 text-sm leading-relaxed text-[var(--dim)]">Create your profile with the form below — a new account starts with 500 Vice Credits, exactly enough to found one crew.</p>
-          )}
-        </section>
-      )}
-
+      {/* ---- Profile bottom removed at the owner's direction,
+          Nov 20 2026: everything below the profile top is gone —
+          Activity / Customise tabs, My events, My crews, Recent
+          points, Transaction history. Only the top of the profile
+          stays. Customise itself still lives on its own page. ---- */}
       {followListMode && sp && (
         <FollowListSheet mode={followListMode} targetKey={playerKey} targetName={me?.gamertag ?? "You"} playerKey={playerKey} viewerHasProfile={viewerHasProfile} onClose={() => setFollowListMode(null)} onView={viewProfile} onNeedProfile={() => { setFollowListMode(null); go("signup"); }} />
       )}
