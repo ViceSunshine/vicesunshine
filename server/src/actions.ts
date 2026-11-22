@@ -14,6 +14,8 @@ import { sendCodeEmail } from "../standalone/email";
 const okResponse = z.object({ ok: z.literal(true) });
 type Ok = z.infer<typeof okResponse>;
 const ok = (): Ok => ({ ok: true });
+const addStoryToHighlightResponse = z.object({ ok: z.literal(true), added: z.boolean(), storyCount: z.number() });
+const removeStoryFromHighlightResponse = z.object({ ok: z.literal(true), removed: z.boolean(), highlightDeleted: z.boolean(), storyCount: z.number() });
 
 // Global search (search overlay + full results view): one hit shape
 // for every group — refId is the row's numeric id, extra carries the
@@ -142,7 +144,7 @@ function clanSummaryOf(
     // Crew tags are always shown uppercase (owner's rule) — the tag
     // is stored uppercase at creation; older rows are normalised
     // here so every surface shows the same tag.
-    id: r.id, name: r.name, tag: r.tag.toUpperCase(), color: r.color, motto: r.motto,
+    id: r.id, name: r.name, tag: r.tag.toUpperCase(), color: r.color, colorFinish: r.colorFinish || "", motto: r.motto,
     description: r.description, rules: r.rules ?? "", requirements: r.requirements ?? "",
     // Equipped CREW customisation (migration 0071): the crew badge
     // shown next to the crew name, and the crew page's accent theme.
@@ -155,10 +157,10 @@ function clanSummaryOf(
     // by a member count.
     maxMembers: 0, memberCount, eventsHeld: r.eventsHeld,
     wins: r.wins, faction: r.faction, factionPoints: r.factionPoints,
-    // Effects were removed from ViceSunshine (Nov 19, 2026): no emblem
-    // or profile effects exist anymore, so this is always empty and
-    // nothing renders one, whatever an old row still stores.
-    emblem: r.emblem || "shield", emblemEffect: "", ...g,
+    // The crew's equipped emblem effect (Crew Settings → Crew
+    // customisation → Emblem Effects), stored on the crew row and
+    // animated by ClanEmblem on every surface. "" = no effect.
+    emblem: r.emblem || "shield", emblemEffect: r.emblemEffect || "", ...g,
     walletCredits: r.walletCredits ?? 0,
     // Clan banner styles are gone — the clan calling card is the banner.
     bannerStyle: "",
@@ -282,7 +284,7 @@ type CosmeticItemDef = {
   name: string;
   description: string;
   scope: "clan" | "personal";
-  kind: "emblem" | "color" | "banner" | "badge" | "bannerColor" | "callingCard" | "theme";
+  kind: "emblem" | "color" | "banner" | "badge" | "bannerColor" | "callingCard" | "theme" | "effect";
   value: string;
   // Premium-only items are part of the Premium membership — never
   // sold separately and never equippable without an active Premium.
@@ -304,7 +306,8 @@ type CosmeticItemDef = {
 // from Crew Settings: Crew Badges, Crew Calling Cards / Banner
 // (the old personal Calling Cards list and the old Crew Calling
 // Cards list MERGED into this one — see the calling-card block
-// below), Crew Themes, Crew Emblems and Crew Colours. Premium
+// below), Crew Themes, Crew Emblems, Crew Emblem Effects and
+// Crew Colours. Premium
 // items are part of the Premium membership, never sold separately,
 // and can only be equipped to a crew whose OWNER has Premium; if
 // the owner's Premium ends, equipped Premium items are unequipped
@@ -334,23 +337,39 @@ const COSMETIC_ITEMS: CosmeticItemDef[] = [
   { id: "theme-ice-vice", name: "Ice Vice crew theme — Premium", description: "Premium exclusive — an Ice Vice accent theme for your crew page. The crew's owner needs Premium to equip it.", scope: "clan", kind: "theme", value: "#7DF9FF", premiumOnly: true },
   { id: "theme-ultraviolet-vice", name: "Ultraviolet Vice crew theme — Premium", description: "Premium exclusive — an Ultraviolet Vice accent theme for your crew page. The crew's owner needs Premium to equip it.", scope: "clan", kind: "theme", value: "#9B5DE5", premiumOnly: true },
   // -- Clan Emblems (clan) — 5 free + 3 Premium --
-  { id: "emblem-sunset", name: "Sunset emblem", description: "A sunset-mark crew emblem for your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "sunset" },
-  { id: "emblem-crown-gold", name: "Gold Crown emblem", description: "A gold crown crew emblem for your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "crown" },
-  { id: "emblem-serpent", name: "Serpent emblem", description: "A serpent crew emblem for your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "serpent" },
-  { id: "emblem-diamond", name: "Diamond emblem", description: "A diamond crew emblem for your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "diamond" },
-  { id: "emblem-wave", name: "Wave emblem", description: "A wave crew emblem for your crew card and crew home — Leonida coastline energy. Free for every crew.", scope: "clan", kind: "emblem", value: "wave" },
-  { id: "emblem-vice-crest", name: "Vice Crest crew emblem — Premium", description: "The custom Premium crew emblem — a gold Vice Crest on your crew card and crew home. Included with Premium only, never sold separately: the crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "emblem", value: "vicecrest", premiumOnly: true },
-  { id: "emblem-eclipse", name: "Eclipse emblem — Premium", description: "Premium exclusive — an eclipse crew emblem for your crew card and crew home. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "emblem", value: "eclipse", premiumOnly: true },
-  { id: "emblem-royal-palm", name: "Royal Palm emblem — Premium", description: "Premium exclusive — a royal palm crew emblem for your crew card and crew home. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "emblem", value: "royal-palm", premiumOnly: true },
+  { id: "emblem-sunset", name: "Sunset emblem", description: "AI-designed emblem artwork — a striped neon sunset over ocean waves, framed by palm silhouettes in a glowing ring. For your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "sunset" },
+  { id: "emblem-crown-gold", name: "Gold Crown emblem", description: "AI-designed emblem artwork — a spiked gold crown set with glowing pink and teal jewels over a laurel wreath. For your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "crown" },
+  { id: "emblem-serpent", name: "Serpent emblem", description: "AI-designed emblem artwork — a fierce emerald serpent coiled around a hot-pink neon ring, fangs bared. For your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "serpent" },
+  { id: "emblem-diamond", name: "Diamond emblem", description: "AI-designed emblem artwork — a huge faceted diamond blasting cyan and pink light rays. For your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "diamond" },
+  { id: "emblem-wave", name: "Wave emblem", description: "AI-designed emblem artwork — a massive teal wave curling around a pink sunset glow, Leonida coastline energy. For your crew card and crew home. Free for every crew.", scope: "clan", kind: "emblem", value: "wave" },
+  { id: "emblem-vice-crest", name: "Vice Crest crew emblem — Premium", description: "The custom Premium crew emblem — AI-designed artwork of an ornate gold shield crest with a radiant sun, palm fronds and a glowing pink gemstone, on your crew card and crew home. Included with Premium only, never sold separately: the crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "emblem", value: "vicecrest", premiumOnly: true },
+  { id: "emblem-eclipse", name: "Eclipse emblem — Premium", description: "Premium exclusive — AI-designed emblem artwork of a black eclipse ringed by violet and pink plasma flames inside a steel ring. For your crew card and crew home. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "emblem", value: "eclipse", premiumOnly: true },
+  { id: "emblem-royal-palm", name: "Royal Palm emblem — Premium", description: "Premium exclusive — AI-designed emblem artwork of a majestic palm wearing a small gold crown, backlit by a hot sunset inside a fine gold ring. For your crew card and crew home. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "emblem", value: "royal-palm", premiumOnly: true },
+  // -- Crew Emblem Effects (clan) — 5 free + 3 Premium. The equipped
+  // effect is stored on the crew row (clans.emblem_effect) and
+  // ANIMATES on the crew's emblem everywhere the emblem shows —
+  // crew card, crew page, rankings, crew chat header and the Saved
+  // page — rendered by ClanEmblem as a pure-CSS animated overlay
+  // (reduced-motion safe). It is a real equipped look, never just a
+  // picture in this catalogue: equipping writes the crew row and
+  // every surface re-renders with the animation playing.
+  { id: "effect-neon", name: "Neon Glow emblem effect", description: "A pulsing neon glow that plays on your crew's emblem everywhere it shows. Free for every crew.", scope: "clan", kind: "effect", value: "neon" },
+  { id: "effect-shine", name: "Vice Shine emblem effect", description: "A bright shine that sweeps across your crew's emblem again and again. Free for every crew.", scope: "clan", kind: "effect", value: "shine" },
+  { id: "effect-frost", name: "Frost emblem effect", description: "An icy shimmer with sparkling frost over your crew's emblem. Free for every crew.", scope: "clan", kind: "effect", value: "frost" },
+  { id: "effect-bubbles", name: "Bubbles emblem effect", description: "Bubbles rising through your crew's emblem — Leonida Keys underwater energy. Free for every crew.", scope: "clan", kind: "effect", value: "bubbles" },
+  { id: "effect-sunset-shimmer", name: "Sunset Shimmer emblem effect", description: "A warm sunset shimmer breathing over your crew's emblem. Free for every crew.", scope: "clan", kind: "effect", value: "sunset-shimmer" },
+  { id: "effect-fire", name: "Fire emblem effect — Premium", description: "Premium exclusive — real flickering firelight playing over your crew's emblem. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "effect", value: "fire", premiumOnly: true },
+  { id: "effect-lightning", name: "Lightning emblem effect — Premium", description: "Premium exclusive — electric lightning flashes crackling over your crew's emblem. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "effect", value: "lightning", premiumOnly: true },
+  { id: "effect-gold", name: "Champion Gold emblem effect — Premium", description: "Premium exclusive — a golden shine sweeping over your crew's emblem with a champion's glow. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "effect", value: "gold", premiumOnly: true },
   // -- Clan Colours (clan) — 5 free + 3 Premium --
   { id: "color-classic-teal", name: "Classic Teal crew colour", description: "Classic teal (#2DD4BF) as your crew colour. Free for every crew.", scope: "clan", kind: "color", value: "#2DD4BF" },
   { id: "color-gold", name: "Gold crew colour", description: "Gold (#FFD166) as your crew colour, applied to your crew card and home. Free for every crew.", scope: "clan", kind: "color", value: "#FFD166" },
   { id: "color-ice", name: "Ice crew colour", description: "Ice blue (#7DF9FF) as your crew colour. Free for every crew.", scope: "clan", kind: "color", value: "#7DF9FF" },
   { id: "color-ultraviolet", name: "Ultraviolet crew colour", description: "Ultraviolet (#9B5DE5) as your crew colour. Free for every crew.", scope: "clan", kind: "color", value: "#9B5DE5" },
   { id: "color-vice-pink", name: "Vice Pink crew colour", description: "Vice pink (#FF2E88) as your crew colour. Free for every crew.", scope: "clan", kind: "color", value: "#FF2E88" },
-  { id: "color-molten", name: "Molten Orange crew colour — Premium", description: "Premium exclusive — molten orange (#FF7A00) as your crew colour. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "color", value: "#FF7A00", premiumOnly: true },
-  { id: "color-emerald-premium", name: "Emerald crew colour — Premium", description: "Premium exclusive — emerald green (#39E07A) as your crew colour. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "color", value: "#39E07A", premiumOnly: true },
-  { id: "color-midnight-violet", name: "Midnight Violet crew colour — Premium", description: "Premium exclusive — midnight violet (#5B2A86) as your crew colour. The crew's owner (Leader) must have Premium to equip it.", scope: "clan", kind: "color", value: "#5B2A86", premiumOnly: true },
+  { id: "color-molten", name: "Molten Orange crew colour", description: "Molten orange (#FF7A00) as your crew colour. Free for every crew.", scope: "clan", kind: "color", value: "#FF7A00" },
+  { id: "color-emerald-premium", name: "Emerald crew colour", description: "Emerald green (#39E07A) as your crew colour. Free for every crew.", scope: "clan", kind: "color", value: "#39E07A" },
+  { id: "color-midnight-violet", name: "Midnight Violet crew colour", description: "Midnight violet (#5B2A86) as your crew colour. Free for every crew.", scope: "clan", kind: "color", value: "#5B2A86" },
   // -- Crew Calling Cards / Banner (clan) — 5 free + 3 Premium. THE
   // merged crew calling-card catalogue (Nov 21, 2026): the old
   // personal Calling Cards list and the old Crew Calling Cards list
@@ -390,7 +409,7 @@ function cosmeticItem(id: string): CosmeticItemDef | undefined {
 // other system: Vice Credits paid to clan wallets — see closeSeason
 // and hostConfirmEvent.)
 const AWARD_ITEMS: CosmeticItemDef[] = [
-  { id: "emblem-phoenix", name: "Phoenix emblem", description: "Crew Award — the exclusive emblem for finishing a season ranked #1 on a board. Earned by the whole crew, never for sale.", scope: "clan", kind: "emblem", value: "phoenix" },
+  { id: "emblem-phoenix", name: "Phoenix emblem", description: "Crew Award — AI-designed emblem artwork of a blazing phoenix with flame-feathered wings inside a bronze ring; the exclusive emblem for finishing a season ranked #1 on a board. Earned by the whole crew, never for sale.", scope: "clan", kind: "emblem", value: "phoenix" },
   { id: "award-banner-founders", name: "Founders calling card banner", description: "Crew Award — an exclusive gold Founders calling card (it is also the crew banner) for reaching 10 members. Earned by the whole crew, never for sale.", scope: "clan", kind: "callingCard", value: "founders" },
 ];
 function awardItem(id: string): CosmeticItemDef | undefined {
@@ -697,14 +716,16 @@ async function applyClanAwards(
   const owned = await db.select().from(schema.ownedItems);
   const has = (itemId: string) =>
     owned.some((o) => o.ownerType === "clan" && o.ownerId === String(clanId) && o.itemId === itemId);
-  const grant = async (itemId: string, label: string) => {
+  const grant = async (itemId: string) => {
     if (has(itemId)) return;
     await db.insert(schema.ownedItems).values({ ownerType: "clan", ownerId: String(clanId), itemId, equipped: 0 });
-    await logActivity(ctx, clanId, "ViceSunshine", "earned a Crew Award:", label, "Crew Awards are earned by the whole crew — never for sale");
+    // Awards are granted silently (owner's direction): they show
+    // in the crew's Awards section, never as entries in the crew
+    // Activity log or the crew chat.
   };
-  if (memberCount >= 10) await grant("award-banner-founders", "Founders calling card banner — 10 members");
+  if (memberCount >= 10) await grant("award-banner-founders");
   const wins = await db.select().from(schema.seasonWinners).where(eq(schema.seasonWinners.clanId, clanId));
-  if (wins.some((w) => w.rank === 1)) await grant("emblem-phoenix", "Phoenix emblem — Season Champions");
+  if (wins.some((w) => w.rank === 1)) await grant("emblem-phoenix");
 }
 
 // ---- Settings, privacy and Refer a Friend ----
@@ -1075,6 +1096,7 @@ const clanSummary = z.object({
   name: z.string(),
   tag: z.string(),
   color: z.string(),
+  colorFinish: z.string(),
   motto: z.string(),
   description: z.string(),
   rules: z.string(),
@@ -1341,6 +1363,66 @@ function hashtagsForEvent(type: string, stored: string): string[] {
   }
   return out.slice(0, 8);
 }
+// ---- Feed hashtags (owner's direction, Nov 21 2026) ----
+// Hashtags work everywhere people post: typed into a post
+// caption or a story's text they are recognised, shown as
+// tappable tags on the post, and found by Feed search — a
+// search written as #tag finds exactly the posts and stories
+// carrying that tag. The automatic accounts (GTA NEWS, GTA
+// CLIPPER, Rockstar Games) and the seeded community members
+// append a tag line to their posts too, the way people
+// actually post. Tags are normalised like event hashtags
+// (lowercase, no "#").
+function extractHashtags(text: string): string[] {
+  const found: string[] = [];
+  for (const m of text.matchAll(/#([A-Za-z0-9_]+)/g)) {
+    const tag = (m[1] ?? "").toLowerCase();
+    if (tag && !found.includes(tag)) found.push(tag);
+  }
+  return found.slice(0, 12);
+}
+function feedRowHashtags(r: { title: string; body: string }): string[] {
+  return extractHashtags(`${r.title} ${r.body}`);
+}
+// The tag line the automatic posters append to a post, by
+// category — the base GTA VI tags plus the ones that fit the
+// kind, so a #meme or #carmeet search lands on the right posts.
+const FEED_KIND_HASHTAGS: Record<string, string[]> = {
+  News: ["GTANews"],
+  "News Discussion": ["GTANews"],
+  Clip: ["Clip"],
+  "Streamer Clip": ["StreamerClip", "Clip"],
+  Funny: ["Funny"],
+  Meme: ["Meme", "GTAMemes"],
+  Gameplay: ["Gameplay"],
+  Tutorial: ["Tips", "Guide"],
+  "Car Meet": ["CarMeet"],
+  Screenshot: ["Screenshot"],
+  Discussion: ["Discussion"],
+  Question: ["Question"],
+};
+function botHashtagLine(kind: string): string {
+  const extra = FEED_KIND_HASHTAGS[kind] ?? [];
+  return ["#GTAVI", "#GTA6", "#ViceSunshine", ...extra.map((t) => `#${t}`)].join(" ");
+}
+// A post's full media list: the stored JSON array when the post
+// carries several photos, otherwise just media_url. media_url
+// always holds the first item, so the two never disagree.
+function parseMediaUrls(stored: string, mediaUrl: string): string[] {
+  if (stored) {
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        const urls = parsed.filter((u): u is string => typeof u === "string" && u.length > 0);
+        if (urls.length > 0) return urls.slice(0, 4);
+      }
+    } catch { /* a malformed list falls back to the single URL */ }
+  }
+  return mediaUrl ? [mediaUrl] : [];
+}
+function isVideoMediaUrl(url: string): boolean {
+  return feedMediaOf(url).mediaType === "video" || feedMediaOf(url).mediaType === "youtube";
+}
 // Legacy rows can still carry the old pre-rename event types
 // ("Clan War" / "Clan Event") — they are presented as Crew Events.
 function displayEventType(type: string): string {
@@ -1540,6 +1622,39 @@ async function logActivity(
 ) {
   const db = ctx.db<typeof schema>();
   await db.insert(schema.clanActivity).values({ clanId, actor, action, target, reason });
+  // The same update also appears in the crew's own chat in
+  // Messages as an automatic system message (owner's direction:
+  // the crew page Activity and the crew chat show the same life
+  // updates — joins, leaves, kicks, promotions, demotions,
+  // profile-picture changes and everything else logged here —
+  // always free, nothing to set up). The founding entry is the
+  // one exception: the chat opens with its own founding message
+  // (founder + the date the crew was founded), seeded when the
+  // chat is created, so it is never posted twice.
+  if (action !== "founded the crew") {
+    const text = [actor, action, target].filter((x) => x && x.trim()).join(" ");
+    if (text) await postCrewChatUpdate(ctx, clanId, text);
+  }
+}
+
+// A profile-picture change is a crew life update (owner's
+// direction): when the player belongs to a crew, it is written to
+// that crew's Activity log — and from there into the crew chat,
+// like every other activity entry.
+async function logProfilePictureActivity(
+  ctx: Ctx,
+  playerKey: string,
+  gamertag: string,
+  action: string,
+): Promise<void> {
+  const db = ctx.db<typeof schema>();
+  const rows = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.playerKey, playerKey));
+  const seen = new Set<number>();
+  for (const r of rows) {
+    if (seen.has(r.clanId)) continue;
+    seen.add(r.clanId);
+    await logActivity(ctx, r.clanId, gamertag, action, "", "");
+  }
 }
 
 async function logCredit(
@@ -1653,6 +1768,35 @@ const FEED_KIND_TABS: Record<string, string[]> = {
 };
 const FEED_EXAMPLE_KEY = "viceverse-examples";
 const FEED_AUTO_KEY = "viceverse-auto";
+// The two AI automatic accounts (owner's direction, Nov 21 2026):
+// GTA NEWS posts GTA news to the Feed and GTA CLIPPER posts real
+// clips / videos (streamer clips, funny videos, GTA jokes and
+// memes), TikTok-poster style. They SHARE one search round: the
+// single refreshFeedMedia run fetches news and videos together,
+// then the news posts are authored GTA NEWS and the video posts
+// GTA CLIPPER — no second set of searches, so the monthly free
+// search budget is spent exactly as before. Both accounts are
+// bots, so the Feed labels them "AI" next to their name (isAi in
+// listFeed). The CONTENT is never AI-generated: real news stories
+// and real videos from real creators, embedded / linked to the
+// original source, never re-uploaded.
+const GTA_NEWS_KEY = "gta-news-ai";
+const GTA_CLIPPER_KEY = "gta-clipper-ai";
+// True when a Feed post belongs to one of the AI automatic
+// accounts — including automatic rows not yet re-attributed by a
+// refresh (authored "ViceSunshine Automatic" under the old shared
+// key). Rockstar Games posts keep FEED_AUTO_KEY with their own
+// author name and are NOT AI accounts: they are Rockstar's own
+// official posts, credited to Rockstar.
+function isAiFeedRow(r: { authorKey: string; author: string; auto: number }): boolean {
+  return (
+    r.authorKey === GTA_NEWS_KEY ||
+    r.authorKey === GTA_CLIPPER_KEY ||
+    r.author === "GTA NEWS" ||
+    r.author === "GTA CLIPPER" ||
+    (r.auto === 1 && r.author === "ViceSunshine Automatic")
+  );
+}
 
 // Search snippets arrive with crawler boilerplate ("Last Updated: …
 // ago Last Crawl: … ago") and video titles often carry emoji, which
@@ -2619,6 +2763,43 @@ async function discordRoleStatusFor(ctx: Ctx, playerKey: string) {
 // pattern as the Premium lapse itself.
 const CREW_DEFAULT_EMBLEM = "sunset";
 const CREW_DEFAULT_COLOR = "#FF2E88";
+// Crew colours are stored as #RRGGBB (uppercase). Every surface
+// builds alpha variants straight from the stored value
+// (`${color}99`, `${color}55`), so a short #RGB or lowercase value
+// stored raw would render as broken CSS and silently not show —
+// that is why some colours "didn't work". Anything a colour picker
+// or hex field accepts is normalised through here before it is
+// stored; anything that is not a hex colour at all returns null so
+// the caller can refuse it in plain words.
+function normalizeCrewColor(raw: string): string | null {
+  const t = raw.trim();
+  const short = /^#([0-9a-fA-F]{3})$/.exec(t);
+  if (short?.[1]) return `#${short[1].split("").map((c) => c + c).join("").toUpperCase()}`;
+  const long = /^#([0-9a-fA-F]{6})$/.exec(t);
+  if (long?.[1]) return `#${long[1].toUpperCase()}`;
+  return null;
+}
+// Crew colour finishes (owner's direction, Nov 22 2026): there are
+// NO Premium named colours anymore — all 8 catalogue colours are
+// free. The Premium colour perk is the CUSTOM colour tool itself:
+// any colour the Leader picks or types, plus these finishes. A
+// finish stores its key on the crew row (clans.color_finish) and a
+// representative hex as the crew colour (used for member tags and
+// text accents); the emblem tile and crew-card header render the
+// finish's gradient. "" = a solid colour.
+const CREW_COLOR_FINISHES: Record<string, { name: string; hex: string }> = {
+  chrome: { name: "Chrome", hex: "#C7D0DC" },
+  gold: { name: "Gold Chrome", hex: "#FFD166" },
+  "rose-gold": { name: "Rose Gold", hex: "#E8A58F" },
+  iridescent: { name: "Iridescent", hex: "#C4B5FD" },
+};
+// The 8 free named catalogue colours (uppercase hexes) — a stored
+// crew colour in this set is a free colour; anything else is a
+// custom colour, which is Premium (see setCrewColor / createClan /
+// updateClan and the lapse enforcement below).
+const CREW_CATALOGUE_COLOR_HEXES = new Set(
+  COSMETIC_ITEMS.filter((i) => i.kind === "color").map((i) => i.value.toUpperCase()),
+);
 async function enforceCrewPremiumCosmetics(ctx: Ctx, clanId: number): Promise<void> {
   const db = ctx.db<typeof schema>();
   const clanRows = await db.select().from(schema.clans).where(eq(schema.clans.id, clanId));
@@ -2630,16 +2811,33 @@ async function enforceCrewPremiumCosmetics(ctx: Ctx, clanId: number): Promise<vo
   if (await premiumActiveFor(ctx, leader.playerKey)) return;
   const premiumValueOf = (kind: CosmeticItemDef["kind"]) =>
     new Set(COSMETIC_ITEMS.filter((i) => i.kind === kind && i.premiumOnly).map((i) => i.value));
-  const patch: Partial<{ emblem: string; color: string; callingCard: string; badge: string; themeAccent: string }> = {};
+  // Colour and theme values are hex codes and can reach the row in
+  // either case (the catalogue itself mixes cases), so those two
+  // compare case-insensitively — a Premium colour stored lowercase
+  // must still be caught here, never slip through.
+  const premiumHexOf = (kind: CosmeticItemDef["kind"]) =>
+    new Set(COSMETIC_ITEMS.filter((i) => i.kind === kind && i.premiumOnly).map((i) => i.value.toLowerCase()));
+  const patch: Partial<{ emblem: string; color: string; colorFinish: string; callingCard: string; badge: string; themeAccent: string; emblemEffect: string }> = {};
   if (premiumValueOf("emblem").has(clan.emblem)) patch.emblem = CREW_DEFAULT_EMBLEM;
-  if (premiumValueOf("color").has(clan.color)) patch.color = CREW_DEFAULT_COLOR;
   if (premiumValueOf("callingCard").has(clan.callingCard)) patch.callingCard = "";
   if (premiumValueOf("badge").has(clan.badge ?? "")) patch.badge = "";
-  if (premiumValueOf("theme").has(clan.themeAccent ?? "")) patch.themeAccent = "";
+  if (premiumHexOf("theme").has((clan.themeAccent ?? "").toLowerCase())) patch.themeAccent = "";
+  if (premiumValueOf("effect").has(clan.emblemEffect ?? "")) patch.emblemEffect = "";
   const owned = await db.select().from(schema.ownedItems);
   const equippedPremiumRows = owned.filter(
     (o) => o.ownerType === "clan" && o.ownerId === String(clanId) && o.equipped === 1 && (cosmeticItem(o.itemId)?.premiumOnly ?? false),
   );
+  if (equippedPremiumRows.some((o) => cosmeticItem(o.itemId)?.kind === "color")) patch.color = CREW_DEFAULT_COLOR;
+  // The CUSTOM colour tool is the Premium colour perk now (the
+  // named colours are all free): a crew colour that is not one of
+  // the 8 free catalogue colours is a custom colour, and any
+  // finish is Premium too — when the owner's Premium ends, both
+  // fall back to the free default (Vice Pink, solid). A catalogue
+  // colour is never touched.
+  if ((clan.colorFinish ?? "") !== "" || !CREW_CATALOGUE_COLOR_HEXES.has((clan.color ?? "").toUpperCase())) {
+    patch.colorFinish = "";
+    if (!CREW_CATALOGUE_COLOR_HEXES.has((clan.color ?? "").toUpperCase())) patch.color = CREW_DEFAULT_COLOR;
+  }
   if (Object.keys(patch).length === 0 && equippedPremiumRows.length === 0) return;
   for (const row of equippedPremiumRows) {
     await db.update(schema.ownedItems).set({ equipped: 0 }).where(eq(schema.ownedItems.id, row.id));
@@ -2881,17 +3079,9 @@ async function maybeTransferInactiveLeader(ctx: Ctx, clanId: number): Promise<vo
   await db.update(schema.clanMembers).set({ role: "Leader" }).where(eq(schema.clanMembers.id, successor.id));
   await db.update(schema.clanMembers).set({ role: "Co-Leader" }).where(eq(schema.clanMembers.id, leader.id));
   const note = `Leadership transferred to ${successor.gamertag} — previous leader inactive for 30 days`;
+  // logActivity also announces it in the crew's own chat (every
+  // activity entry is mirrored there as a system message).
   await logActivity(ctx, clanId, "ViceSunshine", note, leader.gamertag, "");
-  // Announce it in the crew's own chat (created on demand if the
-  // crew predates crew chats).
-  await ensureCrewChats(ctx, successor.playerKey);
-  const groups = await db.select().from(schema.chatGroups).where(and(eq(schema.chatGroups.kind, "crew"), eq(schema.chatGroups.clanId, clanId)));
-  const g = groups[0];
-  if (g) {
-    await db.insert(schema.directMessages).values({
-      senderKey: "system", recipientKey: "", body: note, groupId: g.id,
-    });
-  }
   ctx.invalidateQueries();
 }
 
@@ -3377,6 +3567,224 @@ async function dbEntryHasPicture(ctx: Ctx, entry: { imageBlobKey: string }): Pro
   } catch {
     return false;
   }
+}
+
+// ---- Database duplicate merging (owner, Nov 21 2026: "why are
+// there repetiton?") ----
+// The automatic sync names each entry the way its source named
+// it, so the same GTA VI item can land twice: once under a short
+// name and once under the full name ("Jason" / "Jason Duval",
+// "Lucia" / "Lucia Caminos", "Freddie" / "Freddie Gibbs"), once
+// with the manufacturer written into the name and once with it in
+// the manufacturer field ("Bravado Banshee" / "Banshee"), or with
+// a different apostrophe character ("'90 Annis…" / "’90 Annis…").
+// mergeDuplicateDbEntries folds each such set into ONE entry:
+// the team's catalog entry survives first, then the entry with a
+// real picture, the stronger status and the fuller name; the
+// survivor inherits anything the dropped copy had that it lacks,
+// member ratings move over, and the duplicate row is deleted.
+// The matching is deliberately narrow — genuinely different
+// items that merely share a word (Buccaneer vs Buccaneer Custom,
+// Dominator vs Dominator GT, Carbine vs Carbine Rifle Mk II)
+// are never merged.
+function foldDbName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[‘’ʼ´`]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const DB_PLACE_SUFFIX_WORDS = new Set([
+  "gun", "store", "shop", "customs", "garage", "bar", "club", "market",
+  "apartment", "apartments", "safehouse", "station", "tattoo", "parlour",
+  "parlor", "department", "liquor", "wholesale", "weapons",
+]);
+
+function dbEntriesSameEntity(
+  a: { kind: string; name: string; manufacturer: string },
+  b: { kind: string; name: string; manufacturer: string },
+): boolean {
+  if (a.kind !== b.kind) return false;
+  const fa = foldDbName(a.name);
+  const fb = foldDbName(b.name);
+  if (!fa || !fb) return false;
+  if (fa === fb) return true;
+  // The same vehicle or weapon with the manufacturer written
+  // into one copy's name and kept in the manufacturer field on
+  // the other ("Shitzu Squalo" / "Squalo").
+  const ma = foldDbName(a.manufacturer);
+  const mb = foldDbName(b.manufacturer);
+  if (ma && fb === `${ma} ${fa}`) return true;
+  if (mb && fa === `${mb} ${fb}`) return true;
+  const at = fa.split(" ");
+  const bt = fb.split(" ");
+  if (at.length === bt.length) return false;
+  const [shortT, longT] = at.length < bt.length ? [at, bt] : [bt, at];
+  if (!shortT.every((t, i) => longT[i] === t)) return false;
+  const extra = longT.slice(shortT.length);
+  // A character named by first name in one source and by full
+  // name in another is the same person.
+  if (a.kind === "Character") return true;
+  // A location whose longer name only adds what kind of place
+  // it is ("Black Eagle" / "Black Eagle gun store").
+  if (a.kind === "Location") return extra.every((t) => DB_PLACE_SUFFIX_WORDS.has(t));
+  return false;
+}
+
+function dbStatusRank(s: string): number {
+  return s === "Confirmed in trailer" ? 3 : s === "Reported" ? 2 : s === "Returning from GTA V" ? 1 : 0;
+}
+
+type DbEntryRow = typeof schema.dbEntries.$inferSelect;
+
+async function mergeDuplicateDbEntries(ctx: Ctx): Promise<{ merged: number; removedNames: string[] }> {
+  const db = ctx.db<typeof schema>();
+  const rows = await db.select().from(schema.dbEntries);
+  // Group rows that name the same entity (union-find over the
+  // conservative matcher above).
+  const parent = new Map<number, number>();
+  const findRoot = (x: number): number => {
+    let r = x;
+    let next = parent.get(r);
+    while (next !== undefined && next !== r) {
+      r = next;
+      next = parent.get(r);
+    }
+    return r;
+  };
+  for (const r of rows) parent.set(r.id, r.id);
+  for (let i = 0; i < rows.length; i++) {
+    const a = rows[i];
+    if (!a) continue;
+    for (let j = i + 1; j < rows.length; j++) {
+      const b = rows[j];
+      if (!b) continue;
+      if (dbEntriesSameEntity(a, b)) {
+        const ra = findRoot(a.id);
+        const rb = findRoot(b.id);
+        if (ra !== rb) parent.set(ra, rb);
+      }
+    }
+  }
+  const groups = new Map<number, DbEntryRow[]>();
+  for (const r of rows) {
+    const root = findRoot(r.id);
+    const list = groups.get(root) ?? [];
+    list.push(r);
+    groups.set(root, list);
+  }
+  const dupGroups = [...groups.values()].filter((g) => g.length > 1);
+  if (dupGroups.length === 0) return { merged: 0, removedNames: [] };
+  const ratings = await db.select().from(schema.dbRatings);
+  let merged = 0;
+  const removedNames: string[] = [];
+  for (const group of dupGroups) {
+    // Keeper: the team's catalog entry first, then a real
+    // picture, the featured flag, the stronger status, clean
+    // typography and the fuller name; oldest row breaks ties.
+    const scored: { row: DbEntryRow; score: number }[] = [];
+    for (const row of group) {
+      let score = 0;
+      if (row.autoDiscovered === 0) score += 100;
+      if (await dbEntryHasPicture(ctx, row)) score += 40;
+      if (row.featured === 1) score += 10;
+      score += dbStatusRank(row.status) * 5;
+      if (!/[‘’“”]/.test(row.name)) score += 2;
+      score += Math.min(foldDbName(row.name).length, 60) / 100;
+      scored.push({ row, score });
+    }
+    scored.sort((x, y) => y.score - x.score || x.row.id - y.row.id);
+    const keeper = scored[0]?.row;
+    if (!keeper) continue;
+    const drops = scored.slice(1).map((s) => s.row);
+    // Merge: the survivor keeps its own facts and inherits
+    // anything it lacks from the dropped copies.
+    let name = keeper.name;
+    let category = keeper.category;
+    let description = keeper.description;
+    let type = keeper.type;
+    let manufacturer = keeper.manufacturer;
+    let drivetrain = keeper.drivetrain;
+    let sourceName = keeper.sourceName;
+    let sourceUrl = keeper.sourceUrl;
+    let status = keeper.status;
+    let featured = keeper.featured;
+    let imageBlobKey = keeper.imageBlobKey;
+    for (const drop of drops) {
+      // Adopt the fuller form when the survivor only carries
+      // the short form of the same name ("Jason" -> the dropped
+      // copy's "Jason Duval").
+      const fk = foldDbName(name);
+      const fd = foldDbName(drop.name);
+      if (fd !== fk && fd.startsWith(`${fk} `)) name = drop.name;
+      if (!category && drop.category) category = drop.category;
+      if (!description && drop.description) description = drop.description;
+      if (!type && drop.type) type = drop.type;
+      if (!manufacturer && drop.manufacturer) manufacturer = drop.manufacturer;
+      if (!drivetrain && drop.drivetrain) drivetrain = drop.drivetrain;
+      if (!sourceUrl && drop.sourceUrl) {
+        sourceUrl = drop.sourceUrl;
+        sourceName = drop.sourceName;
+      }
+      if (featured !== 1 && drop.featured === 1) featured = 1;
+      // A catalog survivor's status is the team's call; an
+      // auto-discovered survivor takes the stronger status of
+      // the pair (a status is never downgraded by a merge).
+      if (keeper.autoDiscovered === 1 && dbStatusRank(drop.status) > dbStatusRank(status)) {
+        status = drop.status;
+        if (drop.sourceUrl) {
+          sourceUrl = drop.sourceUrl;
+          sourceName = drop.sourceName;
+        }
+      }
+      if (!(await dbEntryHasPicture(ctx, { imageBlobKey })) && (await dbEntryHasPicture(ctx, drop))) {
+        imageBlobKey = drop.imageBlobKey;
+      }
+    }
+    if (
+      name !== keeper.name || category !== keeper.category || description !== keeper.description ||
+      type !== keeper.type || manufacturer !== keeper.manufacturer || drivetrain !== keeper.drivetrain ||
+      sourceName !== keeper.sourceName || sourceUrl !== keeper.sourceUrl || status !== keeper.status ||
+      featured !== keeper.featured || imageBlobKey !== keeper.imageBlobKey
+    ) {
+      await db
+        .update(schema.dbEntries)
+        .set({
+          name, category, description, type, manufacturer, drivetrain,
+          sourceName, sourceUrl, status, featured, imageBlobKey,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.dbEntries.id, keeper.id));
+    }
+    // Member ratings move to the survivor; a member who rated
+    // both copies keeps one rating (the survivor's own).
+    const keeperRatingKeys = new Set(ratings.filter((r) => r.entryId === keeper.id).map((r) => r.playerKey));
+    for (const drop of drops) {
+      for (const rating of ratings.filter((r) => r.entryId === drop.id)) {
+        if (keeperRatingKeys.has(rating.playerKey)) {
+          await db.delete(schema.dbRatings).where(eq(schema.dbRatings.id, rating.id));
+        } else {
+          await db.update(schema.dbRatings).set({ entryId: keeper.id }).where(eq(schema.dbRatings.id, rating.id));
+          keeperRatingKeys.add(rating.playerKey);
+        }
+      }
+      await db.delete(schema.dbEntries).where(eq(schema.dbEntries.id, drop.id));
+      await db.insert(schema.contentCorrections).values({
+        targetType: "Database entry",
+        targetLabel: drop.name.slice(0, 160),
+        field: "duplicate",
+        oldValue: drop.name.slice(0, 500),
+        newValue: `Merged into "${name}" — same ${keeper.kind.toLowerCase()} stored twice under a variant name`.slice(0, 500),
+        sourceName: "ViceSunshine Database upkeep",
+        sourceUrl: "",
+      });
+      merged += 1;
+      removedNames.push(drop.name);
+    }
+  }
+  return { merged, removedNames };
 }
 
 async function generateDbArtFor(ctx: Ctx, entry: typeof schema.dbEntries.$inferSelect): Promise<boolean> {
@@ -4473,11 +4881,24 @@ async function assertOwner(ctx: Ctx, playerKey: string) {
 const profilePostItem = z.object({
   id: z.number(),
   author: z.string(),
+  // True for the AI automatic accounts (GTA NEWS / GTA CLIPPER)
+  // so their name carries the "AI" label wherever a post shows.
+  isAi: z.boolean(),
   authorKey: z.string(),
   kind: z.string(),
   title: z.string(),
   body: z.string(),
   mediaUrl: z.string(),
+  // The post's full media list (several photos, or one video)
+  // and its optional attached link + hashtags, so Saved and
+  // profile cards render a multi-photo post exactly like the
+  // Feed does.
+  mediaUrls: z.array(z.string()),
+  linkUrl: z.string(),
+  // The post's optional location (the creator's Add location),
+  // shown on the post wherever the full card renders.
+  location: z.string(),
+  hashtags: z.array(z.string()),
   mediaType: z.string(),
   embedUrl: z.string(),
   videoId: z.string(),
@@ -4485,6 +4906,12 @@ const profilePostItem = z.object({
   sourceUrl: z.string(),
   likes: z.number(),
   likedByMe: z.boolean(),
+  // The name of one real liker (the most recent one who is not
+  // the viewer), so the post view can run the "Liked by … and
+  // N others" line from the owner's reference layout. "" when
+  // nobody else can be named (no likes yet, or the liker has
+  // no profile) — the client then falls back to a plain count.
+  firstLiker: z.string(),
   commentCount: z.number(),
   views: z.number(),
   shares: z.number(),
@@ -4518,6 +4945,19 @@ async function profilePostItems(ctx: Ctx, rows: ProfilePostRow[], viewerKey: str
   const postAuthorIdOf = await publicProfileIdMap(
     rows.filter((r) => r.authorKey !== viewerKey && profileMap.has(r.authorKey)).map((r) => r.authorKey),
   );
+  // One nameable liker per post for the "Liked by …" line:
+  // the most recent liker who is not the viewer and who has a
+  // profile to take the name from. "" when there is none.
+  const firstLikerOf = (postId: number): string => {
+    const rs = reactions.filter((x) => x.postId === postId);
+    for (let i = rs.length - 1; i >= 0; i--) {
+      const rk = rs[i]?.playerKey;
+      if (!rk || rk === viewerKey) continue;
+      const prof = profileMap.get(rk);
+      if (prof) return prof.displayName.trim() || prof.gamertag;
+    }
+    return "";
+  };
   return rows.map((r) => {
     const imgUrl = imageUrlOf.get(r.id) ?? "";
     const base = feedMediaOf(r.mediaUrl);
@@ -4525,16 +4965,22 @@ async function profilePostItems(ctx: Ctx, rows: ProfilePostRow[], viewerKey: str
     return {
       id: r.id,
       author: r.author,
+      isAi: isAiFeedRow(r),
       authorKey: r.authorKey === viewerKey ? r.authorKey : (postAuthorIdOf.get(r.authorKey) ?? ""),
       kind: r.kind,
       title: r.title,
       body: media.mediaType === "youtube" ? stripVideoUrlsFromBody(r.body, r.mediaUrl) : r.body,
       mediaUrl: media.mediaType === "image" && imgUrl ? imgUrl : r.mediaUrl,
+      mediaUrls: parseMediaUrls(r.mediaUrls, media.mediaType === "image" && imgUrl ? imgUrl : r.mediaUrl),
+      linkUrl: r.linkUrl,
+      location: r.location,
+      hashtags: feedRowHashtags(r),
       ...media,
       sourceName: r.sourceName,
       sourceUrl: r.sourceUrl,
       likes: reactions.filter((x) => x.postId === r.id).length,
       likedByMe: reactions.some((x) => x.postId === r.id && x.playerKey === viewerKey),
+      firstLiker: firstLikerOf(r.id),
       commentCount: comments.filter((x) => x.postId === r.id).length,
       views: viewRows.filter((x) => x.postId === r.id).length,
       shares: r.shares,
@@ -4561,6 +5007,122 @@ async function assertNotInAnotherCrew(ctx: Ctx, playerKey: string, exceptClanId 
   throw new Error(`You're already in ${name} — you can only be in one crew (and one crew chat) at a time. Leave ${name} first to join another crew.`);
 }
 
+// ---- Crew join anti-spam gate (owner's rule, migration 0081) ----
+// Joining a crew directly is a once-a-week thing, and coming BACK
+// to a crew is never direct:
+//   1. One direct join per rolling 7 days, across every crew —
+//      nobody can hop crew to crew to crew.
+//   2. A player who has EVER been in a crew before (they left, or
+//      they were kicked) cannot walk straight back in. They send
+//      a join REQUEST instead: it appears as a card in that crew's
+//      group chat, and only the crew's Leader can accept it.
+// Founding a crew and being accepted through a request/application
+// both count as joins for the weekly clock — the Leader's accept
+// is the gate there, so approvals themselves are never blocked.
+const CREW_JOIN_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function recordCrewJoin(
+  ctx: Ctx,
+  clanId: number,
+  playerKey: string,
+  gamertag: string,
+  how: "direct" | "approved" | "founded",
+): Promise<void> {
+  const db = ctx.db<typeof schema>();
+  await db.insert(schema.crewJoinHistory).values({ clanId, playerKey, gamertag, how });
+}
+
+// The player's join history, matched by account key OR gamertag —
+// the same person under a fresh device key is still the same
+// person (the rule healMembershipKey already lives by).
+async function crewJoinGate(
+  ctx: Ctx,
+  clanId: number,
+  playerKey: string,
+  gamertag: string,
+): Promise<{ directAllowed: boolean; reason: "" | "returning" | "weekly"; lastJoinAt: string }> {
+  const db = ctx.db<typeof schema>();
+  const tag = gamertag.trim().toLowerCase();
+  const rows = (await db.select().from(schema.crewJoinHistory)).filter(
+    (r) => r.playerKey === playerKey || (tag !== "" && r.gamertag.trim().toLowerCase() === tag),
+  );
+  const returning = rows.some((r) => r.clanId === clanId);
+  let lastMs = 0;
+  for (const r of rows) {
+    const t = r.joinedAt ? r.joinedAt.getTime() : 0;
+    if (t > lastMs) lastMs = t;
+  }
+  const lastJoinAt = lastMs > 0 ? new Date(lastMs).toISOString() : "";
+  if (returning) return { directAllowed: false, reason: "returning", lastJoinAt };
+  if (lastMs > 0 && Date.now() - lastMs < CREW_JOIN_WEEK_MS) {
+    return { directAllowed: false, reason: "weekly", lastJoinAt };
+  }
+  return { directAllowed: true, reason: "", lastJoinAt };
+}
+
+// A pending join REQUEST (kind "join_request") this player already
+// has open with this crew, if any — one open request per player
+// per crew, so the crew chat never fills with duplicate cards.
+async function pendingJoinRequest(
+  ctx: Ctx,
+  clanId: number,
+  playerKey: string,
+  gamertag: string,
+) {
+  const db = ctx.db<typeof schema>();
+  const tag = gamertag.trim().toLowerCase();
+  const rows = await db
+    .select()
+    .from(schema.clanApplications)
+    .where(
+      and(
+        eq(schema.clanApplications.clanId, clanId),
+        eq(schema.clanApplications.kind, "join_request"),
+        eq(schema.clanApplications.status, "Pending"),
+      ),
+    );
+  return (
+    rows.find(
+      (a) => a.playerKey === playerKey || (tag !== "" && a.gamertag.trim().toLowerCase() === tag),
+    ) ?? null
+  );
+}
+
+// Files a join request for a public crew the player cannot enter
+// directly, and posts its card into the crew's group chat — the
+// Leader accepts or declines it right there. Returns the
+// application row (an already-open one is returned as-is, never
+// duplicated).
+async function fileCrewJoinRequest(
+  ctx: Ctx,
+  clan: typeof schema.clans.$inferSelect,
+  playerKey: string,
+  gamertag: string,
+  message: string,
+  reason: "returning" | "weekly",
+) {
+  const db = ctx.db<typeof schema>();
+  const existingReq = await pendingJoinRequest(ctx, clan.id, playerKey, gamertag);
+  if (existingReq) return existingReq;
+  const res = await db
+    .insert(schema.clanApplications)
+    .values({ clanId: clan.id, playerKey, gamertag, message, kind: "join_request" })
+    .returning({ id: schema.clanApplications.id });
+  const appId = res[0]?.id ?? 0;
+  const gid = await syncCrewChat(ctx, clan.id);
+  if (gid > 0 && appId > 0) {
+    const body =
+      reason === "returning"
+        ? `${gamertag} was in ${clan.name} before and has requested to join again — only the Leader can accept or decline, right here.`
+        : `${gamertag} has requested to join ${clan.name} — they already used their one direct crew join this week, so only the Leader can accept or decline, right here.`;
+    await db.insert(schema.directMessages).values({
+      senderKey: "system", recipientKey: "", groupId: gid, body, joinRequestId: appId,
+    });
+  }
+  const rows = await db.select().from(schema.clanApplications).where(eq(schema.clanApplications.id, appId));
+  return rows[0] ?? null;
+}
+
 // Crew chats are AUTOMATIC (owner's direction): every crew has a
 // chat, created the moment the crew exists, and its membership
 // always mirrors the crew's member list — joining a crew puts you
@@ -4579,8 +5141,151 @@ async function removeFromCrewChat(ctx: Ctx, clanId: number, playerKey: string): 
   }
 }
 
+// One person, one membership row per crew (owner-reported fix):
+// membership used to be matched by playerKey only, so the SAME
+// person signing in under a fresh device key joined the same crew
+// a second time — a second member row, a second "joined" entry in
+// the activity log, and the members list showed them twice (once
+// as "(you)"). Gamertags are unique per account, so rows sharing
+// a gamertag in one crew are always the same person: rebind a
+// stale row to the player's current key, or delete it when the
+// current key already has a row in that crew.
+async function healMembershipKey(ctx: Ctx, playerKey: string): Promise<void> {
+  const db = ctx.db<typeof schema>();
+  const profRows = await db.select().from(schema.profiles).where(eq(schema.profiles.playerKey, playerKey));
+  const me = profRows[0];
+  if (!me) return;
+  const tag = me.gamertag.trim().toLowerCase();
+  if (!tag) return;
+  const all = await db.select().from(schema.clanMembers);
+  const mine = all.filter((r) => r.playerKey === playerKey);
+  for (const r of all) {
+    if (r.playerKey === playerKey) continue;
+    if (r.gamertag.trim().toLowerCase() !== tag) continue;
+    if (mine.some((x) => x.clanId === r.clanId)) {
+      await db.delete(schema.clanMembers).where(eq(schema.clanMembers.id, r.id));
+    } else {
+      await db.update(schema.clanMembers).set({ playerKey }).where(eq(schema.clanMembers.id, r.id));
+      mine.push({ ...r, playerKey });
+    }
+  }
+  // ONE crew per person (owner's rule): the consolidation above
+  // can leave the SAME person holding membership rows in several
+  // crews at once — they joined one crew per device key before
+  // the rows were merged — and every one of those crews' chats
+  // then shows in their Messages, even though they can only
+  // really be in one crew. Keep the crew they joined FIRST (the
+  // membership every later join should have been refused against)
+  // and remove them from the rest: the extra membership rows go,
+  // each removal is announced in that crew's Activity log and
+  // crew chat like any other leave, and ensureCrewChats then
+  // takes them out of those crews' chats, so a crew chat only
+  // ever shows for the one crew they are actually in.
+  const clanIds = [...new Set(mine.map((r) => r.clanId))];
+  if (clanIds.length > 1) {
+    const ordered = [...mine].sort(
+      (a, b) => a.joinedAt.getTime() - b.joinedAt.getTime() || a.id - b.id,
+    );
+    const keep = ordered[0];
+    if (keep) {
+      for (const extra of ordered.slice(1)) {
+        if (extra.role === "Leader") {
+          // A Leader is never silently dropped from their own
+          // crew by a read: with members remaining, leadership
+          // passes exactly as it does on a voluntary leave; as
+          // the sole member they keep the crew (a read never
+          // dissolves a crew) and stay in its chat.
+          const crewRows = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, extra.clanId));
+          const others = crewRows.filter((m) => m.id !== extra.id);
+          if (others.length === 0) continue;
+          const rankOf = (r: string) => ROLE_RANK[r] ?? 0;
+          const successor = [...others].sort((a, b) => rankOf(b.role) - rankOf(a.role) || a.id - b.id)[0];
+          if (!successor) continue;
+          await db.update(schema.clanMembers).set({ role: "Leader" }).where(eq(schema.clanMembers.id, successor.id));
+          await db.delete(schema.clanMembers).where(eq(schema.clanMembers.id, extra.id));
+          await logActivity(ctx, extra.clanId, me.gamertag, "left the crew — leadership passed to", successor.gamertag, "");
+        } else {
+          await db.delete(schema.clanMembers).where(eq(schema.clanMembers.id, extra.id));
+          await logActivity(ctx, extra.clanId, me.gamertag, "left the crew", "", "");
+        }
+      }
+    }
+  }
+}
+
+// The founding line that opens every crew chat: who founded the
+// crew, and the date it was founded (the crew's own created_at).
+function crewFoundedText(clanName: string, founderTag: string, createdAt: Date): string {
+  const date = createdAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+  return founderTag
+    ? `${founderTag} founded the crew — ${clanName} was founded on ${date}`
+    : `${clanName} was founded on ${date}`;
+}
+
+// Creates (or re-syncs) ONE crew's automatic chat and returns its
+// group id (0 when the crew is gone). Membership always mirrors
+// clan_members — the Leader goes in first and owns the chat. A
+// brand-new chat opens with the founding message (founder +
+// founding date) as its very first message.
+async function syncCrewChat(ctx: Ctx, clanId: number): Promise<number> {
+  const db = ctx.db<typeof schema>();
+  const clanRows = await db.select().from(schema.clans).where(eq(schema.clans.id, clanId));
+  const clan = clanRows[0];
+  if (!clan) return 0;
+  const members = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, clanId));
+  const leader = members.find((m) => m.role === "Leader") ?? members[0];
+  const ordered = [...members].sort((a, b) => (a.role === "Leader" ? 0 : 1) - (b.role === "Leader" ? 0 : 1) || a.id - b.id);
+  const groups = await db.select().from(schema.chatGroups).where(and(eq(schema.chatGroups.kind, "crew"), eq(schema.chatGroups.clanId, clanId)));
+  const existing = groups[0];
+  if (!existing) {
+    const res = await db.insert(schema.chatGroups).values({
+      kind: "crew", name: clan.name, clanId, ownerKey: leader?.playerKey ?? "",
+    }).returning({ id: schema.chatGroups.id });
+    const gid = res[0]?.id ?? 0;
+    if (gid > 0) {
+      for (const m of ordered) {
+        await db.insert(schema.chatGroupMembers).values({ groupId: gid, playerKey: m.playerKey });
+      }
+      await db.insert(schema.directMessages).values({
+        senderKey: "system", recipientKey: "", groupId: gid,
+        body: crewFoundedText(clan.name, leader?.gamertag ?? "", clan.createdAt),
+      });
+    }
+    return gid;
+  }
+  if (existing.name !== clan.name || (leader && existing.ownerKey !== leader.playerKey)) {
+    await db.update(schema.chatGroups)
+      .set({ name: clan.name, ownerKey: leader?.playerKey ?? existing.ownerKey })
+      .where(eq(schema.chatGroups.id, existing.id));
+  }
+  const rows = await db.select().from(schema.chatGroupMembers).where(eq(schema.chatGroupMembers.groupId, existing.id));
+  const have = new Set(rows.map((r) => r.playerKey));
+  const want = new Set(members.map((m) => m.playerKey));
+  for (const m of ordered) {
+    if (!have.has(m.playerKey)) await db.insert(schema.chatGroupMembers).values({ groupId: existing.id, playerKey: m.playerKey });
+  }
+  for (const r of rows) {
+    if (!want.has(r.playerKey)) await db.delete(schema.chatGroupMembers).where(eq(schema.chatGroupMembers.id, r.id));
+  }
+  return existing.id;
+}
+
+// Posts one automatic life update into a crew's chat as a system
+// message — the same text the crew page's Activity log shows, so
+// the two never drift apart. Free, always on, no setting, nothing
+// for the player to create or switch on.
+async function postCrewChatUpdate(ctx: Ctx, clanId: number, text: string): Promise<void> {
+  const gid = await syncCrewChat(ctx, clanId);
+  if (gid <= 0) return;
+  const db = ctx.db<typeof schema>();
+  await db.insert(schema.directMessages).values({
+    senderKey: "system", recipientKey: "", groupId: gid, body: text,
+  });
+}
+
 async function ensureCrewChats(ctx: Ctx, playerKey: string): Promise<void> {
   const db = ctx.db<typeof schema>();
+  await healMembershipKey(ctx, playerKey);
   const myMemberships = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.playerKey, playerKey));
   const clanIds = [...new Set(myMemberships.map((m) => m.clanId))];
   // Self-heal the other direction too: if this player still sits
@@ -4598,47 +5303,8 @@ async function ensureCrewChats(ctx: Ctx, playerKey: string): Promise<void> {
       }
     }
   }
-  if (myMemberships.length === 0) return;
-  const clans = await db.select().from(schema.clans);
-  const clanById = new Map(clans.map((c) => [c.id, c]));
-  const allMembers = await db.select().from(schema.clanMembers);
-  const groups = await db.select().from(schema.chatGroups);
   for (const clanId of clanIds) {
-    const clan = clanById.get(clanId);
-    if (!clan) continue;
-    const members = allMembers.filter((m) => m.clanId === clanId);
-    const leader = members.find((m) => m.role === "Leader") ?? members[0];
-    const existing = groups.find((x) => x.kind === "crew" && x.clanId === clanId);
-    if (!existing) {
-      const res = await db.insert(schema.chatGroups).values({
-        kind: "crew", name: clan.name, clanId, ownerKey: leader?.playerKey ?? playerKey,
-      }).returning({ id: schema.chatGroups.id });
-      const gid = res[0]?.id ?? 0;
-      if (gid > 0) {
-        // The Leader goes in first — they created the crew, so they
-        // are the crew chat's first member (and its owner).
-        const ordered = [...members].sort((a, b) => (a.role === "Leader" ? 0 : 1) - (b.role === "Leader" ? 0 : 1) || a.id - b.id);
-        for (const m of ordered) {
-          await db.insert(schema.chatGroupMembers).values({ groupId: gid, playerKey: m.playerKey });
-        }
-      }
-      continue;
-    }
-    if (existing.name !== clan.name || (leader && existing.ownerKey !== leader.playerKey)) {
-      await db.update(schema.chatGroups)
-        .set({ name: clan.name, ownerKey: leader?.playerKey ?? existing.ownerKey })
-        .where(eq(schema.chatGroups.id, existing.id));
-    }
-    const rows = await db.select().from(schema.chatGroupMembers).where(eq(schema.chatGroupMembers.groupId, existing.id));
-    const have = new Set(rows.map((r) => r.playerKey));
-    const want = new Set(members.map((m) => m.playerKey));
-    const orderedMembers = [...members].sort((a, b) => (a.role === "Leader" ? 0 : 1) - (b.role === "Leader" ? 0 : 1) || a.id - b.id);
-    for (const m of orderedMembers) {
-      if (!have.has(m.playerKey)) await db.insert(schema.chatGroupMembers).values({ groupId: existing.id, playerKey: m.playerKey });
-    }
-    for (const r of rows) {
-      if (!want.has(r.playerKey)) await db.delete(schema.chatGroupMembers).where(eq(schema.chatGroupMembers.id, r.id));
-    }
+    await syncCrewChat(ctx, clanId);
   }
 }
 
@@ -4873,25 +5539,19 @@ export const Actions = {
         return { checked: false, overall: latest?.overall ?? "unknown", checkedAt: latest ? latest.createdAt.toISOString() : new Date(requestedMs).toISOString() };
       }
       await setMeta(ctx, "rockstar_check_requested_at", new Date().toISOString());
-      // Standalone note: there is no agent in this build, so
-      // ctx.agent.spawnTask runs the Rockstar check directly (a
-      // real fetch of Rockstar's page, see server/standalone/ctx.ts)
-      // and reports whether it actually succeeded. This handler
-      // returns checked: spawned.ok instead of pretending a check
-      // happened. The last real status stays on screen when it fails.
-      const spawned = await ctx.agent.spawnTask(
+      await ctx.agent.spawnTask(
         [
-          "Check Rockstar's official service status page and store what it says in ViceSunshine.",
+          "Check Rockstar's official service status page and store what it says in the ViceSunshine artifact (slug: leonida-hub).",
           "",
           `1. Open this exact page in the browser: ${ROCKSTAR_STATUS_URL} — it is Rockstar Games' own service status page ("Service Status - Rockstar Games Customer Support"). The service list loads after the page shell, so wait until the service / platform lines are actually visible; if they are not visible yet, wait a few seconds and open the page once more before deciding it cannot be read. Read the overall banner and every service / platform line on it (Grand Theft Auto Online per platform, Red Dead Online per platform, Online Services such as Authentication, Rockstar Games Launcher and Store, and any others listed).`,
-          "2. Call the ViceSunshine action saveRockstarStatusCheck with:",
+          "2. Call the artifact action saveRockstarStatusCheck (artifact slug \"leonida-hub\") with:",
           "   - overall: \"operational\" if every listed service is operational; \"issues\" if any service is limited, degraded or under maintenance but none is down; \"down\" if any service is down, in outage or unavailable; \"unknown\" if the page could not be opened or read.",
           "   - services: one entry per service or platform line the page lists, named as the page names it (for example \"Grand Theft Auto Online — PlayStation 5\"), with status \"Operational\", \"Limited\", \"Down\" or \"Unknown\" matching the page's own wording for that line.",
           "Report ONLY what Rockstar's own page says. Do not use any other website, search result or prior knowledge for the status, and do not guess a state the page does not show.",
         ].join("\n"),
       );
       return {
-        checked: spawned.ok,
+        checked: true,
         overall: latest?.overall ?? "unknown",
         checkedAt: latest ? latest.createdAt.toISOString() : new Date().toISOString(),
       };
@@ -5516,7 +6176,7 @@ export const Actions = {
   }),
 
   refreshFeedMedia: defineAction({
-    description: "Automatic Feed refresh: searches the web for real GTA VI videos (official trailers and news videos, streamer clips, tutorials, gameplay, car meets, memes, plus newly reported glitches, tips and tricks as they appear online) and adds new ones as Automatic posts linked to the original YouTube source, plus the day's trending GTA VI news stories as Automatic News posts linked to the original article. Videos are embedded/linked, never re-uploaded; deduped by video id, title and source URL.",
+    description: "Automatic Feed refresh — ONE shared search round for the two AI automatic accounts: the same searches fetch real GTA VI videos (official trailers and news videos, streamer clips, funny videos, GTA jokes and memes, tutorials, gameplay, car meets, plus newly reported glitches, tips and tricks as they appear online) AND the day's trending GTA VI news stories together, then split them — video posts are authored by the AI account GTA CLIPPER and news posts by the AI account GTA NEWS, each linked to its original source. No separate searches per account, so the search budget is spent exactly as before. Videos are real videos from real creators (AI-generated videos are refused), embedded/linked, never re-uploaded; deduped by video id, title and source URL. The run also re-attributes older automatic posts (authored 'ViceSunshine Automatic') to the two AI accounts: posts with a video go to GTA CLIPPER, the rest to GTA NEWS. Every automatic post (GTA CLIPPER, GTA NEWS and the Rockstar Games pass) ends with a hashtag line fitted to its category (#GTAVI #GTA6 #ViceSunshine plus kind tags like #Meme or #CarMeet), so the posts are findable by hashtag search like everyone else's.",
     request: z.object({}),
     response: z.object({ added: z.number(), checkedAt: z.string() }),
     async handler(ctx) {
@@ -5527,6 +6187,26 @@ export const Actions = {
       }
       let added = 0;
       const existing = await db.select().from(schema.feedPosts);
+      // Re-attribution sweep (owner's direction, Nov 21 2026):
+      // automatic posts used to be authored "ViceSunshine
+      // Automatic" under one shared key. They now belong to the
+      // two AI accounts — a post carrying a real video goes to
+      // GTA CLIPPER, the rest (news stories) to GTA NEWS.
+      // Idempotent: rows already under an AI key, community posts
+      // and Rockstar Games official posts are never touched.
+      for (const r of existing) {
+        if (r.authorKey !== FEED_AUTO_KEY || r.author !== "ViceSunshine Automatic") continue;
+        const toClipper = Boolean(youtubeIdOf(r.mediaUrl));
+        await db
+          .update(schema.feedPosts)
+          .set({
+            authorKey: toClipper ? GTA_CLIPPER_KEY : GTA_NEWS_KEY,
+            author: toClipper ? "GTA CLIPPER" : "GTA NEWS",
+          })
+          .where(eq(schema.feedPosts.id, r.id));
+        r.authorKey = toClipper ? GTA_CLIPPER_KEY : GTA_NEWS_KEY;
+        r.author = toClipper ? "GTA CLIPPER" : "GTA NEWS";
+      }
       // Re-verification sweep: recheck every Automatic video already
       // in the Feed. A video YouTube now says is gone or not
       // embeddable loses its player for good — the post stays as text
@@ -5586,7 +6266,7 @@ export const Actions = {
         { query: "site:youtube.com GTA VI tutorial guide video", kind: "Tutorial", blurb: "A GTA VI tutorial / guide video." },
         { query: "site:youtube.com GTA VI gameplay video", kind: "Gameplay", blurb: "GTA VI gameplay video." },
         { query: "site:youtube.com GTA VI car meet video", kind: "Car Meet", blurb: "A GTA car meet video to inspire ViceSunshine community meets." },
-        { query: "site:youtube.com GTA VI meme video", kind: "Meme", blurb: "A GTA VI meme video doing the rounds." },
+        { query: "site:youtube.com GTA VI meme jokes funny video", kind: "Meme", blurb: "A GTA jokes / meme video doing the rounds." },
         { query: "site:youtube.com GTA VI funny moments video", kind: "Funny", blurb: "Funny GTA VI moments." },
         { query: "site:youtube.com GTA VI glitch bug discovered video", kind: "Gameplay", blurb: "A newly reported GTA VI glitch / bug, posted as a community report with the source linked — confirmed issues are followed up in the Bug Tracker. Found a glitch yourself? Report it there." },
         { query: "site:youtube.com GTA VI tips and tricks video", kind: "Tutorial", blurb: "GTA VI tips and tricks from the community — checked against the source before you rely on them." },
@@ -5618,6 +6298,10 @@ export const Actions = {
           const title = stripEmoji((r.title ?? "").replace(/\s+/g, " ").trim());
           if (!title) continue;
           if (/leak|download|apk|crack|free gta|mod menu/i.test(title)) continue;
+          // Real videos only (owner's direction): anything that
+          // presents itself as AI-generated is refused — GTA
+          // CLIPPER posts real clips from real creators.
+          if (/ai[ -]?generated|ai[ -]?made|made with ai|\bsora\b/i.test(title)) continue;
           if (seenTitles.has(title.toLowerCase())) continue;
           // Candidate video URLs: the result itself when it is a
           // YouTube page, otherwise YouTube URLs embedded in the
@@ -5652,13 +6336,14 @@ export const Actions = {
           }
           const snippet = cleanFoundText(r.content ?? "").slice(0, 280);
           await db.insert(schema.feedPosts).values({
-            authorKey: FEED_AUTO_KEY,
-            author: "ViceSunshine Automatic",
+            authorKey: GTA_CLIPPER_KEY,
+            author: "GTA CLIPPER",
             kind: s.kind as typeof schema.feedPosts.$inferInsert.kind,
             title: title.slice(0, 140),
             body:
-              `${s.blurb} Found automatically by ViceSunshine from ${sourceName} — watch the original at the source; ViceSunshine never re-uploads videos.` +
-              (snippet ? `\n\n${snippet}` : ""),
+              `${s.blurb} Posted automatically by GTA CLIPPER from ${sourceName} — a real video from its original creator; watch the original at the source. ViceSunshine never re-uploads videos.` +
+              (snippet ? `\n\n${snippet}` : "") +
+              `\n\n${botHashtagLine(s.kind)}`,
             mediaUrl: url.slice(0, 500),
             auto: 1,
             sourceName,
@@ -5730,7 +6415,8 @@ export const Actions = {
               title: title.slice(0, 140),
               body:
                 "Official post from Rockstar Games, shared into the ViceSunshine community automatically — the original is on Rockstar's own site, linked as the source below." +
-                (snippet ? `\n\n${snippet}` : ""),
+                (snippet ? `\n\n${snippet}` : "") +
+                `\n\n${botHashtagLine("News")}`,
               mediaUrl: "",
               auto: 1,
               sourceName: "Rockstar Games",
@@ -5745,10 +6431,14 @@ export const Actions = {
       // Trending news pass: the day's GTA VI news stories (not just
       // videos) join the Feed as Automatic News posts — bold headline,
       // summary text, and a link to the original article, exactly like
-      // the news items in a social feed. Deduped by title and source
-      // URL; nothing is stored when a search finds nothing usable, and
-      // no article text or image is copied — the summary is the search
-      // snippet and the full story stays at the source.
+      // the news items in a social feed. These come out of THIS SAME
+      // refresh run and are authored by the AI account GTA NEWS (the
+      // video posts above are GTA CLIPPER's) — one shared search
+      // round feeds both accounts, never a second round per account.
+      // Deduped by title and source URL; nothing is stored when a
+      // search finds nothing usable, and no article text or image is
+      // copied — the summary is the search snippet and the full story
+      // stays at the source.
       const seenSourceUrls = new Set(existing.map((r) => r.sourceUrl).filter(Boolean));
       const newsSearches = ["GTA VI news today", "GTA VI streamer news", "first player finishes GTA VI story", "Grand Theft Auto VI headline news"];
       let newsAdded = 0;
@@ -5792,12 +6482,12 @@ export const Actions = {
           seenSourceUrls.add(url);
           const imageBlobKey = await fetchEditorialImage(ctx, url);
           await db.insert(schema.feedPosts).values({
-            authorKey: FEED_AUTO_KEY,
-            author: "ViceSunshine Automatic",
+            authorKey: GTA_NEWS_KEY,
+            author: "GTA NEWS",
             kind: "News",
             imageBlobKey,
             title: title.slice(0, 140),
-            body: `Trending GTA VI news, found automatically by ViceSunshine from ${sourceName} — read the full story at the source.\n\n${snippet}`,
+            body: `Trending GTA VI news, posted automatically by GTA NEWS from ${sourceName} — read the full story at the source.\n\n${snippet}\n\n${botHashtagLine("News")}`,
             mediaUrl: "",
             auto: 1,
             sourceName,
@@ -6027,6 +6717,17 @@ export const Actions = {
     },
   }),
 
+  dedupeDbEntries: defineAction({
+    description: "Database upkeep: finds entries that are the same GTA VI vehicle, weapon, character or location stored twice under variant names — a short name vs the full name (Jason / Jason Duval), the manufacturer written into the name (Bravado Banshee / Banshee), or the same name with a different apostrophe character — and merges each set into one entry. The team's catalog entry survives (then the one with a real picture, the stronger status and the fuller name), it inherits anything the dropped copy had that it lacks, member ratings move over, and the duplicate rows are removed. Also runs automatically at the end of every Database sync and catalog reconcile, so duplicates cannot build back up. Genuinely different items that merely share a word (Buccaneer vs Buccaneer Custom, Dominator vs Dominator GT) are never merged.",
+    request: z.object({}),
+    response: z.object({ merged: z.number(), removedNames: z.array(z.string()) }),
+    async handler(ctx) {
+      const result = await mergeDuplicateDbEntries(ctx);
+      ctx.invalidateQueries();
+      return result;
+    },
+  }),
+
   refreshDbEntries: defineAction({
     description: "Automatic Database upkeep: searches the web (Rockstar's official GTA VI pages first, then GTA news coverage) for new or changed GTA VI vehicles, weapons, characters and locations, then adds genuinely new entries and updates existing ones on its own — no one adds them by hand. An entry is only stored when a search result explicitly names it as a GTA VI entry, with its source copied exactly; a 'Confirmed in trailer' status is never downgraded, and an official-source entry is never overwritten by a weaker claim. New entries are flagged auto-discovered so the catalog reconcile never deletes them, and the artwork pipeline paints their pictures automatically. Runs on a schedule and when the Database opens; throttled to one real check per 30 minutes.",
     request: z.object({}),
@@ -6090,7 +6791,7 @@ export const Actions = {
           extracted = [];
         }
         const existing = await db.select().from(schema.dbEntries);
-        const byKey = new Map(existing.map((r) => [`${r.kind}:${r.name.trim().toLowerCase()}`, r]));
+        const byKey = new Map(existing.map((r) => [`${r.kind}:${foldDbName(r.name)}`, r]));
         for (const f of extracted) {
           const name = stripEmoji(f.name.replace(/\s+/g, " ").trim()).slice(0, 120);
           if (name.length < 2) continue;
@@ -6099,8 +6800,17 @@ export const Actions = {
           const description = cleanFoundText(f.description ?? "").slice(0, 1200);
           if (description.length < 10) continue;
           const category = cleanFoundText(f.category ?? "").slice(0, 60);
-          const key = `${f.kind}:${name.toLowerCase()}`;
-          const row = byKey.get(key);
+          const key = `${f.kind}:${foldDbName(name)}`;
+          // Match on the folded name first, then on the
+          // same-entity rules (short name vs full name,
+          // manufacturer written into the name) — a source that
+          // names an entry differently from the stored copy
+          // updates that copy instead of adding a duplicate.
+          let row = byKey.get(key);
+          if (!row) {
+            row = existing.find((r) => dbEntriesSameEntity(r, { kind: f.kind, name, manufacturer: "" }));
+            if (row) byKey.set(key, row);
+          }
           if (!row) {
             if (added >= 6) continue;
             const [inserted] = await db.insert(schema.dbEntries).values({
@@ -6117,7 +6827,10 @@ export const Actions = {
               drivetrain: "",
               autoDiscovered: 1,
             }).returning();
-            if (inserted) byKey.set(key, inserted);
+            if (inserted) {
+              byKey.set(key, inserted);
+              existing.push(inserted);
+            }
             added += 1;
             continue;
           }
@@ -6144,6 +6857,11 @@ export const Actions = {
           updated += 1;
         }
       }
+      // Duplicate sweep (owner, Nov 21 2026): fold away any
+      // entry this run — or an earlier one — stored twice under
+      // a variant name, so the Database never shows the same
+      // vehicle, weapon, character or location twice.
+      await mergeDuplicateDbEntries(ctx);
       // Self-correction (owner, Nov 21 2026): the same fresh
       // reporting also checks the news stories, team guides and
       // map labels — and re-checks Database entries the
@@ -7849,12 +8567,12 @@ export const Actions = {
       platform: platformEnum.default("PS5"),
       region: z.string().trim().max(40).default(""),
       playstyle: z.string().trim().max(40).default(""),
-      psnId: z.string().trim().max(60).default(""),
-      xboxId: z.string().trim().max(60).default(""),
+      psnId: z.string().trim().max(200).default(""),
+      xboxId: z.string().trim().max(200).default(""),
       // Optional Rockstar Social Club ID — never required, and its
       // visibility defaults to PRIVATE (crew-only), the safe default.
-      rockstarId: z.string().trim().max(60).default(""),
-      discordId: z.string().trim().max(60).default(""),
+      rockstarId: z.string().trim().max(200).default(""),
+      discordId: z.string().trim().max(200).default(""),
       others: z
         .array(z.object({ label: z.string().trim().min(1).max(30), url: z.string().trim().min(3).max(300) }))
         .max(5)
@@ -8287,6 +9005,9 @@ export const Actions = {
         .set({ customAvatarBlobKey: key })
         .where(eq(schema.profiles.id, prof.id));
       const url = await ctx.blobs.getUrl(key);
+      // Crew life update: their crew's Activity log and crew chat
+      // note the new profile picture on their own.
+      await logProfilePictureActivity(ctx, args.playerKey, prof.gamertag, "updated their profile picture");
       ctx.invalidateQueries();
       return { url };
     },
@@ -8304,10 +9025,15 @@ export const Actions = {
         .where(eq(schema.profiles.playerKey, args.playerKey));
       const prof = rows[0];
       if (!prof) throw new Error("Create your profile first.");
+      const hadPicture = Boolean(prof.customAvatarBlobKey);
       await db
         .update(schema.profiles)
         .set({ customAvatarBlobKey: "" })
         .where(eq(schema.profiles.id, prof.id));
+      // Crew life update — only when a picture really came off.
+      if (hadPicture) {
+        await logProfilePictureActivity(ctx, args.playerKey, prof.gamertag, "removed their profile picture");
+      }
       ctx.invalidateQueries();
       return ok();
     },
@@ -8399,10 +9125,10 @@ export const Actions = {
       platform: platformEnum.default("PS5"),
       region: z.string().trim().max(40).default(""),
       playstyle: z.string().trim().max(40).default(""),
-      psnId: z.string().trim().max(60).default(""),
-      xboxId: z.string().trim().max(60).default(""),
-      rockstarId: z.string().trim().max(60).default(""),
-      discordId: z.string().trim().max(60).default(""),
+      psnId: z.string().trim().max(200).default(""),
+      xboxId: z.string().trim().max(200).default(""),
+      rockstarId: z.string().trim().max(200).default(""),
+      discordId: z.string().trim().max(200).default(""),
       showPsn: z.boolean().default(true),
       showXbox: z.boolean().default(true),
       showRockstar: z.boolean().default(false),
@@ -9744,6 +10470,56 @@ export const Actions = {
     },
   }),
 
+  addStoryToHighlight: defineAction({
+    description: "Adds ONE of the player's own stories to one of their own existing Story Highlights — the story viewer's own-story black bar: Activity on the left, the Highlight button on the far right opens the picker of the player's highlights, and picking one puts this story in it. Appends to the end of the highlight (highlights hold up to 30 stories, the createHighlight cap). Adding a story that is already in the highlight is a no-op that reports added:false. Only the player's own stories can go into their own highlights.",
+    request: z.object({
+      playerKey: z.string().min(1).max(80),
+      highlightId: z.number().int().positive(),
+      storyId: z.number().int().positive(),
+    }),
+    response: addStoryToHighlightResponse,
+    async handler(ctx, args): Promise<z.infer<typeof addStoryToHighlightResponse>> {
+      const db = ctx.db<typeof schema>();
+      const h = (await db.select().from(schema.storyHighlights).where(eq(schema.storyHighlights.id, args.highlightId)))[0];
+      if (!h || h.playerKey !== args.playerKey) throw new Error("That highlight isn't yours to add to.");
+      const story = (await db.select().from(schema.stories).where(eq(schema.stories.id, args.storyId)))[0];
+      if (!story || story.authorKey !== args.playerKey) throw new Error("You can only add your own stories to a highlight.");
+      const items = await db.select().from(schema.storyHighlightItems).where(eq(schema.storyHighlightItems.highlightId, h.id));
+      if (items.some((i) => i.storyId === args.storyId)) return { ok: true, added: false, storyCount: items.length };
+      if (items.length >= 30) throw new Error("That highlight is full — a highlight holds up to 30 stories.");
+      await db.insert(schema.storyHighlightItems).values({ highlightId: h.id, storyId: args.storyId });
+      ctx.invalidateQueries();
+      return { ok: true, added: true, storyCount: items.length + 1 };
+    },
+  }),
+
+  removeStoryFromHighlight: defineAction({
+    description: "Removes ONE story from one of the player's own Story Highlights — the highlight viewer's More → Remove from highlight (the owner's menu: Edit highlight and Remove from highlight only, no Archive). The story itself is NOT deleted: it stays in the player's story archive/history; only its place in this highlight goes. If it was the highlight's last story, the highlight itself is deleted too (an empty highlight shows nothing on the profile) and highlightDeleted reports that. Removing a story that is not in the highlight is a no-op reporting removed:false.",
+    request: z.object({
+      playerKey: z.string().min(1).max(80),
+      highlightId: z.number().int().positive(),
+      storyId: z.number().int().positive(),
+    }),
+    response: removeStoryFromHighlightResponse,
+    async handler(ctx, args): Promise<z.infer<typeof removeStoryFromHighlightResponse>> {
+      const db = ctx.db<typeof schema>();
+      const h = (await db.select().from(schema.storyHighlights).where(eq(schema.storyHighlights.id, args.highlightId)))[0];
+      if (!h || h.playerKey !== args.playerKey) throw new Error("That highlight isn't yours to change.");
+      const items = await db.select().from(schema.storyHighlightItems).where(eq(schema.storyHighlightItems.highlightId, h.id));
+      const target = items.find((i) => i.storyId === args.storyId);
+      if (!target) return { ok: true, removed: false, highlightDeleted: false, storyCount: items.length };
+      await db.delete(schema.storyHighlightItems).where(eq(schema.storyHighlightItems.id, target.id));
+      const remaining = items.length - 1;
+      if (remaining <= 0) {
+        await db.delete(schema.storyHighlights).where(eq(schema.storyHighlights.id, h.id));
+        ctx.invalidateQueries();
+        return { ok: true, removed: true, highlightDeleted: true, storyCount: 0 };
+      }
+      ctx.invalidateQueries();
+      return { ok: true, removed: true, highlightDeleted: false, storyCount: remaining };
+    },
+  }),
+
   uploadHighlightCover: defineAction({
     description: "Uploads a picture from the player's album to use as a Story Highlight cover (the New highlight screen's Edit cover). JPG or PNG only, up to 4 MB — every picture is checked by automatic moderation BEFORE it is stored: nude, sexual or illegal pictures are blocked and never stored. Returns the blob key to pass as coverBlobKey to createHighlight / updateHighlight, plus a URL for the on-screen preview.",
     request: z.object({
@@ -9802,7 +10578,7 @@ export const Actions = {
         groupId: z.number(), kind: z.string(), name: z.string(), clanId: z.number(),
         memberCount: z.number(), lastBody: z.string(), lastAt: z.string(), lastMine: z.boolean(),
         unread: z.number(), isLeader: z.boolean(), eventId: z.number(), eventStartsAt: z.string(),
-        clanTag: z.string(), clanColor: z.string(), clanEmblem: z.string(), clanCard: z.string(),
+        clanTag: z.string(), clanColor: z.string(), clanColorFinish: z.string(), clanEmblem: z.string(), clanEmblemEffect: z.string(), clanCard: z.string(),
         clanPlatform: z.string(), clanPrivacy: z.string(), clanRegion: z.string(),
       })),
     }),
@@ -9898,12 +10674,19 @@ export const Actions = {
             clanTag: (clan?.tag ?? "").toUpperCase(),
             clanColor: clan?.color ?? "",
             clanEmblem: clan?.emblem ?? "",
+            clanColorFinish: clan?.colorFinish ?? "",
+            clanEmblemEffect: clan?.emblemEffect ?? "",
             clanCard: clan?.callingCard ?? "",
             clanPlatform: clan?.platform ?? "",
             clanPrivacy: clan?.privacy ?? "",
             clanRegion: clan?.region ?? "",
           };
         })
+        // A crew chat is listed ONLY for a crew the player is a
+        // member of right now (owner's rule) — membership is the
+        // one source of truth, so a crew chat can never surface
+        // for a non-member, whatever chat rows history left behind.
+        .filter((g) => g.kind !== "crew" || crewIds.has(g.clanId))
         .filter((g) => !q || g.name.toLowerCase().includes(q) || g.lastBody.toLowerCase().includes(q))
         .sort((a, b) => (b.lastAt > a.lastAt ? 1 : b.lastAt < a.lastAt ? -1 : 0));
       return { hasProfile: true, myNote: (me.customStatus ?? "").trim(), notes, items, groups };
@@ -10010,7 +10793,7 @@ export const Actions = {
   }),
 
   listGroupThread: defineAction({
-    description: "Returns one group or crew chat: its details, member list and messages (oldest first), and advances the reader's own read marker so its unread count clears. Only members can read a chat.",
+    description: "Returns one group or crew chat: its details, member list and messages (oldest first), and advances the reader's own read marker so its unread count clears. Only members can read a chat. In a crew chat, a pending join REQUEST appears among the messages as a card (joinRequestId / joinRequestStatus on the message) that the crew's Leader accepts or declines in place.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       groupId: z.number().int().positive(),
@@ -10019,7 +10802,7 @@ export const Actions = {
       group: z.object({
         id: z.number(), name: z.string(), kind: z.string(), clanId: z.number(),
         memberCount: z.number(), isLeader: z.boolean(), eventId: z.number(), eventStartsAt: z.string(),
-        clanTag: z.string(), clanColor: z.string(), clanEmblem: z.string(), clanCard: z.string(),
+        clanTag: z.string(), clanColor: z.string(), clanColorFinish: z.string(), clanEmblem: z.string(), clanEmblemEffect: z.string(), clanCard: z.string(),
         clanPlatform: z.string(), clanPrivacy: z.string(), clanRegion: z.string(),
         members: z.array(z.object({
           playerKey: z.string(), gamertag: z.string(), displayName: z.string(), avatarUrl: z.string(), isLeader: z.boolean(), muted: z.boolean(),
@@ -10027,6 +10810,12 @@ export const Actions = {
       }).nullable(),
       messages: z.array(z.object({
         id: z.number(), mine: z.boolean(), canDelete: z.boolean(), senderKey: z.string(), senderName: z.string(), body: z.string(), createdAt: z.string(),
+        // Crew join-request cards: joinRequestId > 0 marks a system
+        // message as the card for that clan_applications row, and
+        // joinRequestStatus is that ask's LIVE state ("Pending" /
+        // "Approved" / "Declined"), so the card the Leader acts on
+        // in the chat always shows what actually happened.
+        joinRequestId: z.number(), joinRequestStatus: z.string(),
       })),
     }),
     async handler(ctx, args) {
@@ -10039,14 +10828,15 @@ export const Actions = {
       const memberRows = await db.select().from(schema.chatGroupMembers).where(eq(schema.chatGroupMembers.groupId, g.id));
       const mine = memberRows.find((r) => r.playerKey === args.playerKey);
       if (!mine) return { group: null, messages: [] };
-      // Who may delete other people's messages here: the chat's
-      // owner always; in a CREW chat, the crew's Leader and
-      // Co-Leaders moderate it (owner's rule).
+      // Who may delete other people's messages here: in a CREW
+      // chat, ONLY the crew's Leader (owner's rule) — Co-Leaders
+      // and everyone else can delete only their own messages. In
+      // player-made groups and event chats, the chat's owner can.
       let canModerateChat = g.ownerKey === args.playerKey;
       if (g.kind === "crew" && g.clanId) {
         const myCrewRow = (await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, g.clanId)))
           .find((m) => m.playerKey === args.playerKey);
-        if (myCrewRow && (myCrewRow.role === "Leader" || myCrewRow.role === "Co-Leader")) canModerateChat = true;
+        canModerateChat = myCrewRow?.role === "Leader";
       }
       const profs = await db.select().from(schema.profiles);
       const byKey = new Map(profs.map((p) => [p.playerKey, p]));
@@ -10062,6 +10852,36 @@ export const Actions = {
       const clanForChat = g.kind === "crew" ? (await db.select().from(schema.clans)).find((c) => c.id === (g.clanId ?? 0)) : undefined;
       const eventForChat = g.kind === "event" ? (await db.select().from(schema.events)).find((e) => e.id === (g.eventId ?? 0)) : undefined;
       const orderedMemberRows = [...memberRows].sort((a, b) => (g.ownerKey === a.playerKey ? 0 : 1) - (g.ownerKey === b.playerKey ? 0 : 1) || a.id - b.id);
+      const joinRequestApps = rows.some((m) => m.joinRequestId > 0)
+        ? await db.select().from(schema.clanApplications)
+        : [];
+      const joinRequestStatusById = new Map(joinRequestApps.map((a) => [a.id, a.status]));
+      const threadMessages = rows.map((m) => ({
+        id: m.id, mine: m.senderKey === args.playerKey,
+        canDelete: m.senderKey !== "system" && (m.senderKey === args.playerKey || canModerateChat),
+        senderKey: m.senderKey,
+        senderName: m.senderKey === "system"
+          ? "ViceSunshine"
+          : byKey.get(m.senderKey)?.displayName.trim() || byKey.get(m.senderKey)?.gamertag || "Player",
+        body: m.body, createdAt: m.createdAt.toISOString(),
+        joinRequestId: m.joinRequestId,
+        joinRequestStatus: m.joinRequestId > 0 ? joinRequestStatusById.get(m.joinRequestId) ?? "" : "",
+      }));
+      // A crew chat always opens with the founding message — who
+      // founded the crew and the date it was founded. Chats created
+      // before founding messages were seeded get it placed first
+      // here, from the crew's own creation date.
+      if (g.kind === "crew" && clanForChat && !rows.some((m) => m.senderKey === "system" && m.body.includes("founded the crew"))) {
+        const crewRows = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, clanForChat.id));
+        const founder = crewRows.find((m) => m.role === "Leader") ?? crewRows[0];
+        threadMessages.unshift({
+          id: -clanForChat.id, mine: false, canDelete: false,
+          senderKey: "system", senderName: "ViceSunshine",
+          body: crewFoundedText(clanForChat.name, founder?.gamertag ?? "", clanForChat.createdAt),
+          createdAt: clanForChat.createdAt.toISOString(),
+          joinRequestId: 0, joinRequestStatus: "",
+        });
+      }
       return {
         group: {
           id: g.id, name: g.name, kind: g.kind, clanId: g.clanId ?? 0,
@@ -10070,6 +10890,8 @@ export const Actions = {
           clanTag: (clanForChat?.tag ?? "").toUpperCase(),
           clanColor: clanForChat?.color ?? "",
           clanEmblem: clanForChat?.emblem ?? "",
+          clanColorFinish: clanForChat?.colorFinish ?? "",
+          clanEmblemEffect: clanForChat?.emblemEffect ?? "",
           clanCard: clanForChat?.callingCard ?? "",
           clanPlatform: clanForChat?.platform ?? "",
           clanPrivacy: clanForChat?.privacy ?? "",
@@ -10086,15 +10908,7 @@ export const Actions = {
             };
           }),
         },
-        messages: rows.map((m) => ({
-          id: m.id, mine: m.senderKey === args.playerKey,
-          canDelete: m.senderKey === args.playerKey || canModerateChat,
-          senderKey: m.senderKey,
-          senderName: m.senderKey === "system"
-            ? "ViceSunshine"
-            : byKey.get(m.senderKey)?.displayName.trim() || byKey.get(m.senderKey)?.gamertag || "Player",
-          body: m.body, createdAt: m.createdAt.toISOString(),
-        })),
+        messages: threadMessages,
       };
     },
   }),
@@ -10125,7 +10939,7 @@ export const Actions = {
   }),
 
   deleteGroupMessage: defineAction({
-    description: "Deletes one message from a group, crew or event chat. A member can always delete their own message; in a crew chat the crew's Leader and Co-Leaders can delete anyone's message, and a player-made group's owner can delete in their own group. Non-members can never touch a chat's messages.",
+    description: "Deletes one message from a group, crew or event chat. A member can always delete their own message; in a crew chat ONLY the crew's Leader can delete other members' messages (Co-Leaders cannot), and a player-made group's owner can delete in their own group. Automatic system messages (crew life updates) can never be deleted. Non-members can never touch a chat's messages.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       groupId: z.number().int().positive(),
@@ -10143,14 +10957,23 @@ export const Actions = {
       const msgs = await db.select().from(schema.directMessages).where(eq(schema.directMessages.id, args.messageId));
       const msg = msgs[0];
       if (!msg || msg.groupId !== args.groupId) throw new Error("Message not found.");
+      if (msg.senderKey === "system") {
+        throw new Error("Automatic crew updates can't be deleted.");
+      }
       let allowed = msg.senderKey === args.playerKey || g.ownerKey === args.playerKey;
-      if (!allowed && g.kind === "crew" && g.clanId) {
+      if (g.kind === "crew" && g.clanId) {
+        // Crew chat: only the crew's Leader deletes other members'
+        // messages — the chat-owner shortcut does not apply here.
         const myCrewRow = (await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, g.clanId)))
           .find((m) => m.playerKey === args.playerKey);
-        if (myCrewRow && (myCrewRow.role === "Leader" || myCrewRow.role === "Co-Leader")) allowed = true;
+        allowed = msg.senderKey === args.playerKey || myCrewRow?.role === "Leader";
       }
       if (!allowed) {
-        throw new Error("Only the message's author, or the crew's Leader and Co-Leaders, can delete messages in this chat.");
+        throw new Error(
+          g.kind === "crew"
+            ? "Only the message's author, or the crew's Leader, can delete messages in this chat."
+            : "Only the message's author, or the chat's owner, can delete messages in this chat.",
+        );
       }
       await db.delete(schema.directMessages).where(eq(schema.directMessages.id, args.messageId));
       ctx.invalidateQueries();
@@ -10437,6 +11260,7 @@ export const Actions = {
     response: z.object({ clanId: z.number(), clanName: z.string(), role: z.string() }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
+      await healMembershipKey(ctx, args.playerKey);
       const rows = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.playerKey, args.playerKey));
       const mine = rows[0];
       if (!mine) return { clanId: 0, clanName: "", role: "" };
@@ -10640,7 +11464,7 @@ export const Actions = {
   }),
 
   createClan: defineAction({
-    description: "Creates a crew and makes the creator its Leader. Costs 500 Vice Credits from the creator's personal wallet (a new account starts with exactly 500). The crew NAME is permanent — it can never be changed after creation. The Crew tag is chosen HERE, at creation — never on a profile: 2–4 characters, letters and numbers only, stored and shown uppercase (e.g. NVDA), unique across the whole system, and together with the crew colour it applies to EVERY member including the creator, shown next to their name like Ghost [NVDA] for as long as they are in the crew. Leaving the crew removes it; joining another crew replaces it with that crew's tag and colour. Crew membership is unlimited — there is no member cap. The crew's bio (description), rules and join requirements (one per line) are set here and can be edited later by the Leader and Co-Leaders in Crew Settings → Bio & Rules — one source of truth, shown on the crew page and in the join flow. The Step 1 emblem and colour pickers are the Crew Emblems and Crew Colours sections of the crew customisation catalogue (same items, same Premium rules: Premium picks need the creator's Premium).",
+    description: "Creates a crew and makes the creator its Leader. Costs 500 Vice Credits from the creator's personal wallet (a new account starts with exactly 500). The crew NAME is permanent — it can never be changed after creation. The Crew tag is chosen HERE, at creation — never on a profile: 2–4 characters, letters and numbers only, stored and shown uppercase (e.g. NVDA), unique across the whole system, and together with the crew colour it applies to EVERY member including the creator, shown in front of their name like [NVDA] Ghost for as long as they are in the crew. Leaving the crew removes it; joining another crew replaces it with that crew's tag and colour. Crew membership is unlimited — there is no member cap. The crew's bio (description), rules and join requirements (one per line) are set here and can be edited later by the Leader and Co-Leaders in Crew Settings → Bio & Rules — one source of truth, shown on the crew page and in the join flow. The Step 1 emblem and colour pickers are the Crew Emblems and Crew Colours sections of the crew customisation catalogue (same items, same Premium rules: Premium emblems need the creator's Premium; all 8 named colours are free, and a custom colour needs the creator's Premium — the custom colour tool is the Premium colour perk).",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       gamertag: z.string().trim().min(2).max(32),
@@ -10688,9 +11512,20 @@ export const Actions = {
       if (emblemDef?.premiumOnly && !creatorPremium) {
         throw new Error(`${emblemDef.name.replace(/ — Premium$/, "")} is included with Premium — a Premium member needs to found this crew to start with it.`);
       }
-      const colorDef = COSMETIC_ITEMS.find((i) => i.kind === "color" && i.value.toLowerCase() === args.color.toLowerCase());
-      if (colorDef?.premiumOnly && !creatorPremium) {
-        throw new Error(`${colorDef.name.replace(/ — Premium$/, "")} is included with Premium — a Premium member needs to found this crew to start with it.`);
+      // The colour is normalised to #RRGGBB before it is stored —
+      // a custom colour from the colour picker, a typed hex code or
+      // a catalogue swatch all land in the same shape, so the
+      // colour renders identically on every surface. All 8 named
+      // catalogue colours are FREE at creation; a CUSTOM colour
+      // (any hex that is not one of the named swatches) is the
+      // Premium colour perk, so a non-Premium founder is pointed at
+      // the free swatches in plain words — never a silent failure.
+      const crewColor = normalizeCrewColor(args.color);
+      if (!crewColor) {
+        throw new Error("Crew colour must be a hex colour like #FF2E88 — pick one with the colour picker or type a 6-digit hex code.");
+      }
+      if (!CREW_CATALOGUE_COLOR_HEXES.has(crewColor) && !creatorPremium) {
+        throw new Error("Custom colours are included with Premium — pick one of the 8 free Crew Colours above, or go Premium to found your crew with a custom colour.");
       }
       // Creating a clan costs 500 Vice Credits — exactly the starting
       // balance every new account receives, so a new player can found
@@ -10728,7 +11563,7 @@ export const Actions = {
         .values({
           name: args.name,
           tag,
-          color: args.color,
+          color: crewColor,
           emblem: args.emblem,
           motto: args.motto,
           description: args.description,
@@ -10753,6 +11588,9 @@ export const Actions = {
         platform: args.clanPlatform,
         role: "Leader",
       });
+      // Founding a crew is a join too — it starts the founder's
+      // weekly direct-join clock like any other way in.
+      if (clanId > 0) await recordCrewJoin(ctx, clanId, args.playerKey, args.gamertag, "founded");
       // The crew's own private chat exists from the moment the crew
       // is founded (ensureCrewChats also re-syncs it on every
       // Messages read, so membership always mirrors the crew).
@@ -10772,6 +11610,24 @@ export const Actions = {
     response: z.object({
       clan: clanSummary,
       myRole: z.string(),
+      // The viewer's own way in (anti-spam gate): whether tapping
+      // Join on a public crew would put them straight in or file a
+      // join request for the Leader instead, why, and whether a
+      // request of theirs is already waiting. Members get
+      // directAllowed true and it is never read.
+      myJoinState: z.object({
+        directAllowed: z.boolean(),
+        reason: z.string(),
+        pendingRequest: z.boolean(),
+      }),
+      // "Events" — its own stat, separate from the crew's stored
+      // lifetime "Events held" counter (clan.eventsHeld): the
+      // number of Community Events this crew has on the books
+      // right now (real events rows hosted by this crew, upcoming
+      // included). The two were separate tiles on the crew page
+      // before and are restored as separate stats.
+      eventsCount: z.number(),
+      ownerPremiumActive: z.boolean(),
       members: z.array(memberItem),
       squads: z.array(
         z.object({ id: z.number(), name: z.string(), leadGamertag: z.string(), focus: z.string(), memberCount: z.number() }),
@@ -10812,7 +11668,7 @@ export const Actions = {
         }),
       ),
       applications: z.array(
-        z.object({ id: z.number(), gamertag: z.string(), message: z.string(), createdAt: z.string() }),
+        z.object({ id: z.number(), gamertag: z.string(), message: z.string(), createdAt: z.string(), kind: z.string() }),
       ),
       activity: z.array(
         z.object({ id: z.number(), actor: z.string(), action: z.string(), target: z.string(), reason: z.string(), createdAt: z.string() }),
@@ -10820,6 +11676,9 @@ export const Actions = {
     }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
+      // Heal a stale-key duplicate membership for the viewer
+      // before anything reads the roster (see healMembershipKey).
+      await healMembershipKey(ctx, args.playerKey);
       // Inactive-Leader auto-transfer runs on crew page load: if
       // the Leader has been inactive for 30 days straight, the
       // transfer happens here, before the page is read, with no
@@ -10832,10 +11691,26 @@ export const Actions = {
       const clanRows = await db.select().from(schema.clans).where(eq(schema.clans.id, args.clanId));
       const clan = clanRows[0];
       if (!clan) throw new Error("Crew not found.");
-      const members = await db
+      const memberRows = await db
         .select()
         .from(schema.clanMembers)
         .where(eq(schema.clanMembers.clanId, args.clanId));
+      // One row per person on the roster, whatever keys history
+      // left behind: rows sharing a gamertag are the same player —
+      // keep the viewer's own row when it's theirs, else the
+      // earliest. (healMembershipKey above repairs the stored
+      // rows; this keeps the page right even before it runs.)
+      const members = (() => {
+        const byTag = new Map<string, (typeof memberRows)[number]>();
+        for (const m of [...memberRows].sort((a, b) => a.id - b.id)) {
+          const key = m.gamertag.trim().toLowerCase();
+          const cur = byTag.get(key);
+          if (!cur || (m.playerKey === args.playerKey && cur.playerKey !== args.playerKey)) {
+            byTag.set(key, m);
+          }
+        }
+        return [...byTag.values()];
+      })();
       const me = members.find((m) => m.playerKey === args.playerKey);
       const myRole = me?.role ?? "";
       const canModerate = myRole === "Leader" || myRole === "Co-Leader";
@@ -10862,6 +11737,39 @@ export const Actions = {
         .where(eq(schema.clanActivity.clanId, args.clanId))
         .orderBy(desc(schema.clanActivity.id))
         .limit(50);
+      // The crew's "Events" stat: real Community Event rows this
+      // crew hosts (events.clan_id), counted live — separate from
+      // the stored lifetime eventsHeld counter, which never goes
+      // down when an event is removed.
+      const hostedEventRows = await db
+        .select()
+        .from(schema.events)
+        .where(eq(schema.events.clanId, args.clanId));
+      // What the Activity log shows: Crew Award entries never
+      // appear (owner's direction — awards live in the Awards
+      // section only), and the log always reaches back to the
+      // first entry of all: the day the crew was founded. Crews
+      // founded before the log existed get that first entry from
+      // the crew's own creation date.
+      const visibleActivity = activity.filter((a) => !a.action.startsWith("earned a Crew Award"));
+      if (!visibleActivity.some((a) => a.action === "founded the crew")) {
+        const foundedRows = await db
+          .select()
+          .from(schema.clanActivity)
+          .where(and(eq(schema.clanActivity.clanId, args.clanId), eq(schema.clanActivity.action, "founded the crew")));
+        if (foundedRows.length === 0) {
+          const leaderRow = members.find((m) => m.role === "Leader") ?? members[0];
+          visibleActivity.push({
+            id: 0,
+            clanId: args.clanId,
+            actor: leaderRow?.gamertag ?? clan.name,
+            action: "founded the crew",
+            target: "",
+            reason: "",
+            createdAt: clan.createdAt,
+          });
+        }
+      }
       const toPost = (p: typeof posts[number]) => ({
         id: p.id,
         author: p.author,
@@ -10892,6 +11800,23 @@ export const Actions = {
           })(),
         ),
         myRole,
+        myJoinState: await (async () => {
+          // Only a non-member's way in matters here; the gate is
+          // read with the viewer's own gamertag from their profile.
+          if (myRole !== "") return { directAllowed: true, reason: "", pendingRequest: false };
+          const myProf = profileMap.get(args.playerKey);
+          const myTag = myProf?.gamertag ?? "";
+          const gate = await crewJoinGate(ctx, args.clanId, args.playerKey, myTag);
+          const pending = myTag
+            ? await pendingJoinRequest(ctx, args.clanId, args.playerKey, myTag)
+            : null;
+          return { directAllowed: gate.directAllowed, reason: gate.reason, pendingRequest: Boolean(pending) };
+        })(),
+        eventsCount: hostedEventRows.length,
+        ownerPremiumActive: await (async () => {
+          const leaderRow = members.find((m) => m.role === "Leader");
+          return leaderRow ? await premiumActiveFor(ctx, leaderRow.playerKey) : false;
+        })(),
         members: await Promise.all(sortedMembers.map(async (m) => ({
           id: m.id,
           // Roster rows are identified by the member's PUBLIC profile
@@ -11005,8 +11930,9 @@ export const Actions = {
           gamertag: a.gamertag,
           message: a.message,
           createdAt: a.createdAt.toISOString(),
+          kind: a.kind,
         })),
-        activity: activity.map((a) => ({
+        activity: visibleActivity.map((a) => ({
           id: a.id,
           actor: a.actor,
           action: a.action,
@@ -11019,7 +11945,7 @@ export const Actions = {
   }),
 
   joinClan: defineAction({
-    description: "Joins a public crew directly as a Recruit, or files an application for application/invite crews.",
+    description: "Joins a public crew directly as a Recruit — but only through the anti-spam gate: a player gets ONE direct crew join per rolling 7 days across all crews, and a player who was in a crew before (left or kicked) can never rejoin it directly. When the gate closes, joining a public crew files a join REQUEST instead: a card appears in that crew's group chat and only the crew's Leader can accept it there. Application/invite crews file a classic application, as before. Joining is all the player ever does: the crew's chat appears in their Messages automatically (no group chat to create, no cost) and the join is announced there and in the crew's Activity log by itself.",
     request: z.object({
       clanId: z.number().int().positive(),
       playerKey: z.string().min(1).max(80),
@@ -11027,18 +11953,53 @@ export const Actions = {
       platform: platformEnum.default("PS5"),
       message: z.string().trim().max(500).default(""),
     }),
-    response: z.object({ joined: z.boolean(), applied: z.boolean() }),
+    response: z.object({
+      joined: z.boolean(),
+      applied: z.boolean(),
+      // True when this call filed (or found already open) a join
+      // REQUEST for a public crew the player could not enter
+      // directly; requestReason says why the gate closed.
+      requested: z.boolean(),
+      requestReason: z.string(),
+    }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
       const clanRows = await db.select().from(schema.clans).where(eq(schema.clans.id, args.clanId));
       const clan = clanRows[0];
       if (!clan) throw new Error("Crew not found.");
+      await healMembershipKey(ctx, args.playerKey);
       const existing = await myMembership(ctx, args.clanId, args.playerKey);
       if (existing) throw new Error("You are already a member of this crew.");
+      // Same person under a stale key (their gamertag already sits
+      // on a member row here): rebind that row to their current
+      // key instead of writing a duplicate membership and a
+      // duplicate "joined" activity entry.
+      const clanRowsAll = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, args.clanId));
+      const sameTag = clanRowsAll.find((m) => m.gamertag.trim().toLowerCase() === args.gamertag.trim().toLowerCase());
+      if (sameTag) {
+        // Even a rebind is a join: it can never put the player in
+        // a second crew while they still belong to another one.
+        await assertNotInAnotherCrew(ctx, args.playerKey, args.clanId);
+        await db.update(schema.clanMembers).set({ playerKey: args.playerKey }).where(eq(schema.clanMembers.id, sameTag.id));
+        await ensureCrewChats(ctx, args.playerKey);
+        ctx.invalidateQueries();
+        return { joined: true, applied: false, requested: false, requestReason: "" };
+      }
       await assertNotInAnotherCrew(ctx, args.playerKey, args.clanId);
       // Crew membership is unlimited — joining is never blocked by
       // a member cap, however big the crew already is.
       if (clan.privacy === "Public") {
+        // The anti-spam gate: one direct join a week, and never a
+        // direct way back into a crew you were in before. Past the
+        // gate, this tap sends a join request to the crew chat for
+        // the Leader instead of walking straight in.
+        const gate = await crewJoinGate(ctx, args.clanId, args.playerKey, args.gamertag);
+        if (!gate.directAllowed) {
+          const reason = gate.reason === "returning" ? "returning" : "weekly";
+          await fileCrewJoinRequest(ctx, clan, args.playerKey, args.gamertag, args.message, reason);
+          ctx.invalidateQueries();
+          return { joined: false, applied: true, requested: true, requestReason: reason };
+        }
         await db.insert(schema.clanMembers).values({
           clanId: args.clanId,
           playerKey: args.playerKey,
@@ -11046,10 +12007,15 @@ export const Actions = {
           platform: args.platform,
           role: "Recruit",
         });
+        await recordCrewJoin(ctx, args.clanId, args.playerKey, args.gamertag, "direct");
+        // The crew chat lands in the joiner's Messages right now,
+        // then the join announces itself in that chat and in the
+        // crew's Activity log (logActivity mirrors to both).
+        await ensureCrewChats(ctx, args.playerKey);
         await logActivity(ctx, args.clanId, args.gamertag, "joined as Recruit", "", "");
         await awardRecruit(ctx, args.clanId, clan.name, args.playerKey, args.gamertag);
         ctx.invalidateQueries();
-        return { joined: true, applied: false };
+        return { joined: true, applied: false, requested: false, requestReason: "" };
       }
       await db.insert(schema.clanApplications).values({
         clanId: args.clanId,
@@ -11058,12 +12024,12 @@ export const Actions = {
         message: args.message,
       });
       ctx.invalidateQueries();
-      return { joined: false, applied: true };
+      return { joined: false, applied: true, requested: false, requestReason: "" };
     },
   }),
 
   reviewApplication: defineAction({
-    description: "Approves or declines a pending crew application (Leader/Co-Leader).",
+    description: "Approves or declines a pending crew application (Leader/Co-Leader). Join REQUESTS — the anti-spam asks that land as cards in the crew chat when a player cannot join directly — are the Leader's call alone: only the Leader can accept or decline one, here or in the chat.",
     request: z.object({
       clanId: z.number().int().positive(),
       playerKey: z.string().min(1).max(80),
@@ -11085,6 +12051,12 @@ export const Actions = {
       if (!app || app.clanId !== args.clanId || app.status !== "Pending") {
         throw new Error("Application not found or already reviewed.");
       }
+      // A join request waits for the Leader personally — that is
+      // the whole point of the anti-spam gate, so a Co-Leader's
+      // review here would reopen the door it closes.
+      if (app.kind === "join_request" && me.role !== "Leader") {
+        throw new Error("Only the Leader can accept or decline a join request — it is waiting for them in the crew chat.");
+      }
       await db
         .update(schema.clanApplications)
         .set({ status: args.approve ? "Approved" : "Declined" })
@@ -11096,14 +12068,36 @@ export const Actions = {
           .select()
           .from(schema.profiles)
           .where(eq(schema.profiles.playerKey, app.playerKey));
+        // Consolidate the applicant's own membership rows first,
+        // so the one-crew check sees every crew they belong to,
+        // not just rows written under their current device key.
+        await healMembershipKey(ctx, app.playerKey);
         await assertNotInAnotherCrew(ctx, app.playerKey, args.clanId, app.gamertag);
-        await db.insert(schema.clanMembers).values({
-          clanId: args.clanId,
-          playerKey: app.playerKey,
-          gamertag: app.gamertag,
-          platform: prof[0]?.platform ?? "PS5",
-          role: "Recruit",
-        });
+        // Never a second row for the same person: if they already
+        // sit on a member row here (e.g. under a stale key), rebind
+        // it to their current key instead of inserting a duplicate.
+        const clanRowsAll = await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, args.clanId));
+        const already = clanRowsAll.find(
+          (m) => m.playerKey === app.playerKey || m.gamertag.trim().toLowerCase() === app.gamertag.trim().toLowerCase(),
+        );
+        if (!already) {
+          await db.insert(schema.clanMembers).values({
+            clanId: args.clanId,
+            playerKey: app.playerKey,
+            gamertag: app.gamertag,
+            platform: prof[0]?.platform ?? "PS5",
+            role: "Recruit",
+          });
+          // An accepted application / join request is a join like
+          // any other: it starts the player's weekly clock and
+          // marks this crew as one they have been in.
+          await recordCrewJoin(ctx, args.clanId, app.playerKey, app.gamertag, "approved");
+        } else if (already.playerKey !== app.playerKey) {
+          await db.update(schema.clanMembers).set({ playerKey: app.playerKey }).where(eq(schema.clanMembers.id, already.id));
+        }
+        // The approved player's crew chat is ready in their
+        // Messages from this moment — nothing for them to create.
+        await ensureCrewChats(ctx, app.playerKey);
         await logActivity(ctx, args.clanId, me.gamertag, "approved application from", app.gamertag, "");
         const clanRows2 = await db.select().from(schema.clans).where(eq(schema.clans.id, args.clanId));
         await awardRecruit(ctx, args.clanId, clanRows2[0]?.name ?? "clan", app.playerKey, app.gamertag);
@@ -11193,9 +12187,9 @@ export const Actions = {
       await logActivity(
         ctx,
         args.clanId,
-        me.gamertag,
-        args.action === "promote" ? `promoted to ${nextRole}:` : `demoted to ${nextRole}:`,
         target.gamertag,
+        args.action === "promote" ? `was promoted to ${nextRole} by` : `was demoted to ${nextRole} by`,
+        me.gamertag,
         args.reason,
       );
       ctx.invalidateQueries();
@@ -11294,9 +12288,38 @@ export const Actions = {
         throw new Error("That Crew tag is taken by another crew. Try another Crew tag.");
       }
       assertClean(args.motto, args.description, args.rules, args.requirements);
+      // The colour is normalised to #RRGGBB before it is stored
+      // (catalogue swatch, colour picker or typed hex — one shape,
+      // so it renders on every surface). All 8 named catalogue
+      // colours are free here; CHANGING to a custom colour (any
+      // hex outside the named swatches) is the Premium colour
+      // perk and needs the Leader's Premium — saving the form
+      // with the crew's existing colour untouched always works,
+      // Premium or not.
+      const crewColor = normalizeCrewColor(args.color);
+      if (!crewColor) {
+        throw new Error("Crew colour must be a hex colour like #FF2E88 — pick one with the colour picker or type a 6-digit hex code.");
+      }
+      if (crewColor !== (clan.color ?? "").toUpperCase() && !CREW_CATALOGUE_COLOR_HEXES.has(crewColor) && !(await premiumActiveFor(ctx, args.playerKey))) {
+        throw new Error("Custom colours are included with Premium — pick one of the 8 free Crew Colours, or go Premium to use a custom colour.");
+      }
+      // This form writes the colour directly, so no catalogue
+      // colour item is "the equipped one" anymore — clear any
+      // colour row still flagged equipped, or Premium enforcement
+      // could later mistake this colour for a catalogue equip.
+      const colorRows = (await db.select().from(schema.ownedItems)).filter(
+        (o) => o.ownerType === "clan" && o.ownerId === String(args.clanId) && o.equipped === 1 && cosmeticItem(o.itemId)?.kind === "color",
+      );
+      for (const row of colorRows) {
+        await db.update(schema.ownedItems).set({ equipped: 0 }).where(eq(schema.ownedItems.id, row.id));
+      }
       await db.update(schema.clans).set({
         tag,
-        color: args.color,
+        color: crewColor,
+        // A changed colour is a solid colour — any Premium finish
+        // comes off with it. Saving with the colour untouched
+        // keeps the finish exactly as it is.
+        colorFinish: crewColor !== (clan.color ?? "").toUpperCase() ? "" : (clan.colorFinish ?? ""),
         motto: args.motto,
         description: args.description,
         rules: args.rules,
@@ -11433,6 +12456,8 @@ export const Actions = {
         clanTag: z.string(),
         clanColor: z.string(),
         clanEmblem: z.string(),
+        clanColorFinish: z.string(),
+        clanEmblemEffect: z.string(),
         text: z.string(),
         at: z.string(),
       })),
@@ -11453,6 +12478,8 @@ export const Actions = {
           clanTag: clan.tag.toUpperCase(),
           clanColor: clan.color,
           clanEmblem: clan.emblem,
+          clanColorFinish: clan.colorFinish ?? "",
+          clanEmblemEffect: clan.emblemEffect ?? "",
           text,
           at: r.createdAt ? new Date(r.createdAt).toISOString() : "",
         }];
@@ -12346,7 +13373,7 @@ export const Actions = {
   }),
 
   listFeed: defineAction({
-    description: "Lists public community feed posts, newest first, with like/comment counts and the viewer's state. followingOnly narrows the list to the viewer's own posts plus posts from players they follow (the Feed's Following tab); Automatic posts have no followable author and stay on the For you tab.",
+    description: "Lists public community feed posts with like/comment counts and the viewer's state. The Top sort puts real video posts first (streamer clips, funny videos, GTA jokes/memes, gameplay — most liked, then newest) so videos lead the Feed instead of sitting buried under text posts; Latest is newest first. kind 'Videos' returns only posts carrying a real video. isAi marks posts from the two AI automatic accounts (GTA NEWS for news, GTA CLIPPER for clips/videos) so the client can label them 'AI' next to their name. followingOnly narrows the list to the viewer's own posts plus posts from players they follow (the Feed's Following tab); Automatic posts have no followable author and stay on the For you tab. Each post carries its full media list (mediaUrls — several photos or one video), its optional attached link (linkUrl) and its hashtags; a search written with a #tag returns the posts carrying that hashtag.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       kind: z.string().max(30).default("All"),
@@ -12376,7 +13403,25 @@ export const Actions = {
           kind: z.string(),
           body: z.string(),
           mediaUrl: z.string(),
+          // The post's full media list: several photos (the
+          // client renders them as one swipeable post) or one
+          // video. mediaUrl above always holds the first item.
+          mediaUrls: z.array(z.string()),
+          // The post's optional attached link (creator's Add
+          // link), rendered as a chip under the caption.
+          linkUrl: z.string(),
+          // The post's optional location (creator's Add
+          // location), shown on the post in the Feed.
+          location: z.string(),
+          // Hashtags carried by the post (from its title and
+          // caption), normalised — rendered as tappable tags
+          // and matched by #tag searches.
+          hashtags: z.array(z.string()),
           auto: z.boolean(),
+          // True for the AI automatic accounts (GTA NEWS / GTA
+          // CLIPPER): the client shows an "AI" label next to
+          // their name, as the owner directed for bot accounts.
+          isAi: z.boolean(),
           sourceName: z.string(),
           sourceUrl: z.string(),
           likes: z.number(),
@@ -12431,6 +13476,20 @@ export const Actions = {
         .where(eq(schema.feedHidden.playerKey, args.playerKey));
       const hiddenSet = new Set(hidden.map((h) => h.postId));
       rows = rows.filter((r) => !hiddenSet.has(r.id));
+      // Post-menu preferences (Interested / Not interested):
+      // a "Not interested" post never comes back for this player,
+      // and the kinds they marked "Interested" rank higher in
+      // the Top sort below.
+      const myPrefs = await db.select().from(schema.feedPreferences).where(eq(schema.feedPreferences.playerKey, args.playerKey));
+      const notInterestedSet = new Set(myPrefs.filter((p) => p.interested === 0).map((p) => p.postId));
+      if (notInterestedSet.size > 0) rows = rows.filter((r) => !notInterestedSet.has(r.id));
+      const kindByPostId = new Map(allRows.map((r) => [r.id, r.kind] as const));
+      const interestedKinds = new Set<string>();
+      for (const p of myPrefs) {
+        if (p.interested !== 1) continue;
+        const k = kindByPostId.get(p.postId);
+        if (k) interestedKinds.add(k);
+      }
       const blockedSet = await blockedKeysFor(ctx, args.playerKey);
       if (blockedSet.size > 0) rows = rows.filter((r) => !blockedSet.has(r.authorKey));
       // Players who blocked ME disappear from my Feed too — blocking
@@ -12469,7 +13528,12 @@ export const Actions = {
       rows = rows.filter((r) => !tiktokIdOf(r.mediaUrl));
       if (args.source === "Automatic") rows = rows.filter((r) => r.auto === 1);
       if (args.source === "Community") rows = rows.filter((r) => r.auto !== 1);
-      if (args.kind !== "All") {
+      if (args.kind === "Videos") {
+        // Videos only (owner's direction): every post carrying a
+        // real playable video, whatever its category — the quick
+        // way to find the clips, funny videos and memes.
+        rows = rows.filter((r) => Boolean(youtubeIdOf(r.mediaUrl)));
+      } else if (args.kind !== "All") {
         const kinds = FEED_KIND_TABS[args.kind];
         rows = kinds ? rows.filter((r) => kinds.includes(r.kind)) : rows.filter((r) => r.kind === args.kind);
       }
@@ -12479,14 +13543,37 @@ export const Actions = {
       // typing a name or the start of a sentence actually finds
       // posts instead of only exact whole phrases.
       if (args.search.trim()) {
-        rows = rows.filter((r) => searchMatches([r.body, r.author, r.title, r.kind, r.sourceName], args.search));
+        // Hashtag search (owner's direction): a search carrying
+        // a #tag finds the posts that carry that hashtag — in
+        // their caption or title — the way people actually use
+        // hashtags to find posts. Every #tag typed must match.
+        const queryTags = extractHashtags(args.search);
+        if (queryTags.length > 0) {
+          rows = rows.filter((r) => {
+            const tags = feedRowHashtags(r);
+            return queryTags.every((t) => tags.includes(t));
+          });
+        } else {
+          rows = rows.filter((r) => searchMatches([r.body, r.author, r.title, r.kind, r.sourceName], args.search));
+        }
       }
       const likeCountOf = (id: number) => likeCounts.get(id) ?? 0;
       if (args.sort === "Top") {
-        // Most liked first, then newest — the posts the community
-        // likes most rise to the top of the Feed.
+        // Videos first (owner's direction, Nov 21 2026): real
+        // video posts — streamer clips, funny videos, GTA jokes
+        // and memes, gameplay — lead the Feed instead of sitting
+        // buried under text posts (a new video with no likes yet
+        // used to fall outside the first 100 Top posts entirely).
+        // Within the video group and the rest alike: most liked
+        // first, then newest.
+        const videoRank = (r: (typeof rows)[number]) => (youtubeIdOf(r.mediaUrl) ? 0 : 1);
+        // Kinds this player marked "Interested" in a post menu
+        // rank ahead within their group.
+        const kindRank = (r: (typeof rows)[number]) => (interestedKinds.has(r.kind) ? 0 : 1);
         rows = [...rows].sort(
           (a, b) =>
+            videoRank(a) - videoRank(b) ||
+            kindRank(a) - kindRank(b) ||
             likeCountOf(b.id) - likeCountOf(a.id) ||
             b.id - a.id,
         );
@@ -12525,7 +13612,7 @@ export const Actions = {
             id: r.id,
             author: r.author,
             authorTag:
-              r.authorKey === FEED_AUTO_KEY || r.authorKey === FEED_EXAMPLE_KEY
+              r.authorKey === FEED_AUTO_KEY || r.authorKey === FEED_EXAMPLE_KEY || r.authorKey === GTA_NEWS_KEY || r.authorKey === GTA_CLIPPER_KEY
                 ? ""
                 : (profileMap.get(r.authorKey)?.gamertag ?? r.author),
             authorId: authorIdOf.get(r.authorKey) ?? "",
@@ -12534,7 +13621,12 @@ export const Actions = {
             // the embedded player at the top of the card is how you watch.
             body: media.mediaType === "youtube" ? stripVideoUrlsFromBody(r.body, r.mediaUrl) : r.body,
             mediaUrl: media.mediaType === "image" && imgUrl ? imgUrl : r.mediaUrl,
+            mediaUrls: parseMediaUrls(r.mediaUrls, media.mediaType === "image" && imgUrl ? imgUrl : r.mediaUrl),
+            linkUrl: r.linkUrl,
+            location: r.location,
+            hashtags: feedRowHashtags(r),
             auto: r.auto === 1,
+            isAi: isAiFeedRow(r),
             sourceName: r.sourceName,
             sourceUrl: r.sourceUrl,
             likes: likeCountOf(r.id),
@@ -12972,7 +14064,7 @@ export const Actions = {
   }),
 
   createFeedPost: defineAction({
-    description: "Publishes a post to the public community feed.",
+    description: "Publishes a post to the public community feed. A post carries several photos OR exactly one video — never a mix and never two videos (checked here, not just in the creator). mediaUrls is the post's full media list (mediaUrl stays as the single-media shorthand and always ends up holding the first item); linkUrl is the post's optional attached link from the creator's Add link field, and location is the optional place name from its Add location row, shown on the post in the Feed. Hashtags typed into the title or caption are part of the post: they render as tappable tags and Feed search finds the post by them.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       author: z.string().trim().min(2).max(32),
@@ -12986,24 +14078,63 @@ export const Actions = {
       title: z.string().trim().max(140).default(""),
       body: z.string().trim().min(1).max(2000),
       mediaUrl: z.string().trim().max(500).default(""),
+      mediaUrls: z.array(z.string().trim().min(1).max(500)).max(4).default([]),
+      linkUrl: z.string().trim().max(500).default(""),
+      location: z.string().trim().max(120).default(""),
     }),
     response: z.object({ id: z.number() }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
       await requireProfile(ctx, args.playerKey);
-      assertClean(args.title, args.body);
-      const mediaReason = screenMediaUrl(args.mediaUrl);
-      if (mediaReason) {
-        throw new Error(`Blocked by automatic moderation: ${mediaReason}.`);
+      assertClean(args.title, args.body, args.location);
+      // The post's media list: mediaUrls when given, otherwise
+      // the single mediaUrl. Every entry is screened like any
+      // other media URL.
+      let mediaList = args.mediaUrls.length > 0 ? [...args.mediaUrls] : args.mediaUrl.trim() ? [args.mediaUrl.trim()] : [];
+      for (const u of mediaList) {
+        const mediaReason = screenMediaUrl(u);
+        if (mediaReason) {
+          throw new Error(`Blocked by automatic moderation: ${mediaReason}.`);
+        }
+      }
+      // Several photos OR one video (owner's rule): a video
+      // always posts on its own.
+      const videoCount = mediaList.filter((u) => isVideoMediaUrl(u)).length;
+      if (videoCount > 1) {
+        throw new Error("Only one video per post — post the video on its own, or post photos instead.");
+      }
+      if (videoCount === 1 && mediaList.length > 1) {
+        throw new Error("A video posts on its own — remove the photos to post the video, or remove the video to post the photos.");
+      }
+      // The attached link: a real web link only, screened like
+      // media — it renders as a link chip under the caption.
+      let linkUrl = args.linkUrl.trim();
+      if (linkUrl) {
+        if (!/^https?:\/\//i.test(linkUrl)) {
+          try {
+            const parsed = new URL(`https://${linkUrl}`);
+            if (!parsed.hostname.includes(".")) throw new Error("bad link");
+            linkUrl = parsed.toString();
+          } catch {
+            throw new Error("That link doesn't look right — paste a full web address, like youtube.com/@channel.");
+          }
+        }
+        const linkReason = screenMediaUrl(linkUrl);
+        if (linkReason) {
+          throw new Error(`Blocked by automatic moderation: ${linkReason}.`);
+        }
       }
       // If the poster pasted a YouTube link into the text (or into the
       // media field), the video must play in the embedded player — the
       // raw URL never stays in the body as a "go watch it there" link.
-      let mediaUrl = args.mediaUrl.trim();
+      let mediaUrl = mediaList[0] ?? "";
       let body = args.body;
       if (!mediaUrl) {
         const found = body.match(YOUTUBE_URL_RE);
-        if (found?.[0]) mediaUrl = found[0];
+        if (found?.[0]) {
+          mediaUrl = found[0];
+          mediaList = [mediaUrl];
+        }
       }
       if (mediaUrl && youtubeIdOf(mediaUrl)) {
         body = stripVideoUrlsFromBody(body, mediaUrl);
@@ -13018,6 +14149,9 @@ export const Actions = {
           title: args.title,
           body,
           mediaUrl,
+          mediaUrls: mediaList.length > 1 ? JSON.stringify(mediaList) : "",
+          linkUrl,
+          location: args.location,
         })
         .returning({ id: schema.feedPosts.id });
       // Publishing a Feed post earns +5 XP, counted automatically.
@@ -13325,7 +14459,7 @@ export const Actions = {
   }),
 
   listStories: defineAction({
-    description: "Lists Instagram-style Stories for the Feed Stories row, grouped by author: only stories posted in the last 24 hours (older stories have disappeared), with per-story likes and seen state for this player. View counts are private to the poster, Instagram-style: a story's views number is only ever filled in on the author's own stories — everyone else's stories return 0 views here, and who viewed a story is only ever returned by getStoryInsights to the author themself. A private account's stories are only returned to players who follow that account (isPrivate flags the account on each group and person, so the row can show the lock and send a tap to the locked profile instead of a story). Groups are ordered for the row: people the player follows FIRST (flagged followedByMe), then unseen, then most recent — the client puts 'Your story' ahead of all of them. The people list is the row itself: every followed person first as a priority block right after 'Your story', then at most 5 recommended people — recommendations are deliberately few. The owner's duplicate test accounts (guest#### placeholder names and the site-named ViceSunshine* accounts) never appear in the row or the story groups; the viewer's own group always stays.",
+    description: "Lists Instagram-style Stories for the Feed Stories row, grouped by author: only stories posted in the last 24 hours (older stories have disappeared), with per-story likes and seen state for this player. View counts are private to the poster, Instagram-style: a story's views number is only ever filled in on the author's own stories — everyone else's stories return 0 views here, and who viewed a story is only ever returned by getStoryInsights to the author themself. A private account's stories are only returned to players who follow that account (isPrivate flags the account on each group and person, so the row can show the lock and send a tap to the locked profile instead of a story). Groups are ordered for the row: people the player follows FIRST (flagged followedByMe), then unseen, then most recent — the client puts 'Your story' ahead of all of them. The people list is the row itself: every followed person first as a priority block right after 'Your story', then at most 3 recommended people — recommendations are deliberately few. The owner's duplicate test accounts (guest#### placeholder names and the site-named ViceSunshine* accounts) never appear in the row or the story groups; the viewer's own group always stays.",
     request: z.object({ playerKey: z.string().min(1).max(80) }),
     response: z.object({
       groups: z.array(
@@ -13470,7 +14604,7 @@ export const Actions = {
       );
       // The Stories row itself (owner's direction, Instagram-style):
       // one row of people circles — everyone the player FOLLOWS
-      // first as a priority block, then at most 5 RECOMMENDED
+      // first as a priority block, then at most 3 RECOMMENDED
       // people — whether or not they have a live
       // story right now. hasStory / hasUnseen say which circles carry
       // a story ring; the rest open the person's profile. Blocked
@@ -13519,10 +14653,12 @@ export const Actions = {
       // follows sits in the row FIRST — right after "Your story" —
       // ahead of any recommendation, however strong the
       // recommendation's score is. Recommendations are kept few
-      // on purpose: at most 5, and only after every followed
-      // person, ranked by the same unseen / story / score order.
+      // on purpose: at most 3 (owner's direction, Nov 21 2026 —
+      // "you don't have to recommend so many"), and only after
+      // every followed person, ranked by the same unseen / story /
+      // score order.
       const followedPeople = rowPeople.filter((p) => p.followedByMe).sort(byRowRank);
-      const recommendedPeople = rowPeople.filter((p) => !p.followedByMe).sort(byRowRank).slice(0, 5);
+      const recommendedPeople = rowPeople.filter((p) => !p.followedByMe).sort(byRowRank).slice(0, 3);
       const people = [...followedPeople, ...recommendedPeople].map(({ score: _score, ...rest }) => rest);
       // Public profile IDs on the way out: the row's circles, the
       // fast-add follow and the story viewer's header all address
@@ -14052,6 +15188,52 @@ export const Actions = {
     },
   }),
 
+  setFeedPreference: defineAction({
+    description: "Records the player's Interested / Not interested choice from a Feed post's menu. Interested boosts posts of the same kind for this player in the Feed's Top sort. Not interested also hides the post for this player, like Hide post.",
+    request: z.object({
+      playerKey: z.string().min(1).max(80),
+      postId: z.number().int().positive(),
+      interested: z.boolean(),
+    }),
+    response: okResponse,
+    async handler(ctx, args): Promise<Ok> {
+      const db = ctx.db<typeof schema>();
+      const existing = await db
+        .select()
+        .from(schema.feedPreferences)
+        .where(
+          and(
+            eq(schema.feedPreferences.postId, args.postId),
+            eq(schema.feedPreferences.playerKey, args.playerKey),
+          ),
+        );
+      if (existing[0]) {
+        await db
+          .update(schema.feedPreferences)
+          .set({ interested: args.interested ? 1 : 0 })
+          .where(eq(schema.feedPreferences.id, existing[0].id));
+      } else {
+        await db.insert(schema.feedPreferences).values({ postId: args.postId, playerKey: args.playerKey, interested: args.interested ? 1 : 0 });
+      }
+      if (!args.interested) {
+        const hiddenRow = await db
+          .select()
+          .from(schema.feedHidden)
+          .where(
+            and(
+              eq(schema.feedHidden.postId, args.postId),
+              eq(schema.feedHidden.playerKey, args.playerKey),
+            ),
+          );
+        if (!hiddenRow[0]) {
+          await db.insert(schema.feedHidden).values({ postId: args.postId, playerKey: args.playerKey });
+        }
+      }
+      ctx.invalidateQueries();
+      return ok();
+    },
+  }),
+
   deleteFeedPost: defineAction({
     description: "Deletes the player's own feed post, or any flagged post when moderating.",
     request: z.object({
@@ -14113,6 +15295,25 @@ export const Actions = {
         await assertImageAllowed(ctx, args.dataBase64, args.mimeType, args.filename, "image");
       }
       const safeName = args.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-60);
+      // Same player, identical file, uploaded again: hand back
+      // the URL the file already has instead of storing a second
+      // copy under a new URL. A second copy is what put the same
+      // photo into the player's album twice (once as the album
+      // copy, once as the post copy), where the pickers showed
+      // it as two tiles of one photo. The hash index is per
+      // player, so another player's identical file still gets
+      // its own copy and its own ownership record.
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      const hashHex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const hashMetaKey = `feed-media-hash:${args.playerKey}:${hashHex}`;
+      const existingKey = await getMeta(ctx, hashMetaKey);
+      if (existingKey) {
+        const existingUrl = await ctx.blobs.getUrl(existingKey);
+        if (existingUrl) {
+          ctx.invalidateQueries();
+          return { url: existingUrl };
+        }
+      }
       // Opaque random blob key: the playerKey is the player's
       // secret identity code and must never appear in a media URL
       // the Feed serves to everyone. Ownership is recorded
@@ -14120,6 +15321,7 @@ export const Actions = {
       const key = `feed/${crypto.randomUUID()}-${safeName}`;
       await ctx.blobs.put(key, bytes, { contentType: args.mimeType });
       await setMeta(ctx, `feed-media-owner:${key}`, args.playerKey);
+      await setMeta(ctx, hashMetaKey, key);
       const url = await ctx.blobs.getUrl(key);
       ctx.invalidateQueries();
       return { url };
@@ -14127,9 +15329,14 @@ export const Actions = {
   }),
 
   askVice: defineAction({
-    description: "Ask Vice, the ViceSunshine AI helper and website guide with a fun, upbeat personality. Answers ONLY when asked, with full ViceSunshine knowledge (every page, rule and how-to, plus live public content: News, Guides, Database, public Events, Easter Eggs, Bugs, public Crews, public Feed posts, patches) and broad GTA knowledge (the whole GTA series history, Vice City / San Andreas / GTA IV / GTA V & Online basics, and confirmed GTA VI facts about Leonida, Lucia & Jason and the Nov 19 2026 launch — Rumor/Unverified always labelled, returning GTA V items never presented as confirmed for VI). Also uses the signed-in player's OWN account line. Privacy is structural: no other player's private data (email, payment, messages, saved items, account details) is ever loaded into the context, private events and lobby details are excluded, and the prompt hard-refuses requests for other people's private information. Never invents GTA VI facts; flags when a human needs to review (support request).",
+    description: "Ask Vice, the ViceSunshine AI helper and website guide with a fun, upbeat personality. Answers ONLY when asked, with full ViceSunshine knowledge (every page, rule and how-to, plus live public content: News, Guides, Database, public Events, Easter Eggs, Bugs, public Crews, public Feed posts, patches) and broad GTA knowledge (the whole GTA series history, Vice City / San Andreas / GTA IV / GTA V & Online basics, and confirmed GTA VI facts about Leonida, Lucia & Jason and the Nov 19 2026 launch — Rumor/Unverified always labelled, returning GTA V items never presented as confirmed for VI). Also uses the signed-in player's OWN account line. Privacy is structural: no other player's private data (email, payment, messages, saved items, account details) is ever loaded into the context, private events and lobby details are excluded, and the prompt hard-refuses requests for other people's private information. Never invents GTA VI facts; when any part of a question is not covered by its knowledge it says so plainly and tells the player to contact customer services (support) for more info instead of inventing an answer, and flags when a human needs to review (support request).",
     request: z.object({
-      question: z.string().min(2).max(600),
+      // min(1), not min(2) (owner report, Nov 21 2026): a
+      // one-character send used to fail validation and the raw
+      // schema error was dumped into the chat. Short questions
+      // are accepted here and answered politely in the handler
+      // instead — an error is never the reply.
+      question: z.string().trim().min(1).max(600),
       playerKey: z.string().max(80).default(""),
       gamertag: z.string().max(60).default(""),
       history: z.array(z.object({ role: z.enum(["user", "vice"]), text: z.string().max(1200) })).max(8).default([]),
@@ -14140,6 +15347,17 @@ export const Actions = {
       needsHuman: z.boolean(),
     }),
     async handler(ctx, args) {
+      // Too short to answer (a stray letter, a lone "?"): reply
+      // like a person, never an error — the question that used
+      // to dump raw validation code into the chat (owner report,
+      // Nov 21 2026).
+      if (args.question.replace(/[^a-z0-9]/gi, "").length < 2) {
+        return {
+          answer: "That's a bit short for me to go on — ask me a full question and I'll dig in. Anything about ViceSunshine or GTA: crews, credits, Premium, events, Easter eggs, the latest news…",
+          links: [],
+          needsHuman: false,
+        };
+      }
       const db = ctx.db<typeof schema>();
       const q = args.question.toLowerCase();
       const words = [...new Set(q.split(/[^a-z0-9]+/).filter((w) => w.length > 2))];
@@ -14201,8 +15419,8 @@ export const Actions = {
         "- Seasons: calendar months. Rankings (Global / Local / PlayStation / Xbox) sort by this month's Rank Points and reset each month; credits never reset. There is NO crew level anywhere in ViceSunshine — crews are ranked by season points and trophies only (a member's own personal ViceSunshine Level on their profile is a different thing). Season prizes per board: 1st 1,000 crew credits, 2nd 600, 3rd 300, ranks 4-10 get 100 — plus the Phoenix emblem for 1st, which is a Crew Award (see below), not credits.",
         "- Crew Awards — earned, never for sale: when a crew hits a milestone together — 10 members, or finishing a season ranked #1 — the WHOLE crew earns an exclusive reward (Founders banner style, Phoenix emblem). Crew Awards are never for sale — not for Vice Credits and not for real money and cannot be owned individually; they show on the crew card and crew home, and a Leader / Co-Leader equips them from the Crew Awards section on the crew page.",
         "- Event Rewards — Vice Credits for the winning crew: separate from Crew Awards. Community events pay the 1st-place player's crew 150 credits (2nd 75, 3rd 50) and +10 participation credits to every other crew that showed up, once the host confirms results. Season finishes also pay credits per board (1st 1,000, 2nd 600, 3rd 300, ranks 4-10 get 100).",
-        "- Joining a crew: +50 Vice Credits welcome bonus (once per crew), crew chat/feed, squads, crew events, and the XP boost.",
-        "- CREW customisation is FREE and there is no Shop: customisation belongs to CREWS, never to individual profiles — there is no Customise page and no personal cosmetics anymore. Every crew customisation section holds exactly 5 free items and 3 Premium items — no more. The sections are Crew Badges, Crew Calling Cards / Banner, Crew Themes, Crew Emblems and Crew Colours, all inside Crew Settings (on the crew's page) under Crew customisation, and ONLY the crew owner (the Leader) can open or change them — Co-Leaders, members and non-members never see the controls. The equipped crew badge shows next to the crew name on the crew card and crew page; the equipped crew calling card IS the crew banner (the wide banner at the top of the crew page); the crew theme is the crew page's accent theme; the crew colour also drives the automatic crew-card header theme. There are NO Avatars and NO Avatar Effects anymore — they were removed completely, Premium ones too: a profile shows the member's own uploaded profile picture, or the default avatar if they have none. There is NO banner colour picker and no separate banner section, no avatar frames and no name colours — every name in ViceSunshine is shown in white only. Premium items (3 per section, e.g. the Premium Member / Vice Elite / Neon Legend crew badges, the animated Vice Haze / Dead Palms / Inferno crew calling cards, the Gold Vice / Ice Vice / Ultraviolet Vice crew themes and the Vice Crest crew emblem) are included with Premium and never sold separately: a Premium item can only be equipped to a crew whose OWNER has Premium, and if the owner's Premium ends, Premium items equipped on the crew are unequipped back to free defaults until Premium returns. Calling Cards are wide, bold COD-style cards (original ViceSunshine designs — dark backgrounds, neon-green leaves, skulls, fire) shown on crew homes with the crew's name on them. Three more cards are Challenge cards (Dark Vice, Skull Harvest, Vicestronaut): earned Dark-Ops style by the OWNER completing challenges counted automatically in-app (reach Level 5, make 10 Feed posts, RSVP Going to 5 events) — locked until earned, never for sale, and not part of the 5 free + 3 Premium catalogue; once unlocked the owner equips them to the crew like any other crew calling card. Season challenge cards work the same way. Create a Crew uses the same catalogue: Step 1's emblem and colour pickers ARE the Crew Emblems and Crew Colours sections (same items, same Premium rules), and Step 3 points the founder to Crew Settings for the badge, banner and theme. Every crew page shows a Bio section and a Rules & Requirements section under its header; the Leader and Co-Leaders edit them in Crew Settings → Bio & Rules (the same fields as Create a Crew Step 2), and joiners see the rules and requirements again before joining. Presence works like Discord: from the profile's Add Status bubble or Settings, the Change Online Status sheet offers Online (green dot), Idle (yellow moon — stored as Away), Do Not Disturb (red minus) and Invisible (grey — stored as Ghost: the player appears Offline to everyone else while actually online), plus 'Set a custom status' for a short custom status text shown on the profile; anyone inactive for over 5 minutes shows as Offline. Players can also upload their OWN profile picture on their profile (JPG or PNG, up to 4 MB): every upload is checked by automatic moderation BEFORE it is stored — nude, sexual or illegal pictures are blocked and never stored — and the picture shows everywhere their avatar appears until removed. Vice Credits cannot be bought — they are only earned from in-app activity, level milestones, community events, seasonal awards and the Premium weekly grant; they are used for creating a crew (500) and member contributions to a crew wallet, and never buy Rank Points, levels, rank or wins. Premium is the ONLY thing that can be paid for, and payments are NOT connected yet — checkout is coming soon, no payment is taken and Premium never starts before a successful payment.",
+        "- Joining a crew: +50 Vice Credits welcome bonus (once per crew), crew chat/feed, squads, crew events, and the XP boost. The crew chat is AUTOMATIC and free: the moment you join (or found) a crew, its chat is already in your Messages — you never create a group chat for a crew and there is nothing to pay for or switch on. Crew life updates post themselves in the crew chat and in the crew page's Activity log at the same time: who joined, who left, who was kicked, promotions and demotions (with who did them), leadership changes, and when a member updates their profile picture. A crew chat opens with the crew's founding message — who founded it and the date it was founded. Crew Awards are NOT activity entries: they show only in the crew's Awards section.",
+        "- CREW customisation is FREE and there is no Shop: customisation belongs to CREWS, never to individual profiles — there is no Customise page and no personal cosmetics anymore. Every crew customisation section holds exactly 5 free items and 3 Premium items — no more — except Crew Colours, where all 8 named colours are free and the Premium perk is the Custom colour tool instead. The sections are Crew Badges, Crew Calling Cards / Banner, Crew Themes, Crew Emblems, Crew Emblem Effects and Crew Colours, all inside Crew Settings (on the crew's page) under Crew customisation, and ONLY the crew owner (the Leader) can open or change them — Co-Leaders, members and non-members never see the controls. The equipped crew badge shows next to the crew name on the crew card and crew page; the equipped crew calling card IS the crew banner (the wide banner at the top of the crew page); the crew theme is the crew page's accent theme; the crew colour also drives the automatic crew-card header theme. The equipped emblem effect ANIMATES on the crew's emblem everywhere the emblem shows (crew card, crew page, rankings, crew chat header): 5 free effects (Neon Glow, Vice Shine, Frost, Bubbles, Sunset Shimmer) and 3 Premium effects (Fire, Lightning, Champion Gold). Every emblem is a full AI-designed artwork (a neon sunset, a jewelled gold crown, a coiled serpent, a blazing diamond, a curling wave, the gold Vice Crest, a violet eclipse, a crowned royal palm, and the Phoenix season award), so every crew's emblem is a completely different design — the crew colour (or its Premium finish) frames the artwork on the tile. Crew colours all work: all 8 named catalogue colours are free (Classic Teal, Gold, Ice, Ultraviolet, Vice Pink, Molten Orange, Emerald, Midnight Violet), and the Premium colour perk is the Custom colour tool in the Crew Colours section (also offered in Create a Crew / Edit crew details) where a Leader with Premium picks ANY colour with a colour picker or a hex code, or a finish — Chrome, Gold Chrome, Rose Gold or Iridescent — whose gradient plays over the emblem and the crew-card header while its representative hex colours the member tags; a custom colour is stored as #RRGGBB and applies to the emblem, member tags, card header and page accent at once, and if the owner's Premium ends a custom colour or finish falls back to Vice Pink while named colours never change. There are NO Avatars and NO Avatar Effects anymore — they were removed completely, Premium ones too: a profile shows the member's own uploaded profile picture, or the default avatar if they have none. There is NO banner colour picker and no separate banner section, no avatar frames and no name colours — every name in ViceSunshine is shown in white only. Premium items (3 per section, e.g. the Premium Member / Vice Elite / Neon Legend crew badges, the animated Vice Haze / Dead Palms / Inferno crew calling cards, the Gold Vice / Ice Vice / Ultraviolet Vice crew themes and the Vice Crest crew emblem) are included with Premium and never sold separately: a Premium item can only be equipped to a crew whose OWNER has Premium, and if the owner's Premium ends, Premium items equipped on the crew are unequipped back to free defaults until Premium returns. Calling Cards are wide, bold COD-style cards (original ViceSunshine designs — dark backgrounds, neon-green leaves, skulls, fire) shown on crew homes with the crew's name on them. Three more cards are Challenge cards (Dark Vice, Skull Harvest, Vicestronaut): earned Dark-Ops style by the OWNER completing challenges counted automatically in-app (reach Level 5, make 10 Feed posts, RSVP Going to 5 events) — locked until earned, never for sale, and not part of the 5 free + 3 Premium catalogue; once unlocked the owner equips them to the crew like any other crew calling card. Season challenge cards work the same way. Create a Crew uses the same catalogue: Step 1's emblem and colour pickers ARE the Crew Emblems and Crew Colours sections (same items, same Premium rules), and Step 3 points the founder to Crew Settings for the badge, banner and theme. Every crew page shows a Bio section and a Rules & Requirements section under its header; the Leader and Co-Leaders edit them in Crew Settings → Bio & Rules (the same fields as Create a Crew Step 2), and joiners see the rules and requirements again before joining. Presence works like Discord: from the profile's Add Status bubble or Settings, the Change Online Status sheet offers Online (green dot), Idle (yellow moon — stored as Away), Do Not Disturb (red minus) and Invisible (grey — stored as Ghost: the player appears Offline to everyone else while actually online), plus 'Set a custom status' for a short custom status text shown on the profile; anyone inactive for over 5 minutes shows as Offline. Players can also upload their OWN profile picture on their profile (JPG or PNG, up to 4 MB): every upload is checked by automatic moderation BEFORE it is stored — nude, sexual or illegal pictures are blocked and never stored — and the picture shows everywhere their avatar appears until removed. Vice Credits cannot be bought — they are only earned from in-app activity, level milestones, community events, seasonal awards and the Premium weekly grant; they are used for creating a crew (500) and member contributions to a crew wallet, and never buy Rank Points, levels, rank or wins. Premium is the ONLY thing that can be paid for, and payments are NOT connected yet — checkout is coming soon, no payment is taken and Premium never starts before a successful payment.",
         "- Premium: $4.99/month USD is the base price — the ONLY paid thing in ViceSunshine. Pricing is location-based: the site shows each visitor the price in their own currency (their Settings currency when they picked one, otherwise the currency auto-detected from their location), converted from $4.99 USD at a high rate and rounded UP to a clean price point, so a local price is never worth less than $4.99 USD — currently CA$7.99/month in Canada, £4.99/month in the UK, €4.99/month in the eurozone and A$7.99/month in Australia. Checkout charges in the visitor's shown currency. Benefits, all enforced by the app: no ads (Premium members see no ad spaces at all), the Premium badge and identity (the custom Premium Member profile badge and Premium effects), unlimited Ask Vice, 250 Vice Credits every week while active — 1,000 a month (paid into the personal wallet; stops if Premium lapses, no back-pay), exclusive cosmetics including the gold Vice Crest crew emblem and the Premium picks in every crew customisation section, display name changes once a month (free members: once every 3 months — the username itself is permanent for everyone), early event access (Premium members can RSVP Going during an event's first 48 hours; everyone else can RSVP Going after that window), and the Premium Discord role + private Premium lounge in the official Discord server (https://discord.gg/NDH9XxyVkW): a Premium member claims it by linking their Discord username in Edit profile → Linked accounts; the site tracks who should have the role and the server bot applies it — until the bot is live the owner grants it by hand from the Owner Dashboard's Discord Premium role list, and the site shows 'Premium role pending' rather than claiming the role before it is really applied. When Premium ends, the role is removed at the same time. Crews hold unlimited members for everyone (there is no member cap, free or Premium — Premium never raises one), crew names are permanent for everyone (Premium never unlocks renaming a crew), and Premium never buys Rank Points, crew points or ranking — rankings are earned, never bought. The Database, guides, codes and the basic map are never paywalled.",
         askerCurrency
           ? `- Premium price for the player asking: their saved currency is ${premiumPriceFor(askerCurrency).code}, so Premium shows as ${premiumPriceFor(askerCurrency).label}/month for them. If they ask what Premium costs, give them exactly this figure — it is the $4.99 USD base converted at the site's high rate and rounded up.`
@@ -14210,7 +15428,7 @@ export const Actions = {
         "- Events: community events (car meets, races, crew meets, time trials, contests) hosted by crew Leaders whose crew has at least 10 members; find them by name or hashtag on the Events page. The hosting crew's Leader — and only that Leader — controls the event: they can edit it, switch it between Public and Private at any time, post its results and remove it completely. Lobby details are shown only to players who RSVP Going. GTA VI is single-player at launch — these are community meetups/challenges, not official in-game multiplayer.",
         "- Database: Vehicles, Weapons and Characters entries are maintained ONLY by the ViceSunshine team from official Rockstar sources and update automatically as official information changes — players cannot add, suggest or edit Database entries, and there is no suggestion form anymore. Every status badge (Confirmed in trailer / Reported / Unverified / Returning from GTA V) is generated from the entry's data; returning GTA V items are NOT confirmed for GTA VI. If a player thinks an entry is wrong, they can raise it in a support request and a human checks it against the official source.",
         "- Discord server: ViceSunshine has NO in-app voice calls and no Party Calls. Voice chat, hanging out and joining lobbies together happen on the ViceSunshine Discord server — the one Join our Discord server card is on the Create Account (Sign Up) page, in the final step after linking accounts (it appears nowhere else). The invite link is LIVE: https://discord.gg/NDH9XxyVkW — the card's Join button opens it, and it is the admin value set in Settings (Connectors, ViceSunshine Discord server — admin), so changing it there updates the card. Event pages can also show a host-shared lobby link for Going players as well.",
-        "- Support scope: Vice helps with ViceSunshine only (accounts, credits, Premium, crews, events, reports). Vice is NOT Rockstar support. Never ask for passwords, card details or account codes. Problems Vice cannot fix itself (payment issues, bans, credit disputes, reports needing review) need a human: needsHuman = true and tell the player to send a support request with what happened, when, and their username.",
+        "- Support scope: Vice helps with ViceSunshine only (accounts, credits, Premium, crews, events, reports). Vice is NOT Rockstar support. Never ask for passwords, card details or account codes. Problems Vice cannot fix itself (payment issues, bans, credit disputes, reports needing review) and questions Vice cannot answer from its knowledge need a human: needsHuman = true, tell the player to contact customer services for more info, and tell them to send a support request with what happened, when, and their username.",
         "",
         "HOW TO USE VICESUNSHINE — step-by-step guides (when a player asks HOW to do something, walk them through these exact steps in simple language and link the page named at the end):",
         "- Create an account: 1) Tap Create Account (bottom of the left sidebar on desktop, or the menu on phone). 2) Step 1: pick a gamertag, your platform and a short bio, then continue. 3) Step 2 (Link & join): type your PSN ID and Xbox gamertag if you want them shown on your profile, and tap Join on the Discord server card if you want in. 4) Tap Save & finish at the very bottom. You start with 500 Vice Credits. (Page: signup)",
@@ -14241,7 +15459,7 @@ export const Actions = {
         "- The series: Grand Theft Auto by Rockstar Games (Take-Two). GTA (1997) & GTA II top-down; GTA III (2001, Liberty City) started the 3D era; GTA: Vice City (2002, set in 1986 Vice City — a neon, Miami-inspired city — starring Tommy Vercetti); GTA: San Andreas (2004, Los Santos / San Fierro / Las Venturas, CJ); GTA IV (2008, Liberty City, Niko Bellic) + Episodes; GTA V (2013, Los Santos & Blaine County, three protagonists Michael, Franklin & Trevor) and GTA Online (ongoing multiplayer, heists, businesses, vehicles & weekly updates). Core loop across the series: open-world cities, story missions, side activities, wanted system (stars / cops), driving & customising vehicles, weapons, properties & money-making, radio stations, satire of American culture, secrets & Easter eggs. Vice City (2002) is the direct ancestor of GTA VI's setting — same city name, very different era and map.",
         "- GTA V / Online essentials Vice can explain: story vs Online are separate; Online has characters, apartments, businesses (MC, CEO, Nightclub, Arcade, Agency etc.), heists, races, PvP/PvE modes; Shark Cards are GTA Online's paid currency (ViceSunshine is NOT affiliated and Vice Credits are NOT Shark Cards). GTA V is set in Los Santos (Los Angeles-inspired), San Andreas state. Returning vehicles / weapons / features from GTA V are common in fan discussion but are NEVER confirmed for GTA VI unless Rockstar or the Database status says Confirmed.",
         "- GTA VI — CONFIRMED (official Rockstar trailers / site only): set in the state of Leonida (Florida-inspired) with Vice City returning as its big city; protagonists Lucia Caminos and her partner Jason Duval; a Bonnie-&-Clyde-style crime story; launches Thursday, November 19, 2026 on PlayStation 5 and Xbox Series X|S; single-player at launch; no GTA VI Online has been announced; two official trailers released (Trailer 1 Dec 2023, Trailer 2 May 2025). Places officially glimpsed in trailers / official material include Vice City, the Leonida Keys, Port Gellhorn, Ambrosia, Mount Kalaga National Park and the Grassrivers — Vice must still check the Database / News context for an item's exact status before calling any specific vehicle, weapon, character or location detail confirmed, and must say the official map has NOT been released whenever maps come up.",
-        "- GTA VI — NOT confirmed (always label, never state as fact): exact map size & full location list, full mission list, full vehicle / weapon rosters, prices, GTA VI Online details, PC release date, gameplay systems fans have guessed from leaks or trailer breakdowns. Leaks & rumors are Rumor / Unverified — interesting to discuss as rumors, never as facts. When Vice does not know a GTA VI specific, it says so cheerfully and points to Rockstar's official GTA VI page or the relevant ViceSunshine Database / News page instead of guessing.",
+        "- GTA VI — NOT confirmed (always label, never state as fact): exact map size & full location list, full mission list, full vehicle / weapon rosters, prices, GTA VI Online details, PC release date, gameplay systems fans have guessed from leaks or trailer breakdowns. Leaks & rumors are Rumor / Unverified — interesting to discuss as rumors, never as facts. When Vice does not know a GTA VI specific, it says so cheerfully, tells the player to contact customer services for more info, and points to Rockstar's official GTA VI page or the relevant ViceSunshine Database / News page instead of guessing.",
         "- General GTA help Vice CAN give: explain series lore, characters & cities from past games, how wanted levels, garages, customisation, heists & Online businesses generally work in the games that have them, compare Vice City (2002) vs GTA VI's Leonida, explain GTA terms (RP, griefing, modding — mods are PC / unofficial and not supported by ViceSunshine), and point to ViceSunshine Guides for mission & beginner help. Vice never provides cheats that break GTA Online rules, never helps with mod menus / hacking / exploiting Online, and never claims ViceSunshine rewards come from in-game GTA levels (there is no GTA VI API and rewards only come from counted in-app activity).",
         "",
         "MATCHED VICESUNSHINE CONTENT:",
@@ -14277,9 +15495,11 @@ export const Actions = {
         const result = await ctx.inference.complete(
           `You are Vice, the AI helper and website guide inside ViceSunshine, an unofficial fan-made GTA VI community app. You are an AI, not a person, and not affiliated with Rockstar Games or Take-Two. You only ever answer when a player asks you something — never raise topics yourself. Answer the player's question using ONLY the context below, which now covers the WHOLE website (every page, rule & how-to) and broad GTA knowledge (series history, past games, and confirmed GTA VI facts). Rules: never invent a GTA VI mission, weapon, vehicle, character, patch note, map location, news story or feature; for GTA VI specifics use only the Confirmed facts and the matched Database / News context, and if they do not cover it, say you do not know and point to the official Rockstar site (https://www.rockstargames.com/VI) or the relevant ViceSunshine page. For past GTA games and general GTA concepts you may answer from the GTA KNOWLEDGE section. Always label Rumor as Rumor and Unverified as Unverified; returning GTA V items are NOT confirmed for GTA VI. GTA VI launches November 19, 2026 on PS5 and Xbox Series X|S, single-player at launch; no GTA VI Online has been announced. PERSONALITY — fun, like a mate who loves Vice City: warm, upbeat and playful, a little neon-Vice-City energy, light humour and the odd playful line, genuinely excited about GTA without overhyping rumors. Keep it natural — fun, not forced; short answers stay punchy, how-tos stay clear. Simple language, no emojis (ViceSunshine uses none), no cringe slang overload, and stay trustworthy: fun never means making facts up, bending the rules, or being rude. If someone is stressed about credits, a ban or a payment problem, drop the jokes and be calm and kind. HOW-TO questions: when a player asks how to do something on the website, answer as a guide — short numbered steps taken from the HOW TO USE VICESUNSHINE / FULL WEBSITE MAP sections, in plain simple words, and link the exact page the steps happen on. NEWS questions: answer from LATEST NEWS / NEWS in the context, name the source, and include that story's own official link as a url link labelled "View official post" when the context gives one.
 
+NO FAKE ANSWERS — HARD RULE, no exceptions: if any part of the player's question is not covered by the context (or, for GTA VI specifics, is unconfirmed), do NOT fill the gap with something plausible-sounding — a made-up detail presented as an answer is worse than no answer. Answer the parts the context does cover, then say plainly that you can't answer the rest and tell the player to contact customer services (support) for more info. When the part you cannot answer is the main point of the question, set needsHuman = true so the support form opens for them. Never guess a date, price, feature, roster entry, rule or step that the context does not state.
+
 PRIVACY — HARD RULES, no exceptions: You may only discuss (1) the player asking — their own account line, profile, posts, crew and Premium — and (2) public ViceSunshine content (news, database, guides, public events, public crews, public feed posts). NEVER reveal, guess or confirm another person's private information: no other user's email, password, payment details, private messages, private profile details, saved items, private events, lobby details, invite codes or account details. That information is not in your context and you must never invent it. If a player asks for someone else's private information, refuse clearly and kindly: explain you cannot share other people's private information, and offer to help with their own account or with public content instead. Never ask anyone for passwords, card details or codes.
 
-links: include 1-3 helpful links — tab must be one of home, news, updates, bugs, map, eggs, guides, database, clans, events, profile, premium, feed, messages, challenges, analytics, signup, saved, ideas, goals (or "" with url set to an official source URL that appears in the context, labelled "View official post" for a news story's own link, or the official Rockstar page). needsHuman: true only when the problem needs a human (payment issue, ban, credit dispute, report needing review, anything you cannot fix) — then clearly say a human needs to review it and invite them to send a support request with what happened, when, and their username. Never promise a refund or a fix.
+links: include 1-3 helpful links — tab must be one of home, news, updates, bugs, map, eggs, guides, database, clans, events, profile, premium, feed, messages, challenges, analytics, signup, saved, ideas, goals (or "" with url set to an official source URL that appears in the context, labelled "View official post" for a news story's own link, or the official Rockstar page). needsHuman: true only when the problem needs a human (payment issue, ban, credit dispute, report needing review, anything you cannot fix, or when part of the question cannot be answered from the context) — then clearly say a human needs to review it, tell them to contact customer services for more info, and invite them to send a support request with what happened, when, and their username. Never promise a refund or a fix.
 
 CONTEXT:
 ${context}
@@ -14305,18 +15525,109 @@ QUESTION: ${args.question}`,
           needsHuman: result.needsHuman,
         };
       } catch {
+        // No-AI fallback (owner report, Nov 21 2026): when the AI
+        // itself is unreachable — e.g. no inference key is
+        // configured on the deployment — the old fallback led
+        // with the latest news for EVERY question, so "Hello"
+        // and "Where's the Easter egg?" alike got the same patch
+        // news dump and Vice looked like it answered at random.
+        // This one routes by what the player actually asked: a
+        // greeting gets a greeting, an Easter-egg question gets
+        // the Easter eggs, a price question gets the real
+        // Premium price, and the news only shows when news is
+        // what was asked for (or as keyword-matched content,
+        // like everything else below).
+        const oneLink = (label: string, tab: string) => [{ label, tab, url: "" }];
+        const trimmedQ = q.trim();
+        if (/^(hi+|hello|hey+|hiya|yo|sup|good (morning|afternoon|evening|day))\b/.test(trimmedQ) && trimmedQ.split(/\s+/).filter(Boolean).length <= 5) {
+          return {
+            answer: `Hey${args.gamertag ? ` ${args.gamertag}` : ""}! Good to see you in Leonida. Ask me anything about ViceSunshine or GTA — crews, credits, Premium, events, Easter eggs, or what's new — and I'll get you sorted.`,
+            links: [],
+            needsHuman: false,
+          };
+        }
+        if (q.includes("easter egg")) {
+          return {
+            answer: eggs.length
+              ? `Here ${eggs.length === 1 ? "is the Easter egg" : "are the Easter eggs"} I found for you: ${eggs.map((e) => `${e.name} (${e.location}) — ${e.status}. ${e.howTo.slice(0, 140)}`).join(" ")} The Easter Eggs page has the full list, each with its picture or video and a source to check.`
+              : "I couldn't match that to a specific Easter egg in the list yet, and I won't make one up — the Easter Eggs page has every egg the community has logged, each marked Real, Rumor or Unverified with a source to check. If it isn't there, it hasn't been verified yet. For more info on that one, contact customer services and the team can look into it.",
+            links: oneLink("Open Easter Eggs", "eggs"),
+            needsHuman: false,
+          };
+        }
+        if ((q.includes("release") || q.includes("launch") || q.includes("come out") || q.includes("comes out")) && (q.includes("gta") || q.includes("game") || q.includes("when"))) {
+          return {
+            answer: "GTA VI launches Thursday, November 19, 2026 on PlayStation 5 and Xbox Series X|S — that's confirmed by Rockstar. It's single-player at launch, and no GTA VI Online has been announced.",
+            links: [{ label: "Rockstar's official GTA VI page", tab: "", url: "https://www.rockstargames.com/VI" }],
+            needsHuman: false,
+          };
+        }
+        if (q.includes("premium") || q.includes("price") || q.includes("cost") || q.includes("how much")) {
+          const price = premiumPriceFor(askerCurrency);
+          return {
+            answer: `Premium is ${price.label}/month for you — the base price is $4.99/month USD, shown in your own currency converted from USD at a high rate and rounded up, so a local price is never worth less than the USD price. It's the only paid thing in ViceSunshine: no ads, 250 Vice Credits every week, Premium items in crew customisation, early event access and the Premium Discord role. Payments aren't connected yet, so checkout is coming soon and no payment is taken today.`,
+            links: oneLink("Open Premium", "premium"),
+            needsHuman: false,
+          };
+        }
+        if (q.includes("credit")) {
+          return {
+            answer: "Vice Credits are earned inside ViceSunshine, never bought: every new account starts with 500, level milestones pay out (Level 5 +100, Level 10 +250, up to Level 50 +2,500), community events and season finishes pay the winning crews, joining a crew pays a +50 welcome bonus once per crew, and Premium pays 250 a week while it's active. They're spent on creating a crew (500) and contributing to a crew wallet — they never buy Rank Points or rank.",
+            links: oneLink("Open Goals & Wallet", "goals"),
+            needsHuman: false,
+          };
+        }
+        if (q.includes("news") || q.includes("latest") || q.includes("trending") || q.includes("today") || q.includes("patch") || q.includes("update")) {
+          const patchLine = latestPatch ? ` Latest patch: version ${latestPatch.version} (${latestPatch.releaseDate}).` : "";
+          return {
+            answer: latestNews.length
+              ? `The latest from the News page: ${latestNews.map((n) => `${n.title} (${n.sourceName || "ViceSunshine"})`).join("; ")}.${patchLine}`
+              : `No news stories are up right now.${patchLine}`,
+            links: oneLink("Open News", "news"),
+            needsHuman: false,
+          };
+        }
+        if (q.includes("crew") || q.includes("clan")) {
+          return {
+            answer: crews.length
+              ? `Crews I found: ${crews.map((c) => `${c.name} [${c.tag}] (${c.platform})`).join("; ")}. Open Crews to browse them all — tap a crew and hit Join; joining pays a +50 Vice Credits welcome bonus once per crew. Creating your own crew costs 500 Vice Credits.`
+              : "Open Crews to browse every crew — tap one and hit Join (joining pays a +50 Vice Credits welcome bonus once per crew). Creating your own crew costs 500 Vice Credits from your wallet.",
+            links: oneLink("Open Crews", "clans"),
+            needsHuman: false,
+          };
+        }
+        if (q.includes("event")) {
+          return {
+            answer: events.length
+              ? `Public events matching that: ${events.map((e) => `${e.title} — ${e.startsAt}`).join("; ")}. Lobby details appear once you RSVP Going.`
+              : "No public events match that right now — open Events and search by name or a hashtag like #carmeet or #race. Crew Leaders whose crew has 10+ members can create events there.",
+            links: oneLink("Open Events", "events"),
+            needsHuman: false,
+          };
+        }
+        if (q.includes("bug")) {
+          return {
+            answer: bugs.length
+              ? `Bugs I found: ${bugs.map((b) => `${b.title} (${b.platform}, ${b.status})`).join("; ")}. The Bugs page tracks each one's status.`
+              : "I couldn't match that to a logged bug — the Bugs page has the full tracker, and you can report a new one there.",
+            links: oneLink("Open Bugs", "bugs"),
+            needsHuman: false,
+          };
+        }
         const bits: string[] = [];
-        if (latestNews.length) bits.push(`The latest news: ${latestNews.map((n) => `${n.title} (${n.sourceName || "ViceSunshine"})`).join("; ")}.`);
         if (entries.length) bits.push(`In the Database: ${entries.map((e) => `${e.name} (${e.kind}, ${e.status})`).join("; ")}.`);
-        if (events.length) bits.push(`Matching public events: ${events.map((e) => `${e.title} — ${e.startsAt}`).join("; ")}.`);
-        if (eggs.length) bits.push(`Matching Easter eggs: ${eggs.map((e) => `${e.name} (${e.status})`).join("; ")}.`);
-        if (news.length) bits.push(`More matching news: ${news.map((n) => n.title).join("; ")}.`);
+        if (guides.length) bits.push(`Guides: ${guides.map((g) => g.title).join("; ")}.`);
+        if (eggs.length) bits.push(`Easter eggs: ${eggs.map((e) => `${e.name} (${e.status})`).join("; ")}.`);
+        if (events.length) bits.push(`Public events: ${events.map((e) => `${e.title} — ${e.startsAt}`).join("; ")}.`);
+        if (bugs.length) bits.push(`Bugs: ${bugs.map((b) => `${b.title} (${b.status})`).join("; ")}.`);
+        if (news.length) bits.push(`Matching news: ${news.map((n) => n.title).join("; ")}.`);
+        if (crews.length) bits.push(`Crews: ${crews.map((c) => `${c.name} [${c.tag}]`).join("; ")}.`);
         return {
           answer: bits.length
-            ? `Here is what I found in ViceSunshine: ${bits.join(" ")} I could not compose a fuller answer just now — the pages linked below have the details.`
-            : "I could not find that in ViceSunshine's News, Guides, Database or Events, and I do not want to guess. Try the official Rockstar site, or rephrase and I will search again.",
+            ? `Here is what I found in ViceSunshine for that: ${bits.join(" ")} The pages linked below have the full details. If part of your question isn't covered there, I can't answer that part — contact customer services for more info rather than me guessing.`
+            : "I can't answer that one — I couldn't find it in ViceSunshine's News, Guides, Database or Events, and I won't make something up. For more info, contact customer services: the support form is open below, and the team will help. You can also try the official Rockstar site, or rephrase and I will search again.",
           links: fallbackLinks.length ? fallbackLinks : [{ label: "Check the official Rockstar site", tab: "", url: "https://www.rockstargames.com/VI" }],
-          needsHuman: false,
+          needsHuman: bits.length === 0,
         };
       }
     },
@@ -14817,6 +16128,12 @@ QUESTION: ${args.question}`,
         });
         dbAdded += 1;
       }
+      // Duplicate sweep (owner, Nov 21 2026): an auto-discovered
+      // copy stored under a variant name (short name, or the
+      // manufacturer written into the name) survives the
+      // reconcile above by design — fold it into its catalog
+      // entry here so the same item never shows twice.
+      await mergeDuplicateDbEntries(ctx);
       await setMeta(ctx, "last_db_sync_at", new Date().toISOString());
       let guidesAdded = 0;
       const existingGuides = await db.select().from(schema.guides);
@@ -16030,7 +17347,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
   }),
 
   getCrewCustomise: defineAction({
-    description: "Returns the CREW customisation catalogue for one crew (Crew Settings → Crew customisation): Crew Badges, Crew Calling Cards / Banner (the merged catalogue — the old personal and crew calling-card lists combined, duplicates kept once), Crew Themes, Crew Emblems and Crew Colours — every section exactly 5 free items and 3 Premium items — plus the earned Challenge and Season calling cards with the owner's own unlock progress. There are no Avatars and no Avatar Effects anymore, and no personal customisation of any kind: profiles show the member's uploaded picture or the default avatar. Only the crew OWNER (Leader) can equip; this read also reports whether the viewer is the owner and whether the owner has Premium (Premium items need the owner's Premium). Equipped state is read from the crew's own stored look, so it matches the crew card, crew page and crew chat header exactly. Everyday customisation is FREE — there is no Shop.",
+    description: "Returns the CREW customisation catalogue for one crew (Crew Settings → Crew customisation): Crew Badges, Crew Calling Cards / Banner (the merged catalogue — the old personal and crew calling-card lists combined, duplicates kept once), Crew Themes, Crew Emblems, Crew Emblem Effects (animated overlays that play on the crew's emblem everywhere it shows) and Crew Colours — every section exactly 5 free items and 3 Premium items, except Crew Colours: all 8 named colours are free and the Premium colour perk is the Custom colour tool (any colour, plus Chrome / Gold Chrome / Rose Gold / Iridescent finishes) — plus the earned Challenge and Season calling cards with the owner's own unlock progress. There are no Avatars and no Avatar Effects anymore, and no personal customisation of any kind: profiles show the member's uploaded picture or the default avatar. Only the crew OWNER (Leader) can equip; this read also reports whether the viewer is the owner and whether the owner has Premium (Premium items need the owner's Premium). Equipped state is read from the crew's own stored look, so it matches the crew card, crew page and crew chat header exactly. Everyday customisation is FREE — there is no Shop.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       clanId: z.number().int().positive(),
@@ -16055,7 +17372,6 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       const leader = members.find((m) => m.role === "Leader");
       const ownerPremiumActive = leader ? await premiumActiveFor(ctx, leader.playerKey) : false;
       const owned = await db.select().from(schema.ownedItems);
-      const clanOwned = owned.filter((o) => o.ownerType === "clan" && o.ownerId === String(args.clanId));
       const mineOwned = owned.filter((o) => o.ownerType === "personal" && o.ownerId === args.playerKey);
       // Equipped state comes from the crew's own stored look — the
       // exact values the crew card, crew page and crew chat header
@@ -16067,9 +17383,22 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         badge: clan.badge ?? "",
         theme: clan.themeAccent ?? "",
         banner: clan.bannerStyle ?? "",
+        effect: clan.emblemEffect ?? "",
       };
-      const isEquipped = (kind: string, value: string) =>
-        value !== "" && equippedValue[kind] === value;
+      // Equipped state is the crew's stored look ONLY — an old
+      // owned_items row still flagged "equipped" must never mark a
+      // second colour or effect as equipped alongside the one that
+      // is actually showing (that mismatch is what made some
+      // colours look broken). Hex-valued kinds (colour, theme)
+      // compare case-insensitively: the catalogue mixes cases and a
+      // colour stored lowercase is the same colour.
+      const isEquipped = (kind: string, value: string) => {
+        if (value === "") return false;
+        const cur = equippedValue[kind] ?? "";
+        return kind === "color" || kind === "theme"
+          ? cur.toLowerCase() === value.toLowerCase()
+          : cur === value;
+      };
       const progress = isOwner
         ? await challengeProgress(ctx, args.playerKey)
         : new Map<string, { current: number; unlocked: boolean }>();
@@ -16130,7 +17459,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
             kind: i.kind,
             value: i.value,
             ownedByClan: true,
-            equippedByClan: isEquipped(i.kind, i.value) || clanOwned.some((o) => o.itemId === i.id && o.equipped === 1),
+            equippedByClan: isEquipped(i.kind, i.value),
             premiumOnly: i.premiumOnly === true,
             imageUrl: "",
             challenge: "",
@@ -16166,7 +17495,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
   }),
 
   equipCosmetic: defineAction({
-    description: "Equips a CREW customisation instantly (Crew Settings → Crew customisation): free catalogue items are granted on the spot (no credits, no payment, no Shop). Every item is a crew item now — badge, calling card / banner, theme, emblem, colour — and equipping updates the crew's stored look, so the crew card, crew page, crew chat header and rosters change at once. ONLY the crew owner (Leader) can equip: Co-Leaders, members and non-members cannot. Premium-only items additionally need the OWNER to have an active Premium membership — they are part of Premium, never sold separately. Challenge and Season calling cards must be unlocked by the owner first (counted automatically from the owner's own in-app activity). Crew Awards still must be earned by the crew first; they are granted by milestones, never equipped before they are earned.",
+    description: "Equips a CREW customisation instantly (Crew Settings → Crew customisation): free catalogue items are granted on the spot (no credits, no payment, no Shop). Every item is a crew item now — badge, calling card / banner, theme, emblem, emblem effect, colour — and equipping updates the crew's stored look, so the crew card, crew page, crew chat header and rosters change at once. An emblem effect equips onto the crew row (clans.emblem_effect) and ClanEmblem animates it on every surface — it is a live look, not a catalogue picture. ONLY the crew owner (Leader) can equip: Co-Leaders, members and non-members cannot. Premium-only items additionally need the OWNER to have an active Premium membership — they are part of Premium, never sold separately. Challenge and Season calling cards must be unlocked by the owner first (counted automatically from the owner's own in-app activity). Crew Awards still must be earned by the crew first; they are granted by milestones, never equipped before they are earned.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       itemId: z.string().min(1).max(60),
@@ -16232,8 +17561,12 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       await db.update(schema.ownedItems).set({ equipped: 1 }).where(eq(schema.ownedItems.id, row.id));
       if (item.kind === "emblem") {
         await db.update(schema.clans).set({ emblem: item.value }).where(eq(schema.clans.id, args.clanId));
+      } else if (item.kind === "effect") {
+        await db.update(schema.clans).set({ emblemEffect: item.value }).where(eq(schema.clans.id, args.clanId));
       } else if (item.kind === "color") {
-        await db.update(schema.clans).set({ color: item.value }).where(eq(schema.clans.id, args.clanId));
+        // A named catalogue colour is a solid colour — equipping
+        // one takes any Premium custom finish off.
+        await db.update(schema.clans).set({ color: item.value, colorFinish: "" }).where(eq(schema.clans.id, args.clanId));
       } else if (item.kind === "banner") {
         await db.update(schema.clans).set({ bannerStyle: item.value }).where(eq(schema.clans.id, args.clanId));
       } else if (item.kind === "callingCard") {
@@ -16250,7 +17583,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
   }),
 
   unequipCosmetic: defineAction({
-    description: "Removes an equipped CREW customisation, reverting that slot to the default look (no badge, no calling card banner, no theme, default emblem, Vice Pink colour). Free, instant, and nothing is lost — the item stays available to equip again any time from Crew Settings. Only the crew owner (Leader) can do this.",
+    description: "Removes an equipped CREW customisation, reverting that slot to the default look (no badge, no calling card banner, no theme, default emblem, no emblem effect, Vice Pink colour). Free, instant, and nothing is lost — the item stays available to equip again any time from Crew Settings. Only the crew owner (Leader) can do this.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       itemId: z.string().min(1).max(60),
@@ -16280,12 +17613,61 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       const clan = clanRows[0];
       if (clan) {
         if (item.kind === "emblem" && clan.emblem === item.value) await db.update(schema.clans).set({ emblem: CREW_DEFAULT_EMBLEM }).where(eq(schema.clans.id, args.clanId));
+        else if (item.kind === "effect" && (clan.emblemEffect ?? "") === item.value) await db.update(schema.clans).set({ emblemEffect: "" }).where(eq(schema.clans.id, args.clanId));
         else if (item.kind === "color" && clan.color === item.value) await db.update(schema.clans).set({ color: CREW_DEFAULT_COLOR }).where(eq(schema.clans.id, args.clanId));
         else if (item.kind === "banner" && clan.bannerStyle === item.value) await db.update(schema.clans).set({ bannerStyle: "" }).where(eq(schema.clans.id, args.clanId));
         else if (item.kind === "callingCard" && clan.callingCard === item.value) await db.update(schema.clans).set({ callingCard: "" }).where(eq(schema.clans.id, args.clanId));
         else if (item.kind === "badge" && (clan.badge ?? "") === item.value) await db.update(schema.clans).set({ badge: "" }).where(eq(schema.clans.id, args.clanId));
         else if (item.kind === "theme" && (clan.themeAccent ?? "") === item.value) await db.update(schema.clans).set({ themeAccent: "" }).where(eq(schema.clans.id, args.clanId));
       }
+      ctx.invalidateQueries();
+      return ok();
+    },
+  }),
+
+  setCrewColor: defineAction({
+    description: "The Premium Custom colour tool (Crew Settings → Crew customisation → Crew Colours → Custom colour): the Leader picks ANY colour with the colour picker or types a hex code, or picks a finish — Chrome, Gold Chrome, Rose Gold or Iridescent — and it applies at once: crew emblem, the crew tag in front of every member's name, the crew card header and the crew page accent all read the one stored colour, and the emblem tile and card header render the finish's gradient. Leader only (the crew owner), and the tool is part of Premium: the named catalogue colours are all free, but a custom colour or finish needs the Leader's Premium — without it this refuses in plain words. A finish stores its representative hex as the crew colour (tags and text accents) plus the finish key on the crew row. The colour is normalised to #RRGGBB before storing so it renders identically everywhere.",
+    request: z.object({
+      playerKey: z.string().min(1).max(80),
+      clanId: z.number().int().positive(),
+      color: z.string().trim().min(4).max(9),
+      finish: z.enum(["", "chrome", "gold", "rose-gold", "iridescent"]).default(""),
+    }),
+    response: okResponse,
+    async handler(ctx, args): Promise<Ok> {
+      const db = ctx.db<typeof schema>();
+      await requireProfile(ctx, args.playerKey);
+      const me = await myMembership(ctx, args.clanId, args.playerKey);
+      if (!me || me.role !== "Leader") {
+        throw new Error("Only the crew owner (Leader) can change the crew's colour.");
+      }
+      // The custom colour tool IS the Premium colour perk — the
+      // named colours are all free, this tool is not.
+      if (!(await premiumActiveFor(ctx, args.playerKey))) {
+        throw new Error("Custom colours and finishes are included with Premium — the crew's owner needs Premium to use the custom colour tool. The 8 named Crew Colours stay free.");
+      }
+      const finishDef = args.finish ? CREW_COLOR_FINISHES[args.finish] : undefined;
+      if (args.finish && !finishDef) {
+        throw new Error("That finish does not exist — pick Solid, Chrome, Gold Chrome, Rose Gold or Iridescent.");
+      }
+      // A finish carries its own representative hex; a solid
+      // custom colour uses the picked / typed hex.
+      const crewColor = finishDef ? finishDef.hex : normalizeCrewColor(args.color);
+      if (!crewColor) {
+        throw new Error("That is not a colour the crew can use — pick one with the colour picker or type a hex code like #FF2E88.");
+      }
+      // A custom colour replaces whatever catalogue colour was
+      // equipped, so clear any colour row still flagged equipped —
+      // otherwise Premium enforcement could later mistake this
+      // custom colour for a Premium catalogue equip and reset it.
+      const colorRows = (await db.select().from(schema.ownedItems)).filter(
+        (o) => o.ownerType === "clan" && o.ownerId === String(args.clanId) && o.equipped === 1 && cosmeticItem(o.itemId)?.kind === "color",
+      );
+      for (const row of colorRows) {
+        await db.update(schema.ownedItems).set({ equipped: 0 }).where(eq(schema.ownedItems.id, row.id));
+      }
+      await db.update(schema.clans).set({ color: crewColor, colorFinish: args.finish }).where(eq(schema.clans.id, args.clanId));
+      await logActivity(ctx, args.clanId, me.gamertag, finishDef ? `set a ${finishDef.name} crew colour finish:` : "set a custom crew colour:", crewColor, "");
       ctx.invalidateQueries();
       return ok();
     },
@@ -17681,6 +19063,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
               tag: def.tag,
               color: pick(CREW_COLORS),
               emblem: pick(CREW_EMBLEMS),
+              emblemEffect: pick(["", "", "neon", "shine", "frost", "bubbles", "sunset-shimmer"]),
               motto: def.motto,
               description: def.description,
               platform: ci % 4 === 1 ? "PS5" : ci % 4 === 3 ? "Xbox" : "Both",
@@ -17976,7 +19359,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
   }),
 
   refreshBotCommunity: defineAction({
-    description: "Keeps the seeded community (the 200 bot- members) lifelike, just like real people (owner's direction, Nov 21 2026: 'make them post stories about the GTA and have posts and videos and followers — just make it like real people'): tops up mutual follows so every member carries 100–1000 followers; gives members Feed posts with pictures (an original ViceSunshine illustration pool, generated once into owned blobs and reused) and video posts sharing real GTA VI YouTube videos the automatic Feed refresh already sourced (linked and played at the source, never re-uploaded); and keeps a rotating cast of members posting fresh GTA stories — news, gameplay, car meets, memes — with other members watching and liking them, so the Stories row always shows real community members. Stories expire after 24 hours, so this runs on a schedule and every run only tops up what is missing. Real players' rows are never touched, and no account is created, renamed or deleted.",
+    description: "Keeps the seeded community (the 200 bot- members) lifelike, just like real people (owner's direction, Nov 21 2026: 'make them post stories about the GTA and have posts and videos and followers — just make it like real people'): tops up mutual follows so every member carries 100–1000 followers; gives members Feed posts with pictures (an original ViceSunshine illustration pool, generated once into owned blobs and reused) and video posts sharing real GTA VI YouTube videos the automatic Feed refresh already sourced (linked and played at the source, never re-uploaded); and keeps a rotating cast of members posting fresh GTA stories as full-frame PICTURES only (owner's direction, Nov 21 2026: stories must fill the whole 9:16 frame — a real playing clip with sound cannot be had from a YouTube link, since phones block sound-on autoplay and the YouTube player letterboxes into a small box with its own play button, which the owner rejected twice — so, in the owner's own fallback words, 'post a pic of a meme or just gta pictures as story'): every live bot story is a portrait GTA picture or GTA meme illustration from the story art pool, live on no other story, with a caption no other live story carries; every live bot story that is a video link / embed (or a duplicate, or a text-only story) is removed and replaced by the picture rotation, and if no unused picture is available the run posts NO story — no story beats a bad one. Other members watch and like the new stories, so the Stories row always shows real community members. Stories expire after 24 hours, so this runs on a schedule and every run only tops up what is missing. Real players' rows are never touched, and no account is created, renamed or deleted.",
     request: z.object({}),
     response: refreshBotCommunityResponse,
     async handler(ctx): Promise<z.infer<typeof refreshBotCommunityResponse>> {
@@ -18008,12 +19391,13 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       };
 
       // ---- Art pool: original ViceSunshine illustrations the
-      // members post as their pictures (post pictures landscape,
-      // story pictures portrait). Generated once per slot into
-      // owned blobs — meta is the record — at most 3 new pictures
-      // per pool per run, so a run stays fast and the schedule
-      // converges the pools within a couple of runs. A failed
-      // picture never blocks the run; its slot retries next run.
+      // members post as their Feed PICTURES (landscape). Generated
+      // once per slot into owned blobs — meta is the record — at
+      // most 3 new pictures per run, so a run stays fast and the
+      // schedule converges the pool within a couple of runs. A
+      // failed picture never blocks the run; its slot retries
+      // next run. Stories use their own portrait picture pool
+      // (see Stories below); this landscape pool is Feed-only.
       const POST_ART_BRIEFS = [
         "a classic convertible cruising a palm-lined ocean drive at sunset, art-deco hotels glowing pink and teal",
         "a lowrider car meet in a neon-lit parking lot at night, detailed custom cars lined up in a row",
@@ -18021,14 +19405,6 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         "a neon beach boardwalk at night with arcade lights, skaters and palm trees",
         "an off-road truck splashing through swamp shallows at golden hour, mangroves all around",
         "a marina full of yachts and speedboats at dusk, neon city lights reflecting on the water",
-      ];
-      const STORY_ART_BRIEFS = [
-        "a neon-soaked beachfront at night, palm trees and art-deco hotels glowing pink and teal, a lone sports car parked at the kerb",
-        "a street car meet at dusk, lowriders and supercars in a row under string lights and neon signs, crowd silhouettes",
-        "a speedboat cutting across a turquoise bay at sunset toward a glowing city skyline, spray catching pink light",
-        "a rain-slick downtown street at night, neon reflections on wet asphalt, a muscle car with its headlights on",
-        "a swamp airboat scene at golden hour, mangroves and hanging moss, moody orange and teal light",
-        "a rooftop view over a neon beach strip at blue hour, ferris wheel lights in the distance, palm silhouettes",
       ];
       const loadPool = async (metaKey: string): Promise<string[]> => {
         try {
@@ -18040,9 +19416,9 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         }
       };
       let artGenerated = 0;
-      const fillPool = async (metaKey: string, keyPrefix: string, briefs: string[], orientation: "portrait" | "landscape"): Promise<string[]> => {
+      const fillPool = async (metaKey: string, keyPrefix: string, briefs: string[], orientation: "portrait" | "landscape", budgetPerRun = 3): Promise<string[]> => {
         const pool = await loadPool(metaKey);
-        let budget = 3;
+        let budget = budgetPerRun;
         for (let slot = pool.length; slot < briefs.length && budget > 0; slot++) {
           const brief = briefs[slot] as string;
           try {
@@ -18059,13 +19435,6 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         return pool;
       };
       const postArtKeys = await fillPool("bot-post-art-pool", "bot-life/post-art", POST_ART_BRIEFS, "landscape");
-      const storyArtKeys = await fillPool("bot-story-art-pool", "bot-life/story-art", STORY_ART_BRIEFS, "portrait");
-      const storyArtUrls: string[] = [];
-      for (const k of storyArtKeys) {
-        try {
-          storyArtUrls.push(await ctx.blobs.getUrl(k));
-        } catch { /* a missing picture just means more text stories */ }
-      }
 
       // ---- Follows: the members follow each other, so every
       // profile carries a believable follower count — topped up
@@ -18108,14 +19477,35 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
       }
       if (!Number.isFinite(minFollowers)) minFollowers = 0;
 
-      // ---- Stories: a rotating cast of members posts fresh GTA
-      // stories — news, gameplay, car meets, memes. Stories die
-      // after 24 hours, so each run tops the live set back up to
-      // about 60 members: anyone whose newest story is over ~5
-      // hours old (or who has none) posts again, up to 40 new
-      // stories per run. Most carry a picture from the pool; the
-      // rest are text stories. Other members watch and like the
-      // new stories, like real people do.
+      // ---- Stories: full-frame GTA PICTURES only — memes and
+      // GTA pictures, never a video link parked in the frame
+      // (owner's direction, Nov 21 2026: "make them full screen
+      // 9:16… and also make it play like an actual clip with
+      // sounds on — if that's too hard post a pic of a meme or
+      // just gta pictures as story"). A real sound-on clip
+      // cannot be had from a YouTube link: phones block
+      // sound-on autoplay, and the YouTube player letterboxes
+      // its video into a small strip with its own play button
+      // inside the portrait frame — the exact "video link on
+      // the story that doesn't even fit the frame" the owner
+      // rejected twice. So the owner's fallback is the rule:
+      // every bot story is ONE portrait picture from the story
+      // art pool (GTA scenes and GTA meme illustrations),
+      // filling the whole 9:16 frame, live on at most one
+      // story at a time, with a caption no other live story
+      // carries. Any live bot story that is NOT such a picture
+      // (every video-link / embed story, shared pictures, text
+      // stories, duplicates) is removed with its views / likes
+      // / replies and replaced by the picture rotation below —
+      // real players' stories are never touched. Stories die
+      // after 24 hours, so each run tops the live set back up:
+      // anyone whose newest story is over ~5 hours old (or who
+      // has none) posts again, up to 40 new stories per run,
+      // capped by the pictures actually available. Other
+      // members watch and like the new stories, like real
+      // people do. If no unused picture is available, the run
+      // posts NO story — the owner's call: no story beats a
+      // bad one.
       const STORY_CAPTIONS: { text: string; sticker: string }[] = [
         { text: "Trailer rewatch number… I've lost count", sticker: "GTA VI" },
         { text: "The Keys at dawn. This game is stupidly pretty", sticker: "Vice City" },
@@ -18133,33 +19523,171 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         { text: "The neon reflections on wet roads are perfect", sticker: "Gameplay" },
         { text: "Story first or explore first? I still can't decide", sticker: "GTA VI" },
         { text: "Swamp run with the crew — the gators were NOT the problem", sticker: "Funny" },
+        { text: "Water tower views over the whole bay", sticker: "Leonida" },
+        { text: "This corner of Ocean Drive at golden hour", sticker: "Vice City" },
+        { text: "POV: the wanted level finally drops", sticker: "Gameplay" },
+        { text: "The causeway at sunrise never gets old", sticker: "Leonida" },
+        { text: "Caught this shot and had to post it", sticker: "GTA VI" },
+        { text: "Boat day in the Keys — look at that water", sticker: "Gameplay" },
+        { text: "Downtown after the storm, everything shining", sticker: "Vice City" },
+        { text: "My cleanest drift yet, no wall taps", sticker: "Gameplay" },
+        { text: "Airboat chaos in the swamp, part one", sticker: "Funny" },
+        { text: "The boardwalk crowd when the meet rolled in", sticker: "Car meet" },
+        { text: "One more lap around the strip before bed", sticker: "Vice City" },
+        { text: "Helicopter view over the bay at blue hour", sticker: "Leonida" },
+        { text: "This detail in the new footage blew my mind", sticker: "GTA VI news" },
+        { text: "Counting down by rewatching everything", sticker: "Launch week" },
+        { text: "Crew cruise formation, finally in sync", sticker: "Crew night" },
+        { text: "When the radio lands on the perfect song mid-chase", sticker: "Meme" },
+      ];
+      // Second sentences combined with the base lines above when
+      // a base line is already live, so caption combinations stay
+      // unique across the whole live set (32 bases × 11 forms).
+      const STORY_CAPTION_TAILS = [
+        "Full-screen this one.",
+        "Look at those colours.",
+        "Picture of the day, no contest.",
+        "This is the good part.",
+        "Saving this moment here.",
+        "Leonida in one picture.",
+        "The details are unreal.",
+        "Who else caught this?",
+        "On repeat all morning.",
       ];
       const storyRows = await db.select().from(schema.stories);
       const liveCutoff = now - 24 * 3600 * 1000;
       const freshCutoff = now - 5 * 3600 * 1000;
+
+      // ---- Story pictures: the ONLY bot story form (owner's
+      // fallback, Nov 21 2026: "post a pic of a meme or just
+      // gta pictures as story"). Original ViceSunshine portrait
+      // illustrations — GTA scenes and GTA meme scenes —
+      // generated once into owned blobs like the post art (same
+      // fillPool machinery, portrait orientation, a bigger
+      // per-run budget so the pool grows to full size quickly);
+      // a picture may be live on at most ONE bot story at a
+      // time, so the row never shows the same picture twice.
+      const STORY_ART_BRIEFS = [
+        "a sports car parked under neon signs on a rain-wet ocean drive at night, palm trees overhead, shot from street level",
+        "a beach boardwalk at golden hour with skaters, arcade lights and a ferris wheel far down the shore",
+        "a lowrider meet in a parking lot at dusk, rows of custom cars under string lights",
+        "a speedboat cutting across a turquoise bay toward a glowing skyline at sunset",
+        "an airboat in swamp shallows at dawn, mist over mangroves and cypress trees",
+        "a rooftop pool looking over a neon downtown skyline at blue hour",
+        "a classic convertible on a causeway bridge over bright blue water, storm clouds gathering ahead",
+        "a marina at night, yachts lit up under pink and teal neon reflections",
+        "an art-deco hotel corner glowing pink at night, a muscle car rolling past below",
+        "a dirt road through palm groves toward a distant neon city glow at twilight",
+        "a helicopter view down a neon strip at night, wet streets reflecting every sign",
+        "a beach lifeguard tower at sunrise, pastel sky over a calm turquoise sea",
+        "a funny meme-style scene: a gamer character in a headset dramatically calling in sick to work on game launch day, laptop glowing with a neon city game world, comedic exaggerated expression, cartoon illustration",
+        "a funny meme-style scene: a character staring at a huge wall calendar with one single day circled in glowing neon marker, counting down to a video game launch, cartoon illustration",
+        "a funny meme-style scene: two characters fist-bumping in front of a neon-lit muscle car at night, one holding a game controller like a trophy, cartoon illustration",
+        "a funny meme-style scene: a character buried under snacks and energy drinks on a couch, controller in hand, TV glowing with a tropical neon city at launch night, cartoon illustration",
+        "a seaplane docked at a Keys marina at golden hour, pelicans on the posts, pastel sky",
+        "a street-art mural wall in a downtown alley at night, neon paint, a skateboarder rolling past",
+        "a beach volleyball game at sunset under palm trees, neon beach bar glowing behind",
+        "a fishing pier at dawn with a lone angler, turquoise water and a distant glowing skyline",
+        "a retro diner on a coastal highway at dusk, neon sign glowing, a classic car parked outside",
+        "a swamp boardwalk at night lit by string lights, fireflies over dark water",
+        "a downtown rooftop at night with a telescope pointed at a huge full moon over the bay",
+        "a night market street full of food stalls and neon signs, crowds and palm trees",
+      ];
+      const storyArtKeys = await fillPool("bot-story-art-pool", "bot-life/story-art", STORY_ART_BRIEFS, "portrait", 6);
+      const storyArtKeySet = new Set(storyArtKeys);
+
+      // ---- Retire every live bot story that is not a
+      // story-pool picture live on this story only: every
+      // video-link / embed story (the letterboxed player box
+      // the owner rejected), every shared picture, text story
+      // and duplicate goes, with its views, likes, replies and
+      // highlight links, exactly like deleteStory. After this
+      // pass, the only bot stories left standing are full-frame
+      // pictures.
+      const liveBotStories = storyRows
+        .filter((s) => s.authorKey.startsWith("bot-") && s.createdAt.getTime() > liveCutoff)
+        .sort((a, b) => a.id - b.id);
+      const keptArtKeys = new Set<string>();
+      const retireIds: number[] = [];
+      for (const s of liveBotStories) {
+        if (s.mediaType === "image") {
+          const key = blobKeyOf(s.mediaUrl);
+          if (key && storyArtKeySet.has(key) && !keptArtKeys.has(key)) {
+            keptArtKeys.add(key);
+          } else {
+            retireIds.push(s.id);
+          }
+          continue;
+        }
+        retireIds.push(s.id);
+      }
+      if (retireIds.length > 0) {
+        const retireStmts: BatchItem<"sqlite">[] = [];
+        for (const id of retireIds) {
+          retireStmts.push(db.delete(schema.storyViews).where(eq(schema.storyViews.storyId, id)));
+          retireStmts.push(db.delete(schema.storyLikes).where(eq(schema.storyLikes.storyId, id)));
+          retireStmts.push(db.delete(schema.storyReplies).where(eq(schema.storyReplies.storyId, id)));
+          retireStmts.push(db.delete(schema.storyHighlightItems).where(eq(schema.storyHighlightItems.storyId, id)));
+          retireStmts.push(db.delete(schema.stories).where(eq(schema.stories.id, id)));
+        }
+        await batchIn(retireStmts);
+      }
+      const retireSet = new Set(retireIds);
+      const keptLive = liveBotStories.filter((s) => !retireSet.has(s.id));
+
+      // Uniqueness ledger for captions, seeded from what
+      // stays live: no two live bot stories carry the same
+      // caption text.
+      const usedTexts = new Set<string>();
+      for (const s of keptLive) {
+        if (s.text) usedTexts.add(s.text);
+      }
       const latestStoryAt = new Map<string, number>();
-      for (const s of storyRows) {
-        if (!s.authorKey.startsWith("bot-")) continue;
+      for (const s of keptLive) {
         const t = s.createdAt.getTime();
         if (t > (latestStoryAt.get(s.authorKey) ?? 0)) latestStoryAt.set(s.authorKey, t);
       }
-      const liveAuthors = new Set([...latestStoryAt.entries()].filter(([, t]) => t > liveCutoff).map(([k]) => k));
+      const liveAuthors = new Set(keptLive.map((s) => s.authorKey));
       const storyCandidates = shuffled(bots.filter((b) => (latestStoryAt.get(b.playerKey) ?? 0) <= freshCutoff));
       let storiesPosted = 0;
       const newStoryIds: { id: number; authorKey: string }[] = [];
+      // The free stock for this run: story pictures no live
+      // story is showing. When it runs out, posting stops —
+      // never a duplicate picture and never a video link.
+      const freeArt = shuffled(storyArtKeys.filter((k) => !keptArtKeys.has(k)));
+      // A unique caption: a base line, with a combined second
+      // sentence when the base is already live.
+      const pickCaption = (): { text: string; sticker: string } | null => {
+        for (const base of shuffled(STORY_CAPTIONS)) {
+          if (!usedTexts.has(`${base.text} #GTAVI #GTA6`)) return base;
+          const tailed = `${base.text} ${pick(STORY_CAPTION_TAILS)}`;
+          if (!usedTexts.has(`${tailed} #GTAVI #GTA6`)) return { text: tailed, sticker: base.sticker };
+        }
+        return null;
+      };
       for (const bot of storyCandidates) {
         if (storiesPosted >= 40) break;
         if (liveAuthors.size >= 60 && !liveAuthors.has(bot.playerKey)) break;
-        const useArt = storyArtUrls.length > 0 && rng() < 0.7;
-        const caption = pick(STORY_CAPTIONS);
+        const key = freeArt[0];
+        if (!key) break;
+        const caption = pickCaption();
+        if (!caption) break;
+        let mediaUrl = "";
+        try {
+          mediaUrl = await ctx.blobs.getUrl(key);
+        } catch { continue; }
+        freeArt.shift();
+        const storyText = `${caption.text} #GTAVI #GTA6`;
         const inserted = await db
           .insert(schema.stories)
           .values({
             authorKey: bot.playerKey,
             author: bot.gamertag,
-            mediaUrl: useArt ? (pick(storyArtUrls) as string) : "",
-            mediaType: useArt ? "image" : "text",
-            text: caption.text,
+            mediaUrl,
+            mediaType: "image",
+            // Members tag their stories like real people do
+            // (owner's direction: hashtags work on stories too).
+            text: storyText,
             sticker: caption.sticker,
             createdAt: new Date(now - Math.floor(rng() * 4 * 3600 * 1000)),
           })
@@ -18169,6 +19697,8 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
           newStoryIds.push({ id, authorKey: bot.playerKey });
           storiesPosted++;
           liveAuthors.add(bot.playerKey);
+          usedTexts.add(storyText);
+          keptArtKeys.add(key);
         }
       }
       if (newStoryIds.length > 0) {
@@ -18269,7 +19799,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
               author: bot.gamertag,
               kind: content.kind as typeof schema.feedPosts.$inferInsert.kind,
               title: "",
-              body: content.body,
+              body: `${content.body}\n\n${botHashtagLine(content.kind)}`,
               mediaUrl: "",
               imageBlobKey: postArtKeys[(existingPicturePosts + i) % postArtKeys.length] as string,
               auto: 0,
@@ -18309,7 +19839,7 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
               author: bot.gamertag,
               kind: content.kind as typeof schema.feedPosts.$inferInsert.kind,
               title: "",
-              body: content.body,
+              body: `${content.body}\n\n${botHashtagLine(content.kind)}`,
               mediaUrl: `https://www.youtube.com/watch?v=${ytIds[(existingVideoPosts + i) % ytIds.length] as string}`,
               auto: 0,
               sourceName: "",
@@ -18336,6 +19866,72 @@ Never download "fixes", "cracks" or mod menus from outside the console stores �
         followsCreated,
         minFollowers,
         maxFollowers,
+      };
+    },
+  }),
+
+  reportClientError: defineAction({
+    description: "Records a client-side crash (the 'hit a snag' error screen) so the real cause can be found and fixed: the error message, stack and component stack, plus which screen was open. Called automatically by the app's error boundary; diagnostics only.",
+    request: z.object({
+      playerKey: z.string().max(80).default(""),
+      message: z.string().max(500).default(""),
+      stack: z.string().max(4000).default(""),
+      componentStack: z.string().max(4000).default(""),
+      screen: z.string().max(120).default(""),
+      userAgent: z.string().max(300).default(""),
+    }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const db = ctx.db<typeof schema>();
+      await db.insert(schema.clientErrors).values({
+        playerKey: args.playerKey,
+        message: args.message,
+        stack: args.stack,
+        componentStack: args.componentStack,
+        screen: args.screen,
+        userAgent: args.userAgent,
+      });
+      return { ok: true };
+    },
+  }),
+
+  getClientErrors: defineAction({
+    description: "Owner only: the most recent recorded client crashes (the 'hit a snag' reports), newest first, so the owner can see what actually crashed on players' devices.",
+    request: z.object({
+      playerKey: z.string().min(1).max(80),
+      limit: z.number().int().min(1).max(100).default(30),
+    }),
+    response: z.object({
+      errors: z.array(z.object({
+        id: z.number(),
+        playerKey: z.string(),
+        message: z.string(),
+        stack: z.string(),
+        componentStack: z.string(),
+        screen: z.string(),
+        userAgent: z.string(),
+        createdAt: z.string(),
+      })),
+    }),
+    async handler(ctx, args) {
+      await assertOwner(ctx, args.playerKey);
+      const db = ctx.db<typeof schema>();
+      const rows = await db
+        .select()
+        .from(schema.clientErrors)
+        .orderBy(desc(schema.clientErrors.id))
+        .limit(args.limit);
+      return {
+        errors: rows.map((r) => ({
+          id: r.id,
+          playerKey: r.playerKey,
+          message: r.message,
+          stack: r.stack,
+          componentStack: r.componentStack,
+          screen: r.screen,
+          userAgent: r.userAgent,
+          createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt ?? ""),
+        })),
       };
     },
   }),

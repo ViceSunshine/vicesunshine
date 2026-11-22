@@ -385,6 +385,12 @@ export const clans = sqliteTable("clans", {
   name: text("name").notNull(),
   tag: text("tag").notNull(),
   color: text("color").notNull().default("#FF2E88"),
+  // Crew colour finish (migration 0080): the Premium Custom colour
+  // tool's finish over the stored colour — "" = solid, or one of
+  // chrome / gold / rose-gold / iridescent. The finish drives the
+  // emblem tile and crew-card header gradient; the stored colour
+  // stays the representative hex for tags and text accents.
+  colorFinish: text("color_finish").notNull().default(""),
   emblem: text("emblem").notNull().default("shield"),
   motto: text("motto").notNull().default(""),
   description: text("description").notNull().default(""),
@@ -472,7 +478,40 @@ export const clanApplications = sqliteTable("clan_applications", {
   status: text("status", { enum: ["Pending", "Approved", "Declined"] })
     .notNull()
     .default("Pending"),
+  // What kind of ask this row is (migration 0081): "application"
+  // is the classic flow for Application / Invite-Only crews
+  // (Leader or Co-Leader reviews it on the crew page).
+  // "join_request" is the anti-spam flow for PUBLIC crews: a
+  // player who has already used their one direct crew join this
+  // week, or who was in this crew before and left, cannot join
+  // directly — their ask lands as a card in the crew chat and
+  // ONLY the Leader can accept or decline it.
+  kind: text("kind", { enum: ["application", "join_request"] })
+    .notNull()
+    .default("application"),
   createdAt: ts("created_at"),
+});
+
+// Every successful crew join, kept forever (migration 0081) —
+// clan_members rows are deleted when a player leaves or is
+// kicked, so the anti-spam join rules need their own memory:
+// (1) a player gets ONE direct crew join per rolling 7 days
+// across all crews, and (2) a player who was in a crew before
+// can never rejoin it directly — only by a Leader-accepted
+// request. `how` records the door they came through: "direct"
+// (walked into a public crew), "approved" (a Leader / Co-Leader
+// accepted their application or join request) or "founded"
+// (they created the crew). Seeded from clan_members by the
+// migration, so current members' joins count from day one.
+export const crewJoinHistory = sqliteTable("crew_join_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  clanId: integer("clan_id").notNull(),
+  playerKey: text("player_key").notNull(),
+  gamertag: text("gamertag").notNull().default(""),
+  how: text("how", { enum: ["direct", "approved", "founded"] })
+    .notNull()
+    .default("direct"),
+  joinedAt: ts("joined_at"),
 });
 
 export const clanPosts = sqliteTable("clan_posts", {
@@ -606,6 +645,21 @@ export const feedPosts = sqliteTable("feed_posts", {
   title: text("title").notNull().default(""),
   body: text("body").notNull(),
   mediaUrl: text("media_url").notNull().default(""),
+  // Every media item on the post as a JSON array of URLs, first
+  // item first (media_url above always holds the first one, so
+  // older readers keep working). A post carries several photos
+  // OR exactly one video — never a mix (owner's direction,
+  // Nov 21 2026). Empty string = single-media post, read
+  // media_url alone.
+  mediaUrls: text("media_urls").notNull().default(""),
+  // The post's optional attached link (the creator's "Add link"
+  // on the Details / Share step). Rendered as a link chip under
+  // the caption; never the media itself.
+  linkUrl: text("link_url").notNull().default(""),
+  // The post's optional location (migration 0078): the "Add
+  // location" row on the creator's New post screen — a place
+  // name the poster types, shown on the post in the Feed.
+  location: text("location").notNull().default(""),
   // Editorial news picture (Automatic News posts only): the article's
   // own og:image, fetched by the refresh and stored as an owned blob.
   // Ben approved real pictures for news stories in the Feed (Nov 19,
@@ -847,6 +901,20 @@ export const feedHidden = sqliteTable("feed_hidden", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   postId: integer("post_id").notNull(),
   playerKey: text("player_key").notNull(),
+  createdAt: ts("created_at"),
+});
+
+// Feed post preferences from the post menu's Interested /
+// Not interested rows (owner's Instagram-style Feed menu, Nov 21
+// 2026): one row per player + post. interested = 1 records
+// "Interested" (posts of that kind rank higher for this player in
+// the Top sort); interested = 0 records "Not interested" and the
+// post is also hidden for that player (a feed_hidden row).
+export const feedPreferences = sqliteTable("feed_preferences", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id").notNull(),
+  playerKey: text("player_key").notNull(),
+  interested: integer("interested").notNull().default(1),
   createdAt: ts("created_at"),
 });
 
@@ -1256,6 +1324,13 @@ export const directMessages = sqliteTable("direct_messages", {
   // message inside the chat_groups row with that id (recipient_key
   // is "" there; read state is per member on chat_group_members).
   groupId: integer("group_id").notNull().default(0),
+  // Crew join-request cards (migration 0081): >0 on a system
+  // message inside a crew chat means this message IS the card for
+  // that clan_applications row (kind "join_request") — the crew
+  // chat renders it with Accept / Decline for the Leader, and its
+  // state is read live from the application row, so an answered
+  // card shows Accepted / Declined forever after.
+  joinRequestId: integer("join_request_id").notNull().default(0),
   createdAt: ts("created_at"),
 });
 
@@ -1309,6 +1384,25 @@ export const searchTerms = sqliteTable("search_terms", {
   count: integer("count").notNull().default(0),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
+});
+
+// Client crash reports (migration 0077): when the app hits the
+// "hit a snag" error screen on a player's device, the error boundary
+// records what actually crashed here — the error message, stack and
+// React component stack, plus which screen was open — instead of
+// swallowing it. The Owner reads these back (getClientErrors) to
+// find and fix the real cause. Reports are diagnostics only: no post
+// content, no messages, nothing the player typed beyond the screen
+// name they were on.
+export const clientErrors = sqliteTable("client_errors", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerKey: text("player_key").notNull().default(""),
+  message: text("message").notNull().default(""),
+  stack: text("stack").notNull().default(""),
+  componentStack: text("component_stack").notNull().default(""),
+  screen: text("screen").notNull().default(""),
+  userAgent: text("user_agent").notNull().default(""),
+  createdAt: ts("created_at"),
 });
 
 export const supportRequests = sqliteTable("support_requests", {

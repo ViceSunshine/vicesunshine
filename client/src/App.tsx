@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type InputHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type InputHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type TouchEvent as ReactTouchEvent, type UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // Standalone: actionFields is a runtime Proxy here, not the Muse
@@ -10,6 +10,15 @@ import { GTA6_CODES, CODE_CATEGORIES, type CodeCategoryId, type CodeDir } from "
 import { qrMatrix } from "./qr";
 import type { Actions } from "../../server/src/actions";
 import vsLogoUrl from "./assets/vs-logo.webp";
+import emblemSunsetUrl from "./assets/emblem-sunset.webp";
+import emblemCrownUrl from "./assets/emblem-crown.webp";
+import emblemSerpentUrl from "./assets/emblem-serpent.webp";
+import emblemDiamondUrl from "./assets/emblem-diamond.webp";
+import emblemWaveUrl from "./assets/emblem-wave.webp";
+import emblemVicecrestUrl from "./assets/emblem-vicecrest.webp";
+import emblemEclipseUrl from "./assets/emblem-eclipse.webp";
+import emblemRoyalPalmUrl from "./assets/emblem-royal-palm.webp";
+import emblemPhoenixUrl from "./assets/emblem-phoenix.webp";
 import clanArenaUrl from "./assets/clan-arena.webp";
 import secNewsUrl from "./assets/sec-news.webp";
 import secUpdatesUrl from "./assets/sec-updates.webp";
@@ -25,7 +34,6 @@ import secEggsUrl from "./assets/sec-eggs.webp";
 import secGuidesUrl from "./assets/sec-guides.webp";
 import secEventsUrl from "./assets/sec-events.webp";
 import secFeedUrl from "./assets/sec-feed.webp";
-import secClipsUrl from "./assets/sec-clips.webp";
 import premiumHeroUrl from "./assets/premium-hero.webp";
 import discordViceUrl from "./assets/discord-vice.webp";
 import dbVehiclesUrl from "./assets/db-vehicles.webp";
@@ -74,6 +82,25 @@ import eventTypeCrewUrl from "./assets/event-type-crew.webp";
 import eventTypeHuntUrl from "./assets/event-type-hunt.webp";
 import eventTypeFashionUrl from "./assets/event-type-fashion.webp";
 import eventTypeWatchUrl from "./assets/event-type-watch.webp";
+import newsArtRacingUrl from "./assets/news-art-racing.webp";
+import newsArtMoneyUrl from "./assets/news-art-money.webp";
+import newsArtMissionsUrl from "./assets/news-art-missions.webp";
+import newsArtWeaponsUrl from "./assets/news-art-weapons.webp";
+import newsArtCharactersUrl from "./assets/news-art-characters.webp";
+import newsArtMapUrl from "./assets/news-art-map.webp";
+import newsArtBugsUrl from "./assets/news-art-bugs.webp";
+import newsArtEggsUrl from "./assets/news-art-eggs.webp";
+import newsArtClipsUrl from "./assets/news-art-clips.webp";
+import newsArtTipsUrl from "./assets/news-art-tips.webp";
+import newsArtSettingsUrl from "./assets/news-art-settings.webp";
+import newsArtPatchUrl from "./assets/news-art-patch.webp";
+import newsArtMeetUrl from "./assets/news-art-meet.webp";
+import newsArtNewsroomUrl from "./assets/news-art-newsroom.webp";
+import newsArtCommunityUrl from "./assets/news-art-community.webp";
+import dbBackdropUrl from "./assets/db-backdrop.webp";
+import guidesLibraryUrl from "./assets/guides-library.webp";
+import mapDisplayDuskUrl from "./assets/map-display-dusk.webp";
+import premiumAdUrl from "./assets/premium-ad.webp";
 
 const FIELDS = actionFields<typeof Actions>();
 
@@ -201,6 +228,53 @@ async function optimizedStoredPhoto(url: string, maxEdge: number): Promise<{ dat
   } catch {
     return null;
   }
+}
+
+/* How big is a stored photo, WITHOUT downloading it? A HEAD
+   request reads the Content-Length header only, so checking a
+   picture costs a round trip and no picture bytes. Returns null
+   when the size cannot be learned this way (no header, request
+   refused) — the caller then falls back to downloading, exactly
+   as before. The self-heal below asks this first: a picture
+   already within a sane byte size is loading as fast as it can,
+   and pulling the whole file down on every profile visit just
+   to confirm that was competing with the very images the player
+   is looking at. */
+async function storedPhotoByteSize(url: string): Promise<number | null> {
+  try {
+    const res = await fetch(url, { method: "HEAD" });
+    if (!res.ok) return null;
+    const len = Number(res.headers.get("content-length") ?? "");
+    return Number.isFinite(len) && len > 0 ? len : null;
+  } catch {
+    return null;
+  }
+}
+
+/* Paint a just-saved photo NOW from the copy already on the
+   device, then swap in the server's copy once it has really
+   loaded. An upload returns the moment the server has the
+   picture — but the profile then used to point its <img> at the
+   brand-new server URL and wait for a full fresh download of a
+   picture the device already had in hand, which on a phone is
+   exactly when the broken-image "?" placeholder sat on the
+   profile for ages (owner's report, Nov 21 2026). The upload
+   handlers therefore write the uploaded bytes straight into the
+   profile caches as a data URL (instant paint, no network) and
+   register the swap here: the server URL is preloaded in the
+   background, and only when it has genuinely loaded does it
+   replace the local copy — so the swap itself can never flash
+   the placeholder either. If the preload fails, the local copy
+   simply stays for the session; the next natural refetch
+   restores the canonical URL. */
+const serverPhotoSwaps = new Set<string>();
+function swapToServerPhotoWhenLoaded(serverUrl: string, apply: (url: string) => void): void {
+  if (!serverUrl || serverUrl.startsWith("data:") || serverPhotoSwaps.has(serverUrl)) return;
+  serverPhotoSwaps.add(serverUrl);
+  const img = new Image();
+  img.onload = () => { serverPhotoSwaps.delete(serverUrl); apply(serverUrl); };
+  img.onerror = () => { serverPhotoSwaps.delete(serverUrl); };
+  img.src = serverUrl;
 }
 
 const DISCLAIMER =
@@ -432,7 +506,7 @@ function DiscordView({ playerKey }: { playerKey: string }) {
   const invite = useQuery({ queryKey: ["discord-invite", playerKey], queryFn: () => api.getDiscordInvite({ playerKey }) });
   const url = invite.data?.url || "https://discord.gg/NDH9XxyVkW";
   return (
-    <div>
+    <div className="discord-view">
       <SectionBanner src={discordViceUrl} alt="Original ViceSunshine illustration of a Vice City beachfront boulevard at sunset — palm trees and an art-deco strip under pink, purple and teal neon, with the sun setting over the ocean" />
       <SectionTitle sub="The ViceSunshine Discord server — where the community talks, hangs out and joins lobbies together.">
         Discord
@@ -580,9 +654,28 @@ function playerKey(): string {
       return memoryPlayerKey;
     }
     if (!k) {
-      k = `p-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+      // Recover the SAME key from a backup slot before minting a
+      // new one (owner's rule, Nov 21 2026: "make sure I stayed
+      // signed in until I tell u to remove it"): when a new
+      // version lands, the webview can drop the primary storage
+      // entry, and minting a fresh key here is what used to sign
+      // the owner out — the backup slots below often survive, and
+      // recovering the same key keeps this device signed in to
+      // its own account. The key stays a random per-device value:
+      // nothing shared or fixed is ever handed out.
+      k = localStorage.getItem("leonida-player-key-backup");
+      if (!k || k === SIGNED_OUT_MARKER) {
+        try { k = sessionStorage.getItem("leonida-player-key"); } catch { k = null; }
+      }
+      if (!k || k === SIGNED_OUT_MARKER) {
+        k = `p-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+      }
       localStorage.setItem("leonida-player-key", k);
     }
+    // Keep the backup slots in step with the live key, so any one
+    // of them can restore it on a later load.
+    try { localStorage.setItem("leonida-player-key-backup", k); } catch { /* ignore */ }
+    try { sessionStorage.setItem("leonida-player-key", k); } catch { /* ignore */ }
     return k;
   } catch {
     if (!memoryPlayerKey) {
@@ -816,6 +909,12 @@ type Tab =
 // exactly as it was.
 const SHOW_CHALLENGES = false;
 const SHOW_POINTS_EARNING = false;
+// The "Crew perks" section on the Crews page is REMOVED for now
+// (owner's direction, Nov 22 2026) — hidden, not deleted:
+// ClanPerksPanel stays exactly as it was; this flag only stops it
+// rendering. To put it back when Ben says so: flip the flag to
+// true and rebuild — it returns exactly as it was.
+const SHOW_CREW_PERKS = false;
 // Clips (the TikTok clip feed) is REMOVED from the live site
 // (owner's direction, Nov 21 2026) — cleanly, not permanently:
 // ClipsView, TikTokPlayer, the listClips / refreshTikTokClips
@@ -998,7 +1097,7 @@ function scrollPageToYSoon(y: number) {
 
 function SectionTitle({ children, sub }: { children: ReactNode; sub?: string }) {
   return (
-    <div className="mb-4">
+    <div className="section-title mb-4">
       <h2 className="text-[28px] font-extrabold leading-tight tracking-tight">{children}</h2>
       {sub ? <p className="mt-1 text-sm text-[var(--dim)]">{sub}</p> : null}
     </div>
@@ -1020,6 +1119,98 @@ type PlayerLinksData = {
   // the viewer is the player or their crew mate.
   rockstar: string;
   others: { label: string; url: string }[];
+};
+
+type PlatformKind = "psn" | "xbox" | "discord" | "rockstar";
+const PLATFORM_ORDER: PlatformKind[] = ["psn", "xbox", "discord", "rockstar"];
+const PLATFORM_META: Record<PlatformKind, { label: string; brand: string; onBrand: string }> = {
+  psn: { label: "PlayStation", brand: "#0070d1", onBrand: "#ffffff" },
+  xbox: { label: "Xbox", brand: "#107c10", onBrand: "#ffffff" },
+  discord: { label: "Discord", brand: "#5865f2", onBrand: "#ffffff" },
+  rockstar: { label: "Rockstar", brand: "#fcaf17", onBrand: "#1a1a1a" },
+};
+
+/* The real page a linked account opens (owner's direction: a
+   linked tile is a REAL link, like an Instagram or TikTok link —
+   tapping it lands on that player's page on the platform, where
+   they can be added). The player can paste their full profile
+   link, which is used exactly as pasted, or just their ID /
+   gamertag, and the link is built from it:
+   - PlayStation: profile.playstation.com/<PSN ID> — Sony's own
+     public profile page for that online ID.
+   - Xbox: xbox.com/play/user/<gamertag> — the player's
+     Xbox profile page.
+   - Rockstar: socialclub.rockstargames.com/member/<ID> — the
+     player's Social Club profile page.
+   - Discord has NO public page by username: only the number user
+     ID forms a link (discord.com/users/<ID>). A Discord value
+     with no 15–21 digit ID in it resolves to "" — the tile then
+     shows the username and copies it, honestly, instead of
+     opening a page that cannot exist. */
+function platformLink(kind: PlatformKind, raw: string): string {
+  const v = raw.trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  if (kind === "discord") {
+    const m = v.match(/\d{15,21}/);
+    return m ? `https://discord.com/users/${m[0]}` : "";
+  }
+  const id = encodeURIComponent(v.replace(/^@+/, ""));
+  if (kind === "psn") return `https://profile.playstation.com/${id}`;
+  if (kind === "xbox") return `https://www.xbox.com/play/user/${id}`;
+  return `https://socialclub.rockstargames.com/member/${id}`;
+}
+
+/* The per-platform link screens (owner's direction): pressing a
+   platform's logo opens a screen for THAT platform only — its
+   own field, its own steps for grabbing the link, nothing about
+   any other platform. Linking another platform means going back
+   out and pressing its logo. Discord's screen leads with an
+   Open Discord button that takes the player straight into
+   Discord to copy their user ID, then paste it in the link
+   field right there. */
+const PLATFORM_LINK_GUIDES: Record<PlatformKind, { fieldLabel: string; placeholder: string; showLabel: string; steps: string[] }> = {
+  psn: {
+    fieldLabel: "Your PlayStation link or PSN ID",
+    placeholder: "PSN ID or profile.playstation.com link",
+    showLabel: "Show my PlayStation publicly",
+    steps: [
+      "Open the PlayStation App (or playstation.com) and sign in.",
+      "Open your profile and tap Share — PlayStation gives you your profile.playstation.com link.",
+      "Paste that link here — or just type your PSN ID and your link is built for you.",
+    ],
+  },
+  xbox: {
+    fieldLabel: "Your Xbox link or gamertag",
+    placeholder: "Gamertag or xbox.com profile link",
+    showLabel: "Show my Xbox publicly",
+    steps: [
+      "Open the Xbox app (or xbox.com) and sign in.",
+      "Open your profile — your gamertag sits at the top.",
+      "Type your gamertag here and your profile link is built for you — or paste your full profile link.",
+    ],
+  },
+  discord: {
+    fieldLabel: "Your Discord link or user ID",
+    placeholder: "User ID number or discord.com/users link",
+    showLabel: "Show my Discord publicly",
+    steps: [
+      "Tap “Open Discord” above — it takes you straight into Discord.",
+      "In Discord: Settings → Advanced → turn on Developer Mode (you only do this once).",
+      "Tap your own profile, tap ⋯, then Copy User ID.",
+      "Come back here and paste it in the link field — your Discord profile link is built for you.",
+    ],
+  },
+  rockstar: {
+    fieldLabel: "Your Rockstar link or Social Club ID",
+    placeholder: "Social Club ID or socialclub link",
+    showLabel: "Show my Rockstar publicly",
+    steps: [
+      "Open Social Club (socialclub.rockstargames.com) and sign in.",
+      "Open your profile — its address is socialclub.rockstargames.com/member/ followed by your ID.",
+      "Paste that link here — or just type your Social Club ID and your link is built for you.",
+    ],
+  },
 };
 
 function CopyButton({ value, label }: { value: string; label: string }) {
@@ -1047,13 +1238,15 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 
 function PlayerLinks({ links, name }: { links: PlayerLinksData; name: string }) {
   const rows: { icon: string; label: string; value: string; href?: string; rockstar?: boolean }[] = [];
-  // Rockstar first — it is the fastest way to add a player in-game:
-  // one tap copies the Social Club ID, ready to paste into Social
-  // Club's friend search.
-  if (links.rockstar) rows.push({ icon: "RS", label: "Rockstar", value: links.rockstar, rockstar: true });
-  if (links.psn) rows.push({ icon: "PS", label: "PlayStation / PSN", value: links.psn });
-  if (links.xbox) rows.push({ icon: "XB", label: "Xbox", value: links.xbox });
-  if (links.discord) rows.push({ icon: "DC", label: "Discord", value: links.discord });
+  // Every platform row carries its real profile link (see
+  // platformLink): tapping the name opens that player's page on
+  // the platform, where they can be added. Copy stays beside it
+  // for the ID itself. Discord only gets a link when the value
+  // carries the number user ID — a username alone can't open one.
+  if (links.rockstar) rows.push({ icon: "RS", label: "Rockstar", value: links.rockstar, href: platformLink("rockstar", links.rockstar) || undefined, rockstar: true });
+  if (links.psn) rows.push({ icon: "PS", label: "PlayStation / PSN", value: links.psn, href: platformLink("psn", links.psn) || undefined });
+  if (links.xbox) rows.push({ icon: "XB", label: "Xbox", value: links.xbox, href: platformLink("xbox", links.xbox) || undefined });
+  if (links.discord) rows.push({ icon: "DC", label: "Discord", value: links.discord, href: platformLink("discord", links.discord) || undefined });
   for (const o of links.others) {
     rows.push({
       icon: "Link",
@@ -1110,6 +1303,180 @@ function AddOnRockstarButton({ value, name }: { value: string; name: string }) {
     >
       {added ? "Copied — paste it in Social Club" : "Add on Rockstar"}
     </button>
+  );
+}
+
+/* Compact linked-account tiles for the profile Stats box (owner's
+   direction, from his TRN Account Management screenshot): a small
+   grid of platform tiles — ONLY the accounts GTA players link:
+   PlayStation, Xbox, Discord and Rockstar Social Club. Nothing big
+   and no long platform list. A linked tile lights up in the
+   platform's brand colour with the player's ID on it, and tapping
+   it opens that player's REAL page on the platform (see
+   platformLink) so they can be added there — the way an Instagram
+   or TikTok link works. The one honest exception is a Discord
+   username with no number ID behind it: no page exists for it, so
+   that tile copies the username instead. An unlinked tile stays a
+   plain muted box with just the platform mark and name; on your
+   OWN profile it opens that platform's own link screen (and only
+   that platform's) so you can add it. The IDs arrive
+   visibility-filtered from the server (see visibleLinks) — a
+   hidden account simply reads as not linked here, exactly as it
+   did with the chips. */
+function PlatformMark({ kind, size = 17 }: { kind: "psn" | "xbox" | "discord" | "rockstar"; size?: number }) {
+  if (kind === "psn") {
+    return (
+      <span aria-hidden="true" style={{ fontSize: size - 4, fontWeight: 900, fontStyle: "italic", letterSpacing: "-0.03em", lineHeight: 1 }}>
+        PS
+      </span>
+    );
+  }
+  if (kind === "xbox") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.6" />
+        <path d="M8.7 8.3c1.1 1 5.5 5.9 6.6 7.4M15.3 8.3c-1.1 1-5.5 5.9-6.6 7.4" />
+      </svg>
+    );
+  }
+  if (kind === "discord") {
+    return (
+      <svg width={size + 1} height={size + 1} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487-1.673.077.077 0 0 0-.084.027c-.462.643-.873 1.328-1.226 2.045a.076.076 0 0 0-.028.057 20.03 20.03 0 0 0-5.99 3.033.078.078 0 0 0-.033.066c-.4 4.02-.18 7.99 1.196 11.66a.08.08 0 0 0 .03.045 19.88 19.88 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.044c1.494-3.895 1.415-7.89-.56-11.66a.076.076 0 0 0-.032-.067 19.9 19.9 0 0 0-6-3.033.077.077 0 0 0-.084.028c-.463-.643-.875-1.328-1.227-2.045a.076.076 0 0 0-.028-.057ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z" />
+      </svg>
+    );
+  }
+  return (
+    <span className="relative inline-block" aria-hidden="true" style={{ fontSize: size - 2, fontWeight: 900, lineHeight: 1 }}>
+      R
+      <svg className="absolute" style={{ right: -6, bottom: -1 }} width="8" height="8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z" />
+      </svg>
+    </span>
+  );
+}
+
+function LinkTile({ kind, label, value, brand, onBrand, name, mine, onLink }: {
+  kind: PlatformKind;
+  label: string;
+  value: string;
+  brand: string;
+  onBrand: string;
+  name: string;
+  mine: boolean;
+  onLink: (kind: PlatformKind) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const linked = value.trim() !== "";
+  const href = linked ? platformLink(kind, value) : "";
+  const tileStyle: CSSProperties = linked
+    ? { background: brand, color: onBrand, minHeight: 62, border: "1px solid transparent" }
+    : { background: "var(--surface)", color: "var(--text)", minHeight: 62, border: "1px solid var(--border)" };
+  const inner = (
+    <>
+      <span className="flex w-full items-center gap-2.5">
+        <span
+          className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg"
+          style={{ background: linked ? "rgba(255,255,255,0.20)" : "var(--surface2)", color: linked ? onBrand : "var(--dim)" }}
+          aria-hidden="true"
+        >
+          <PlatformMark kind={kind} />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-bold leading-tight">{label}</span>
+      </span>
+      <span className="flex w-full items-center gap-2">
+        <span
+          className="min-w-0 flex-1 truncate text-[12px] leading-tight"
+          style={linked ? { opacity: 0.88 } : { color: "var(--dim)" }}
+        >
+          {copied ? "Copied" : linked ? value : mine ? "Tap to link" : "Not linked"}
+        </span>
+        {linked && (
+          <span className="flex-none" style={{ opacity: 0.9 }} aria-hidden="true">
+            {copied ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 12.5l5 5L19.5 7" /></svg>
+            ) : href ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17L17 7" /><path d="M9 7h8v8" /></svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
+            )}
+          </span>
+        )}
+      </span>
+    </>
+  );
+  const cls = "flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left";
+  if (linked && href) {
+    return (
+      <a
+        className={cls}
+        style={tileStyle}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`Open ${name}'s ${label} profile: ${value}`}
+      >
+        {inner}
+      </a>
+    );
+  }
+  if (linked) {
+    // No page exists for this value (a Discord username with no
+    // number ID behind it) — the tile copies it instead of
+    // pretending to open one.
+    return (
+      <button
+        type="button"
+        className={cls}
+        style={tileStyle}
+        aria-label={`Copy ${name}'s ${label} username: ${value}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          } catch {
+            setCopied(false);
+          }
+        }}
+      >
+        {inner}
+      </button>
+    );
+  }
+  if (mine) {
+    return (
+      <button type="button" className={cls} style={tileStyle} aria-label={`Link your ${label} account — open the ${label} link screen`} onClick={() => onLink(kind)}>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div className={cls} style={tileStyle} role="listitem" aria-label={`${name} has no ${label} account linked`}>
+      {inner}
+    </div>
+  );
+}
+
+function LinkedAccountTiles({ links, name, mine, onLink }: {
+  links: PlayerLinksData;
+  name: string;
+  mine: boolean;
+  onLink: (kind: PlatformKind) => void;
+}) {
+  const tiles: { kind: PlatformKind; label: string; value: string; brand: string; onBrand: string }[] = PLATFORM_ORDER.map((kind) => ({
+    kind,
+    label: PLATFORM_META[kind].label,
+    value: kind === "psn" ? links.psn : kind === "xbox" ? links.xbox : kind === "discord" ? links.discord : links.rockstar,
+    brand: PLATFORM_META[kind].brand,
+    onBrand: PLATFORM_META[kind].onBrand,
+  }));
+  return (
+    <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4" role="list" aria-label={`${name}'s linked accounts — PlayStation, Xbox, Discord and Rockstar`}>
+      {tiles.map((t) => (
+        <LinkTile key={t.kind} kind={t.kind} label={t.label} value={t.value} brand={t.brand} onBrand={t.onBrand} name={name} mine={mine} onLink={onLink} />
+      ))}
+    </div>
   );
 }
 
@@ -1720,7 +2087,7 @@ function SearchResultsView({
     else onDatabase(hit.extra);
   };
   return (
-    <div>
+    <div className="search-view">
       <SectionTitle sub={q ? `${results.data?.total ?? 0} result${(results.data?.total ?? 0) === 1 ? "" : "s"} across Users, Videos, News, Feed, Events, Bugs, Guides, Crews and the Database.` : "Type a search to see results from across ViceSunshine."}>
         {q ? `Results for “${q}”` : "Search results"}
       </SectionTitle>
@@ -2422,8 +2789,9 @@ export function App() {
   // kept in plain component state and never written to localStorage:
   // closing a section only lasts for this visit — a reload always
   // starts with "Your agent" open again. The same state drives the
-  // desktop sidebar and the mobile "All sections" panel, where
-  // "Your agent" is also the first box.
+  // desktop sidebar and the mobile "All sections" panel. Community
+  // is listed FIRST in both (owner's direction, Nov 21 2026), ahead
+  // of Your agent, Explore and GTA VI Database.
   type NavSection = "agent" | "explore" | "db" | "community";
   const [openNavSection, setOpenNavSection] = useState<NavSection | "">("agent");
   const toggleNavSection = (s: NavSection) =>
@@ -2510,6 +2878,41 @@ export function App() {
     if (shouldRefresh) doPullRefresh();
   };
 
+  // Phone top bar hide-on-scroll (owner's direction, Nov 21 2026):
+  // on phone, EVERY tab that carries the top bar gets the same
+  // behaviour — the bar is NOT fixed. Scroll DOWN and it slides
+  // away and collapses out of the layout (the page gets the full
+  // screen); scroll UP and it slides straight back. At the very
+  // top of a page it is always shown. Small direction deltas are
+  // ignored so the bar never flickers on tiny scroll jitter, and
+  // it only hides once the player is a little way into the page.
+  // The shell bar itself is phone-only (lg:hidden). The Feed has
+  // no shell bar on any size, so it reads this same state for its
+  // own top bar (the icon row plus the For you / Following tabs)
+  // on BOTH phone and laptop (owner's direction, Nov 21 2026):
+  // same concept everywhere — scroll down and the top bar
+  // disappears, scroll up and it appears again. Chat never reads
+  // this state.
+  const [topBarHidden, setTopBarHidden] = useState(false);
+  const lastMainScrollY = useRef(0);
+  const onMainScroll = (e: ReactUIEvent<HTMLElement>) => {
+    const y = e.currentTarget.scrollTop;
+    const last = lastMainScrollY.current;
+    if (y <= 8) {
+      if (topBarHidden) setTopBarHidden(false);
+    } else if (y > last + 6 && y > 72) {
+      if (!topBarHidden) setTopBarHidden(true);
+    } else if (y < last - 6) {
+      if (topBarHidden) setTopBarHidden(false);
+    }
+    lastMainScrollY.current = y;
+  };
+  // A fresh tab always opens at the top with the bar showing.
+  useEffect(() => {
+    setTopBarHidden(false);
+    lastMainScrollY.current = 0;
+  }, [tab]);
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--bg)]">
       {splashPhase !== "gone" && (
@@ -2530,15 +2933,24 @@ export function App() {
               text the gradient only paints inside the element's box,
               and the heavy S leans past its advance width — without
               the padding room the right edge of the S painted
-              nothing and looked cut off. */}
+              nothing and looked cut off. That padding is uneven
+              (0.16em right vs 0.06em left), so flex centring the
+              padded box leaves the LETTERS sitting 0.05em left of
+              the true centre — the translateX below shifts them
+              back by exactly half the padding difference so the
+              visible logo is dead centre on phone and laptop.
+              Size is fluid: ~86px on a phone, growing with the
+              viewport and capping at 150px on a laptop, instead of
+              one fixed 92px that looked lost on a big screen. */}
           <span
             aria-hidden="true"
             style={{
               fontFamily: "var(--font-display)",
-              fontSize: 92,
+              fontSize: "clamp(80px, 22vw, 150px)",
               fontWeight: 900,
               letterSpacing: "-0.04em",
               lineHeight: 1,
+              transform: "translateX(0.05em)",
               paddingLeft: "0.06em",
               paddingRight: "0.16em",
               background: "linear-gradient(100deg, #ff2e88 10%, #9b5de5 90%)",
@@ -2572,10 +2984,28 @@ export function App() {
           search), and the Feed carries the VS logo centred in its
           own top action row instead (see SocialTopBar). Desktop is
           untouched: this bar is phone-only (lg:hidden) and the
-          desktop sidebar header stays as it is. */}
+          desktop sidebar header stays as it is.
+          HIDE-ON-SCROLL (owner's direction, Nov 21 2026): the bar
+          is NOT fixed — on every phone tab that has it, scrolling
+          down slides it away (it collapses out of the layout via
+          the grid-rows wrapper below, driven by onMainScroll on
+          <main>) and scrolling up brings it straight back; at the
+          top of a page it is always shown. */}
       {tab !== "messages" && tab !== "feed" && (
-      <header className="z-40 flex-none border-b border-[rgba(255,255,255,0.08)] pt-safe lg:hidden" style={{ background: "#000" }}>
-        <div className="relative flex items-center px-3 py-2" style={{ minHeight: 60 }}>
+      <div
+        aria-hidden={topBarHidden}
+        className="phone-topbar-slide flex-none lg:hidden"
+        style={{
+          gridTemplateRows: topBarHidden ? "0fr" : "1fr",
+          visibility: topBarHidden ? "hidden" : "visible",
+          transition: topBarHidden
+            ? "grid-template-rows 0.3s ease, visibility 0s linear 0.3s"
+            : "grid-template-rows 0.3s ease, visibility 0s",
+        }}
+      >
+      <div style={{ overflow: "hidden", minHeight: 0 }}>
+      <header className="border-b border-[rgba(255,255,255,0.08)] pt-safe" style={{ background: "#000" }}>
+        <div className="relative flex items-center px-3 py-1.5" style={{ minHeight: 54 }}>
           <button
             type="button"
             className="flex flex-none items-center justify-center rounded-full"
@@ -2585,7 +3015,7 @@ export function App() {
             aria-expanded={drawerOpen}
             aria-label="Open the menu — your account, Profile, Subscription, History, Settings and all sections"
           >
-            <CosmeticAvatar name={gamertag || "Guest"} size={36} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} />
+            <CosmeticAvatar name={gamertag || "Guest"} size={36} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} eager />
           </button>
           <button
             type="button"
@@ -2620,6 +3050,8 @@ export function App() {
           </div>
         </div>
       </header>
+      </div>
+      </div>
       )}
       {/* Pull-to-refresh indicator (phone only): follows the pull
           down from the top of the main column; releasing past the
@@ -2637,33 +3069,55 @@ export function App() {
       {/* App shell: a fixed-height row that fills the rest of the
           viewport (the root is a 100dvh flex column and the page
           itself never scrolls — see the scroll lock in theme.css).
-          The SIDEBAR NEVER SCROLLS — it is compact enough to fit
-          with any one dropdown open (only one can be open at a
-          time). The MAIN column is the only scroller, on phone and
-          desktop alike: it scrolls exactly as far as its content
-          and no further, it cannot scroll sideways, and overscroll
-          never chains out to the page. */}
+          The SIDEBAR NEVER SCROLLS and nothing in it overlaps: it
+          is fixed in the frame, spacious enough to fit whole —
+          Your agent, Explore, GTA VI Database and Community last
+          (at the bottom of the sidebar), both sidebar ads and the
+          account trigger — with any one dropdown open
+          (only one can be open at a time), and its chrome steps
+          down on shorter windows (see the max-height rules in
+          theme.css). The MAIN column is the only scroller, on
+          phone and desktop alike: it scrolls exactly as far as
+          its content and no further, it cannot scroll sideways,
+          and overscroll never chains out to the page. */}
       <div className="mx-auto flex min-h-0 w-full max-w-[1560px] flex-1 items-stretch gap-12 overflow-hidden px-0 lg:px-10">
         {/* Desktop sidebar — spacious, never squeezes content on phone (hidden there) */}
-        <aside className="hidden w-[280px] flex-none flex-col overflow-hidden border-r border-[var(--border)] py-3 pr-6 lg:flex lg:h-full lg:min-h-0" aria-label="ViceSunshine navigation">
+        <aside className="hidden w-[300px] flex-none flex-col overflow-hidden border-r border-[var(--border)] py-4 pr-7 lg:flex lg:h-full lg:min-h-0" aria-label="ViceSunshine navigation">
           <button type="button" onClick={() => go("home")} className="flex w-full flex-none shrink-0 items-center gap-3 pb-1 text-left" aria-label="ViceSunshine home">
-            <img decoding="async" src={vsLogoUrl} alt="ViceSunshine VS logo — original mark, bold VS letters in a hot pink to neon purple gradient on dark navy" className="h-11 w-auto flex-none object-contain" style={{ aspectRatio: "1135 / 747" }} />
+            <img decoding="async" src={vsLogoUrl} alt="ViceSunshine VS logo — original mark, bold VS letters in a hot pink to neon purple gradient on dark navy" className="sidebar-logo-img h-10 w-auto flex-none object-contain" style={{ aspectRatio: "1135 / 747" }} />
             <span className="min-w-0">
-              <span className="block text-[20px] font-extrabold tracking-tight">ViceSunshine</span>
+              <span className="sidebar-logo-name block text-[20px] font-extrabold tracking-tight">ViceSunshine</span>
             </span>
           </button>
           <button
             type="button"
-            className="field mt-3 flex w-full flex-none shrink-0 cursor-pointer items-center gap-2 text-left"
-            style={{ minHeight: 42, padding: "8px 14px", color: "var(--dim)" }}
+            className="sidebar-search-btn field mt-3 flex w-full flex-none shrink-0 cursor-pointer items-center gap-2 text-left"
+            style={{ minHeight: 40, padding: "9px 14px", color: "var(--dim)" }}
             onClick={() => setSearchOpen(true)}
             aria-label="Search ViceSunshine — open search"
           >
-            <SearchIcon size={17} />
-            <span className="flex-1 text-[15px]">Search...</span>
+            <SearchIcon size={16} />
+            <span className="flex-1 text-[14px]">Search...</span>
           </button>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <nav aria-label="Your agent" className="mt-3 flex-none">
+          {/* The nav column NEVER scrolls (owner's direction,
+              Nov 21 2026 — this replaces the short-lived scrolling
+              column, which the owner rejected: a visible scrollbar
+              overlapped the links and Community was still cut off).
+              The sidebar is FIXED in the frame and SPACIOUS
+              (owner's direction, Nov 21 2026: roomier rows and
+              section gaps that use the frame's height instead of
+              leaving a void above the ads): Your agent, Explore
+              and GTA VI Database, with COMMUNITY BACK AT THE
+              BOTTOM of the sidebar (owner's direction); the
+              link/head sizes live in theme.css and step down one
+              notch on shorter windows, so every section header,
+              the two sidebar ads below and the account trigger
+              are all in the frame at once — nothing scrolls,
+              nothing overlaps the ads, nothing is cut off. Only
+              one dropdown can be open at a time, which caps the
+              column's height by construction. */}
+          <div className="sidebar-nav-col mt-2.5 flex min-h-0 flex-1 flex-col overflow-hidden">
+          <nav aria-label="Your agent" className="flex-none">
             <button type="button" className="side-head" aria-expanded={agentNavOpen} onClick={() => toggleNavSection("agent")}>
               <span>Your agent</span><span aria-hidden="true" className="side-chev">{agentNavOpen ? "▾" : "›"}</span>
             </button>
@@ -2679,7 +3133,7 @@ export function App() {
               </div>
             )}
           </nav>
-          <nav aria-label="Explore" className="mt-2.5 flex-none border-t border-[var(--border)] pt-2">
+          <nav aria-label="Explore" className="mt-3 flex-none border-t border-[var(--border)] pt-2.5">
             <button type="button" className="side-head" aria-expanded={exploreNavOpen} onClick={() => toggleNavSection("explore")}>
               <span>Explore</span><span aria-hidden="true" className="side-chev">{exploreNavOpen ? "▾" : "›"}</span>
             </button>
@@ -2687,7 +3141,7 @@ export function App() {
               <div className="side-drop">{EXPLORE_NAV.map((n) => (<button key={n.id} type="button" className="sidebar-link" aria-pressed={navTab === n.id} aria-current={navTab === n.id ? "page" : undefined} onClick={() => go(n.id)}><NavIcon name={n.icon} />{n.label}</button>))}</div>
             )}
           </nav>
-          <nav aria-label="GTA VI Database" className="mt-2.5 flex-none border-t border-[var(--border)] pt-2">
+          <nav aria-label="GTA VI Database" className="mt-3 flex-none border-t border-[var(--border)] pt-2.5">
             <button
               type="button"
               className="side-head"
@@ -2719,7 +3173,13 @@ export function App() {
               </div>
             )}
           </nav>
-          <nav aria-label="Community" className="mt-2.5 flex-none border-t border-[var(--border)] pt-2">
+          {/* Community sits at the BOTTOM of the sidebar
+              (owner's direction, Nov 21 2026 — back below GTA VI
+              Database, directly above the two sidebar ads and the
+              account trigger, which it never overlaps: everything
+              is in normal flow inside the fixed, non-scrolling
+              sidebar). */}
+          <nav aria-label="Community" className="mt-3 flex-none border-t border-[var(--border)] pt-2.5">
             <button type="button" className="side-head" aria-expanded={communityNavOpen} onClick={() => toggleNavSection("community")}>
               <span>Community</span><span aria-hidden="true" className="side-chev">{communityNavOpen ? "▾" : "›"}</span>
             </button>
@@ -2728,7 +3188,7 @@ export function App() {
             )}
           </nav>
           </div>
-          <div className="relative flex-none border-t border-[var(--border)] pt-2">
+          <div className="relative flex-none border-t border-[var(--border)] pt-2.5">
             {/* Sidebar ads (owner's direction, Nov 21 2026 —
                 replacing the older three thin strips): two medium
                 units (300 × 250 medium rectangles, scaled to the
@@ -2744,7 +3204,7 @@ export function App() {
                 unofficial fan-community disclaimer is NOT in the
                 sidebar — it stays in the page footer and the legal
                 pages. */}
-            <div className="sidebar-ad-stack mb-2 grid gap-2" aria-label="Advertisements">
+            <div className="sidebar-ad-stack mb-2.5 grid gap-2.5" aria-label="Advertisements">
               <AdSlot slot="sidebar-top" format="sidebar" premium={premium} flush />
               <AdSlot slot="sidebar-bottom" format="sidebar" premium={premium} flush />
             </div>
@@ -2779,7 +3239,7 @@ export function App() {
               onClick={() => { if (!gamertag) { setAuthGateOpen(true); } else { setAccountMenuOpen((v) => !v); } }}
               aria-label={gamertag ? (accountMenuOpen ? "Close the account and settings menu" : "Open the account and settings menu — profile, wallet, Premium and Settings") : "Sign in or create an account — opens the full-screen sign-in page"}
             >
-              <CosmeticAvatar name={gamertag || "Guest"} size={38} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} />
+              <CosmeticAvatar name={gamertag || "Guest"} size={38} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} eager />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 text-sm font-bold"><span className="leading-snug">{gamertag || "Welcome to ViceSunshine"}</span>{isOwner && gamertag && (<span className="flex-none rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }}>OWNER</span>)}</span>
                 <span className="block text-xs leading-snug" style={{ color: premium ? "var(--amber)" : "var(--dim)" }}>
@@ -2791,7 +3251,7 @@ export function App() {
           </div>
         </aside>
 
-        <main onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd} onTouchCancel={onMainTouchEnd} className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-x:clip] ${tab === "messages" ? "px-0 pb-0 pt-0 sm:px-0 lg:px-0 lg:pb-0 lg:pt-0" : tab === "feed" ? "px-5 pb-10 pt-0 sm:px-6 lg:px-2 lg:pb-24 lg:pt-0" : "px-5 pb-10 pt-6 sm:px-6 lg:px-2 lg:pb-24 lg:pt-8"}`}>
+        <main onScroll={onMainScroll} onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd} onTouchCancel={onMainTouchEnd} className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-x:clip] ${tab === "messages" ? "px-0 pb-0 pt-0 sm:px-0 lg:px-0 lg:pb-0 lg:pt-0" : tab === "feed" ? "px-5 pb-10 pt-0 sm:px-6 lg:px-2 lg:pb-24 lg:pt-0" : "px-5 pb-10 pt-6 sm:px-6 lg:px-2 lg:pb-24 lg:pt-8"}`}>
           {SHELL_AD_TABS.includes(tab) && !NO_AD_TABS.includes(tab) && (
             <div className="mx-auto w-full max-w-[1000px] flex-none">
               <AdSlot slot={`page-top-${tab}`} format="leaderboard" premium={premium} flush />
@@ -2804,7 +3264,7 @@ export function App() {
             {tab === "ideas" && (<IdeasView go={go} savedStore={savedStoreGated} openEgg={(id) => openEgg(id, "ideas")} />)}
             {tab === "goals" && (<ProfileView playerKey={key} search={globalSearch} go={go} onBack={goBack} savedStore={savedStoreGated} trackedStore={trackedStoreGated} openEgg={(id) => openEgg(id)} />)}
             {tab === "news" && <NewsView search={globalSearch} savedStore={savedStoreGated} trackedStore={trackedStoreGated} premium={premium} />}
-            {tab === "feed" && (<FeedView playerKey={key} gamertag={gamertag} search={globalSearch} go={go} trackedStore={trackedStoreGated} premium={premium} onOpenProfile={openPlayerProfile} onOpenAuthorId={openPlayerProfile} onOpenMenu={() => setDrawerOpen(true)} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} drawerOpen={drawerOpen} />)}
+            {tab === "feed" && (<FeedView playerKey={key} gamertag={gamertag} search={globalSearch} go={go} trackedStore={trackedStoreGated} premium={premium} onOpenProfile={openPlayerProfile} onOpenAuthorId={openPlayerProfile} onOpenMenu={() => setDrawerOpen(true)} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} drawerOpen={drawerOpen} topBarHidden={topBarHidden} />)}
             {SHOW_CLIPS && tab === "clips" && (<ClipsView playerKey={key} gamertag={gamertag} go={go} onOpenProfile={openPlayerProfile} onOpenAuthorId={openPlayerProfile} />)}
             {tab === "notifications" && (<NotificationsView playerKey={key} gamertag={gamertag} go={go} onOpenProfile={openPlayerProfile} onBack={goBack} />)}
             {/* No sign-up tab any more (owner's direction): the
@@ -2967,7 +3427,10 @@ export function App() {
                   The four section dropdowns are the whole menu, and
                   the account sits at the bottom of the drawer. */}
               <div className="flex items-center justify-between gap-3 pb-1">
-                <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-[var(--dim)]">Browse ViceSunshine</p>
+                <span className="flex min-w-0 items-center gap-2">
+                  <img decoding="async" src={vsLogoUrl} alt="" className="h-8 w-auto flex-none object-contain" style={{ aspectRatio: "1135 / 747" }} />
+                  <span className="truncate text-[17px] font-extrabold tracking-tight text-[var(--text)]">ViceSunshine</span>
+                </span>
                 <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface2)] text-[var(--text)]" style={{ minHeight: 40 }} onClick={() => setDrawerOpen(false)} aria-label="Close the menu">
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg>
                 </button>
@@ -2977,6 +3440,9 @@ export function App() {
                   top bar's search icon — the drawer goes straight
                   to the section dropdowns. */}
               <nav aria-label="All sections">
+                {/* Same order as the desktop sidebar (owner's
+                    direction): Your agent first, Community last at
+                    the bottom. */}
                 <button type="button" className="side-head" aria-expanded={agentNavOpen} onClick={() => toggleNavSection("agent")} aria-label="Your agent section">
                   <span>Your agent</span><span aria-hidden="true" className="side-chev">{agentNavOpen ? "▾" : "›"}</span>
                 </button>
@@ -3044,7 +3510,7 @@ export function App() {
                 "WHAT'S YOUR EMAIL?" sign-in gate (AuthGatePage)
                 instead, and the drawer closes behind it. */}
             <button type="button" className="flex flex-none items-center gap-3 border-t border-[var(--border)] px-5 py-4 pb-safe text-left" onClick={() => { if (!gamertag) { setDrawerOpen(false); setAuthGateOpen(true); } else { openSettings("general"); } }} aria-label={gamertag ? "Your account — open Settings" : "Sign in or create an account — opens the full-screen sign-in page"}>
-              <CosmeticAvatar name={gamertag || "Guest"} size={42} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} />
+              <CosmeticAvatar name={gamertag || "Guest"} size={42} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} eager />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 text-[15px] font-extrabold leading-tight">
                   <span className="truncate">{myDisplayName}</span>
@@ -3140,7 +3606,10 @@ function AskVice({ open, setOpen, go, playerKey, gamertag }: { open: boolean; se
       setMessages((m) => [...m, { role: "vice", text: res.answer, links: res.links, needsHuman: res.needsHuman }]);
       if (res.needsHuman) setShowSupport(true);
     },
-    onError: (e) => setMessages((m) => [...m, { role: "vice", text: `I hit a problem answering that (${e.message}). Try again, or open the relevant page from the menu — and if it's about your account, credits or Premium, tap Contact support below and a human will review it.` }]),
+    // Never show the raw error (owner report, Nov 21 2026: a
+    // failed send dumped schema code into the chat) — always a
+    // clean sentence a person can act on.
+    onError: () => setMessages((m) => [...m, { role: "vice", text: "I hit a problem answering that. Try again, or open the relevant page from the menu — and if it's about your account, credits or Premium, tap Contact support below and a human will review it." }]),
   });
   const sendSupport = useMutation({
     mutationFn: async () => await api.createSupportRequest({ playerKey, gamertag, topic, details }),
@@ -3155,6 +3624,15 @@ function AskVice({ open, setOpen, go, playerKey, gamertag }: { open: boolean; se
     const q = text.trim();
     if (!q || ask.isPending) return;
     if (q.toLowerCase() === "contact support") { setShowSupport(true); return; }
+    // Too short to answer (a stray letter, a lone "."): Vice
+    // replies like a person, right here — the question never
+    // leaves the panel, so no server error can ever land in
+    // the chat (owner report, Nov 21 2026).
+    if (q.replace(/[^a-z0-9]/gi, "").length < 2) {
+      setMessages((m) => [...m, { role: "user", text: q }, { role: "vice", text: "That's a bit short for me to go on — ask me a full question and I'll dig in. Anything about ViceSunshine or GTA: crews, credits, Premium, events, Easter eggs, the latest news…" }]);
+      setInput("");
+      return;
+    }
     // Recent turns ride along so follow-ups ("and how do I join
     // one?") make sense; facts still come only from the server's
     // own content, never from the chat itself.
@@ -3458,7 +3936,7 @@ function SectionBanner({ src, alt }: { src: string; alt: string }) {
       <img decoding="async"
         src={src}
         alt={alt}
-        className="h-[128px] w-full rounded-2xl border border-[var(--border)] object-cover sm:h-[168px]"
+        className="img-fade h-[128px] w-full rounded-2xl border border-[var(--border)] object-cover sm:h-[168px]"
         loading="lazy"
       />
     </div>
@@ -3573,7 +4051,7 @@ function DbImg({ entry, className, style, lazy = true, alt, fallback }: {
     />
   );
 }
-function DbStatusBadge({ status }: { status: string }) {
+function DbStatusBadge({ status, short = false }: { status: string; short?: boolean }) {
   const style = status === "Confirmed in trailer"
     ? { border: "1px solid var(--accent2)", color: "var(--accent2)" }
     : status === "Reported"
@@ -3581,8 +4059,16 @@ function DbStatusBadge({ status }: { status: string }) {
       : status === "Returning from GTA V"
         ? { border: "1px solid #b388ff", color: "#b388ff" }
         : { border: "1px solid var(--border)", color: "var(--dim)" };
-  const label = status === "Returning from GTA V" ? "Returning from GTA V — not confirmed for GTA VI" : status;
-  return <span className="whitespace-normal rounded-full px-2.5 py-0.5 text-center text-[11px] font-extrabold uppercase leading-snug tracking-wide" style={{ ...style, maxWidth: "min(230px, 100%)" }}>{label}</span>;
+  /* The full "Returning from GTA V — not confirmed for GTA VI"
+     label is 230px wide: in a narrow row it cannot sit beside a
+     name, and as a plain inline span its max-width never applied,
+     so the pill painted straight past its card's edge (the spill
+     the owner screenshotted). `short` renders the plain status
+     name on ONE line as an inline-block that can shrink with an
+     ellipsis — the pill stays inside its box at every width. The
+     detail page keeps the full label plus its warning note. */
+  const label = status === "Returning from GTA V" && !short ? "Returning from GTA V — not confirmed for GTA VI" : status;
+  return <span className={`inline-block max-w-full rounded-full px-2.5 py-0.5 text-center text-[11px] font-extrabold uppercase leading-snug tracking-wide ${short ? "truncate whitespace-nowrap" : "whitespace-normal"}`} style={{ ...style, maxWidth: "min(230px, 100%)" }}>{label}</span>;
 }
 
 type DbKindFilter = "All" | "Vehicle" | "Weapon" | "Character" | "Location";
@@ -4210,13 +4696,14 @@ function DatabaseView({
   ];
 
   return (
-    <div className="relative">
+    <div className="database-view relative">
       {/* Background effect (Tracker-style, ViceSunshine art):
-          our own original Vice City hero illustration sits very
-          subtly behind the whole Database page, fading into the
-          dark navy — never their artwork, never official art. */}
+          the Database's own original night-bay illustration sits
+          very subtly behind the whole Database page, fading into
+          the dark navy — a picture used only here, never the Home
+          hero and never official art. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[620px] overflow-hidden">
-        <img decoding="async" src={heroUrl} alt="" className="h-full w-full object-cover" style={{ opacity: 0.2 }} loading="lazy" />
+        <img decoding="async" src={dbBackdropUrl} alt="" className="h-full w-full object-cover" style={{ opacity: 0.2 }} loading="lazy" />
         <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(9,9,20,0.30) 0%, rgba(9,9,20,0.66) 52%, var(--bg) 100%)" }} />
       </div>
       <div className="relative">
@@ -4242,8 +4729,10 @@ function DatabaseView({
               Released <span style={{ color: "var(--accent2)" }}>Nov 19, 2026</span> <span className="font-semibold text-[var(--dim)]">· PS5 &amp; Xbox Series X|S</span>
             </div>
           </section>
-          {/* The Display — the same Interactive Map card as the
-              Map page, in the reference's spot (top right of the
+          {/* The Display — the Interactive Map card in the same
+              layout as the Map page's card but with this page's own
+              dusk map illustration (no picture repeats across
+              tabs), in the reference's spot (top right of the
               home hero, beside the heading): one large borderless
               card at the reference's proportions (365px tall),
               the original ViceSunshine dark night-style map
@@ -4258,7 +4747,7 @@ function DatabaseView({
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenMap(); } }}
             aria-label="Open the Map — press to open the full interactive map of Leonida. Fan-made community base map, not official"
             className="relative h-[360px] cursor-pointer overflow-hidden focus-visible:ring-2 focus-visible:ring-[#ff9ec4] sm:h-[365px]" style={{ borderRadius: 16, border: "none", background: "#071018" }}>
-            <img decoding="async" src={mapDisplayNightUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+            <img decoding="async" src={mapDisplayDuskUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
             <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.34) 38%, rgba(0,0,0,0.78) 68%, rgba(0,0,0,0.94) 100%)" }} aria-hidden="true" />
             <div className="absolute inset-0 flex flex-col justify-end p-6 pb-14 sm:p-7 sm:pb-16">
               <span className="w-fit rounded-md px-3 py-1 text-xs font-extrabold uppercase tracking-[0.14em]" style={{ color: "#ff9ec4", border: "1px solid rgba(255,158,196,0.8)", background: "rgba(10,8,20,0.45)" }}>Featured</span>
@@ -4313,12 +4802,12 @@ function DatabaseView({
            up row for row instead of each ending at its own level. */
         <div className="mb-5 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
           {featuredList.length > 0 && (
-            <section className="card flex h-full flex-col divide-y divide-[var(--border)]" aria-label="Featured entries">
+            <section className="card flex h-full min-w-0 flex-col divide-y divide-[var(--border)]" aria-label="Featured entries">
               <div className="flex h-11 flex-none items-center px-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-[var(--dim)]">Featured</p>
               </div>
               {featuredList.slice(0, 5).map((e) => (
-                <button key={e.id} type="button" className="flex h-[76px] w-full flex-none items-center gap-3 px-4 text-left" onClick={() => { setKind(e.kind as DbKindFilter); setOpenId(e.id); scrollPageToTopSoon(); }} aria-label={`Open ${e.name} — ${e.status}`}>
+                <button key={e.id} type="button" className="flex h-[76px] w-full min-w-0 flex-none items-center gap-3 overflow-hidden px-4 text-left" onClick={() => { setKind(e.kind as DbKindFilter); setOpenId(e.id); scrollPageToTopSoon(); }} aria-label={`Open ${e.name} — ${e.status}`}>
                   <DbImg entry={e} className="h-11 w-14 flex-none rounded-lg object-cover" fallback={<DbArtTile entry={e} />} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-bold">{e.name}</span>
@@ -4329,35 +4818,48 @@ function DatabaseView({
             </section>
           )}
           {recent.length > 0 && (
-            <section className="card flex h-full flex-col divide-y divide-[var(--border)]" aria-label="Recently updated">
+            <section className="card flex h-full min-w-0 flex-col divide-y divide-[var(--border)]" aria-label="Recently updated">
               <div className="flex h-11 flex-none items-center px-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-[var(--dim)]">Recently updated</p>
               </div>
               {recent.slice(0, 5).map((e) => (
-                <div key={e.id} className="flex h-[76px] flex-none items-center gap-3 px-4">
+                <div key={e.id} className="flex h-[76px] min-w-0 flex-none items-center gap-3 overflow-hidden px-4">
                   <DbImg entry={e} className="h-11 w-14 flex-none rounded-lg object-cover" fallback={<DbArtTile entry={e} />} />
                   <span className="min-w-0 flex-1">
-                    {/* The status badge rides on the name line —
-                        on its own line it made every row in this
-                        column taller than the other two columns. */}
-                    <span className="flex items-center gap-2">
-                      <span className="min-w-0 truncate font-bold">{e.name}</span>
-                      <span className="flex-none"><DbStatusBadge status={e.status} /></span>
+                    {/* The status badge gets its OWN line under the
+                        name: beside the name it was a flex-none pill
+                        up to 230px wide in a ~140px text column, so
+                        it shoved straight out of the card (the spill
+                        the owner screenshotted — "RETURNING FROM GTA
+                        V — NO…" and "REPORTED" painting over the
+                        neighbouring column). On its own line the
+                        short badge has the row's full width, shrinks
+                        with an ellipsis if it ever has to, and the
+                        row's overflow-hidden is the hard guard: a
+                        pill can never paint outside its box again.
+                        Rows stay the fixed 76px, so the three
+                        columns still line up row for row. */}
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className="min-w-0 flex-1 truncate font-bold">{e.name}</span>
+                      <span className="flex-none text-xs text-[var(--dim)]">{timeAgo(e.updatedAt)}</span>
                     </span>
-                    <span className="block truncate text-xs text-[var(--dim)]">{e.kind}{e.category ? ` · ${e.category}` : ""} · {timeAgo(e.updatedAt)}</span>
+                    <span className="mt-1 flex min-w-0 items-center gap-2">
+                      <DbStatusBadge status={e.status} short />
+                      <span className="min-w-0 flex-1 truncate text-xs text-[var(--dim)]">{e.kind}{e.category ? ` · ${e.category}` : ""}</span>
+                    </span>
                   </span>
                 </div>
               ))}
             </section>
           )}
           {dbNewsItems.length > 0 && (
-            <section className="card flex h-full flex-col divide-y divide-[var(--border)]" aria-label="Latest news">
+            <section className="card flex h-full min-w-0 flex-col divide-y divide-[var(--border)]" aria-label="Latest news">
               <div className="flex h-11 flex-none items-center justify-between px-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-[var(--dim)]">Latest news</p>
                 <button type="button" className="text-xs font-bold" style={{ color: "var(--accent)" }} onClick={onOpenNews} aria-label="View all news">View All</button>
               </div>
               {dbNewsItems.map((n, i) => (
-                <div key={n.id} className="flex h-[76px] flex-none items-center gap-3 overflow-hidden px-4">
+                <div key={n.id} className="flex h-[76px] min-w-0 flex-none items-center gap-3 overflow-hidden px-4">
                   <img decoding="async" src={dbNewsArts[i] ?? newsFeaturedUrl} alt={`Original ViceSunshine illustration for the news story: ${n.title}`} className="h-11 w-14 flex-none rounded-lg object-cover" loading="lazy" />
                   <span className="min-w-0 flex-1">
                     {/* No `block` class here on purpose: in the
@@ -4543,7 +5045,7 @@ function DatabaseView({
                     {e.ratingCount > 0 ? `${Math.round((e.ratingAvg / 5) * 100)}%` : "—"}
                   </span>
                   {e.kind !== "Location" && (
-                    <span className="absolute right-2.5 top-2.5 rounded-full border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide" style={dbBadgeColors(e.status)}>
+                    <span className="absolute right-2.5 top-2.5 max-w-[calc(100%-5.5rem)] truncate rounded-full border px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide" style={dbBadgeColors(e.status)}>
                       {e.status}
                     </span>
                   )}
@@ -5719,19 +6221,19 @@ type FirstPageSlide = {
    the topic; the picker takes the first matching rule whose
    picture is not already on another slide. */
 const NEWS_SLIDE_ART: { match: RegExp; img: string; topic: string }[] = [
-  { match: /car meet|meet[- ]?up|cruise night/i, img: eventsPromoUrl, topic: "a community car meet at dusk, rows of colourful cars under string lights" },
-  { match: /rac(e|ing)|drag|drift|street car|\bcar\b|cars|vehicle|motorcycle|bike/i, img: guideCarsUrl, topic: "colourful tuned cars racing through a neon coastal city" },
-  { match: /money|cash|heist|robbery|bank|rich|million/i, img: guideMoneyUrl, topic: "a neon-lit money and heist scene" },
-  { match: /mission|story mode|campaign/i, img: guideMissionsUrl, topic: "a story mission scene in a neon coastal city" },
-  { match: /weapon|gun|rifle|pistol|arsenal/i, img: guideWeaponsUrl, topic: "a lineup of weapons on a neon-lit table" },
-  { match: /lucia|jason|character|protagonist/i, img: dbCharactersUrl, topic: "the game's main characters in a neon coastal city" },
-  { match: /map|leonida|vice city|location|island|region/i, img: guideMapUrl, topic: "a stylised map of a neon coastal state" },
-  { match: /glitch|bug|exploit|physics|ragdoll/i, img: secBugsUrl, topic: "a glitchy neon game scene" },
-  { match: /easter egg|secret|hidden/i, img: secEggsUrl, topic: "a hidden neon-lit secret in a coastal city" },
-  { match: /trailer|video|clip|stream|watch/i, img: secClipsUrl, topic: "a video player scene with neon highlights" },
-  { match: /tips|tricks|guide|beginner|how to/i, img: guideTipsUrl, topic: "a player's guide scene in a neon coastal city" },
-  { match: /setting|performance|fps|graphics/i, img: guideSettingsUrl, topic: "game settings on a neon-lit screen" },
-  { match: /patch|update|hotfix|version/i, img: secUpdatesUrl, topic: "a neon workshop updating a car's dashboard screen" },
+  { match: /car meet|meet[- ]?up|cruise night/i, img: newsArtMeetUrl, topic: "a community car meet at golden hour on a beachfront lot" },
+  { match: /rac(e|ing)|drag|drift|street car|\bcar\b|cars|vehicle|motorcycle|bike/i, img: newsArtRacingUrl, topic: "two tuned sports cars street racing through a neon coastal city" },
+  { match: /money|cash|heist|robbery|bank|rich|million/i, img: newsArtMoneyUrl, topic: "a duffel of cash in the trunk of a vintage convertible outside a neon pawn shop" },
+  { match: /mission|story mode|campaign/i, img: newsArtMissionsUrl, topic: "a speedboat chase through neon canals under a helicopter searchlight" },
+  { match: /weapon|gun|rifle|pistol|arsenal/i, img: newsArtWeaponsUrl, topic: "the inside of a neon-lit gun shop at night" },
+  { match: /lucia|jason|character|protagonist/i, img: newsArtCharactersUrl, topic: "two partners back to back on a rain-slick neon boardwalk" },
+  { match: /map|leonida|vice city|location|island|region/i, img: newsArtMapUrl, topic: "an aerial view of a tropical island chain and coastal city at golden hour" },
+  { match: /glitch|bug|exploit|physics|ragdoll/i, img: newsArtBugsUrl, topic: "a glitchy neon street scene with a car half-sunk into the pavement" },
+  { match: /easter egg|secret|hidden/i, img: newsArtEggsUrl, topic: "a flashlight beam finding a glowing golden object in a swamp at night" },
+  { match: /trailer|video|clip|stream|watch/i, img: newsArtClipsUrl, topic: "a rooftop watch party in front of a huge outdoor cinema screen" },
+  { match: /tips|tricks|guide|beginner|how to/i, img: newsArtTipsUrl, topic: "a shortcut alley with chalk arrows under a glowing lightbulb" },
+  { match: /setting|performance|fps|graphics/i, img: newsArtSettingsUrl, topic: "a gaming desk with a controller and a glowing settings screen" },
+  { match: /patch|update|hotfix|version/i, img: newsArtPatchUrl, topic: "a neon workshop updating a muscle car's dashboard screen" },
 ];
 
 /* Card-top picture for a News story (owner's direction): a small
@@ -5747,10 +6249,58 @@ function newsCardArt(title: string, summary: string, category: string): { img: s
   for (const rule of NEWS_SLIDE_ART) {
     if (rule.match.test(text)) return { img: rule.img, topic: rule.topic };
   }
-  if (category === "Patch") return { img: secUpdatesUrl, topic: "a neon workshop updating a car's dashboard screen" };
-  if (category === "Rumor") return { img: secEggsUrl, topic: "a hidden neon-lit secret in a coastal city" };
-  if (category === "Community") return { img: secFeedUrl, topic: "players sharing clips and posts in a neon coastal city" };
-  return { img: secNewsUrl, topic: "a neon newsroom with screens showing a coastal city" };
+  if (category === "Patch") return { img: newsArtPatchUrl, topic: "a neon workshop updating a muscle car's dashboard screen" };
+  if (category === "Rumor") return { img: newsArtEggsUrl, topic: "a flashlight beam finding a glowing golden object in a swamp at night" };
+  if (category === "Community") return { img: newsArtCommunityUrl, topic: "gamer friends taking a group photo on a neon boardwalk" };
+  return { img: newsArtNewsroomUrl, topic: "a news helicopter over a neon coastal city at sunset" };
+}
+
+/* Every news illustration on the site, as one pool. When a list
+   of stories is shown together (the Home trending row, the News
+   page grid, the Database news column), pictures are handed out
+   from this pool so no two stories in the list share a picture
+   while unique ones remain (owner's rule — three cards in a row
+   showed the same art-deco tower because the old picker fell
+   back to the one featured picture for every story whose topic
+   picture was already taken or matched nothing). */
+const NEWS_ART_POOL: { img: string; topic: string }[] = [
+  ...NEWS_SLIDE_ART.map((r) => ({ img: r.img, topic: r.topic })),
+  { img: newsArtNewsroomUrl, topic: "a news helicopter over a neon coastal city at sunset" },
+  { img: newsArtCommunityUrl, topic: "gamer friends taking a group photo on a neon boardwalk" },
+  { img: newsFeaturedUrl, topic: "a news camera and spotlight in front of an art-deco tower" },
+];
+
+/* Hand one story its picture within a list: the story's own
+   topic picture when it is still free, otherwise another
+   topic-matching picture, otherwise any picture from the pool
+   that has not been handed out yet. Only when the whole pool
+   is on a card already does the hand-out start a fresh cycle —
+   and even then it never repeats the previous card's picture,
+   so identical pictures never sit side by side. */
+function takeNewsArt(own: { img: string; topic: string }, haystack: string, used: Set<string>, prevImg: string): { img: string; topic: string } {
+  if (!used.has(own.img) && own.img !== prevImg) {
+    used.add(own.img);
+    return own;
+  }
+  for (const rule of NEWS_SLIDE_ART) {
+    if (rule.match.test(haystack) && !used.has(rule.img) && rule.img !== prevImg) {
+      used.add(rule.img);
+      return { img: rule.img, topic: rule.topic };
+    }
+  }
+  const spare = NEWS_ART_POOL.find((p) => !used.has(p.img) && p.img !== prevImg);
+  if (spare) {
+    used.add(spare.img);
+    return spare;
+  }
+  used.clear();
+  if (own.img !== prevImg) {
+    used.add(own.img);
+    return own;
+  }
+  const fresh = NEWS_ART_POOL.find((p) => p.img !== prevImg) ?? own;
+  used.add(fresh.img);
+  return fresh;
 }
 
 function FirstPageCarousel() {
@@ -5813,13 +6363,24 @@ function FirstPageCarousel() {
         }
       }
       if (!img) {
+        /* The story's topic picture is already on another slide:
+           never repeat a picture in the carousel (owner's rule) —
+           take the first unused news picture instead. */
+        const spare = NEWS_SLIDE_ART.find((r) => !used.has(r.img));
+        if (spare) { img = spare.img; topic = spare.topic; }
+      }
+      if (!img) {
+        img = [newsArtNewsroomUrl, newsArtCommunityUrl, newsFeaturedUrl].find((a) => !used.has(a)) ?? "";
+        topic = "a news helicopter over a neon coastal city at sunset";
+      }
+      if (!img) {
+        /* Every picture is already on a slide (more stories than
+           pictures): only then reuse the story's own topic
+           picture rather than leaving a slide blank. */
         for (const rule of NEWS_SLIDE_ART) {
           if (rule.match.test(haystack)) { img = rule.img; topic = rule.topic; break; }
         }
-      }
-      if (!img) {
-        img = [newsFeaturedUrl, secNewsUrl, secFeedUrl].find((a) => !used.has(a)) ?? secNewsUrl;
-        topic = "a neon newsroom over a coastal city";
+        if (!img) { img = newsArtNewsroomUrl; topic = "a news helicopter over a neon coastal city at sunset"; }
       }
       used.add(img);
       out.push({
@@ -5944,28 +6505,22 @@ function FirstPageCarousel() {
 // never runs for readers who prefer reduced motion.
 /* Pictures in the trending row: each story gets the
    topic-matched illustration for ITS subject (the same rules
-   as the front-page carousel), and a picture already used in
-   the row is not handed out again while unique ones remain.
-   Every card always shows a picture, though — when the unique
-   pictures run out, the story's own topic picture is reused
-   rather than leaving a blank picture area. */
+   as the front-page carousel), handed out through takeNewsArt
+   so a picture already used in the row is never handed out
+   again while unique ones remain — every card in the row
+   shows its own picture. */
 function trendingArtFor(items: NewsRow[]): string[] {
   const used = new Set<string>();
+  let prev = "";
   return items.map((n) => {
     const haystack = `${n.title} ${n.category}`;
+    let own: { img: string; topic: string } = { img: newsArtNewsroomUrl, topic: "a news helicopter over a neon coastal city at sunset" };
     for (const rule of NEWS_SLIDE_ART) {
-      if (rule.match.test(haystack) && !used.has(rule.img)) { used.add(rule.img); return rule.img; }
+      if (rule.match.test(haystack)) { own = { img: rule.img, topic: rule.topic }; break; }
     }
-    for (const fb of [newsFeaturedUrl, secNewsUrl, secFeedUrl]) {
-      if (!used.has(fb)) { used.add(fb); return fb; }
-    }
-    /* Every card must show a picture (owner's direction): when
-       the unique pictures run out, reuse this story's own
-       topic-matched picture rather than leaving a blank area. */
-    for (const rule of NEWS_SLIDE_ART) {
-      if (rule.match.test(haystack)) return rule.img;
-    }
-    return newsFeaturedUrl;
+    const pick = takeNewsArt(own, haystack, used, prev);
+    prev = pick.img;
+    return pick.img;
   });
 }
 function LatestTrendingCarousel({ items, go }: { items: NewsRow[]; go: (t: Tab) => void }) {
@@ -6036,9 +6591,9 @@ function HomeView({ go, goDetail, playerKey, gamertag, premium, openHistory, onO
   return (
     <div className="home-themed">
       <section className="home-navy card-big relative overflow-hidden" style={{ border: "1px solid var(--border)" }} aria-label="Today's briefing">
-        <img decoding="async" src={heroUrl} alt="Original ViceSunshine illustration of the Vice City neon skyline at sunset — art-deco hotels in hot pink and purple neon, palm trees, a causeway over the turquoise bay and a classic sports car on the wet street" className="absolute inset-0 h-full w-full object-cover" />
+        <img decoding="async" src={heroUrl} alt="Original ViceSunshine illustration of the Vice City neon skyline at sunset — art-deco hotels in hot pink and purple neon, palm trees, a causeway over the turquoise bay and a classic sports car on the wet street" className="img-fade absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,11,30,0.22) 0%, rgba(11,11,30,0.9) 80%)" }} aria-hidden="true" />
-        <div className="relative flex min-h-[270px] flex-col justify-end p-4 sm:min-h-[360px] sm:p-7">
+        <div className="relative flex min-h-[220px] flex-col justify-end p-4 sm:min-h-[360px] sm:p-7">
           {/* Hero text is MINIMIZED on laptop and phone alike
               (owner's direction): short eyebrow, just the short
               headline, one-line launch date — the picture shows.
@@ -6402,9 +6957,9 @@ function HistoryView({ cat, setCat, go, playerKey, onBack }: { cat: HistoryCat; 
   }
 
   return (
-    <div>
+    <div className="history-view">
       <button type="button" className="btn-ghost btn-compact" onClick={() => (onBack ? onBack() : go("home"))} aria-label="Back to where you were">← Back</button>
-      <h2 className="font-display mt-4 text-2xl leading-tight">{meta.label} history</h2>
+      <h2 className="font-display mt-3 text-xl leading-tight sm:mt-4 sm:text-2xl">{meta.label} history</h2>
       <p className="mt-1 max-w-[560px] text-sm leading-relaxed text-[var(--dim)]">
         Everything ever posted in {meta.label}, newest first, grouped by day — {totals[cat].total.toLocaleString()} all time, {totals[cat].today.toLocaleString()} today. The Home row counts today only and resets at midnight.
       </p>
@@ -6448,9 +7003,9 @@ function HistoryView({ cat, setCat, go, playerKey, onBack }: { cat: HistoryCat; 
    owner's direction): the detailed block is RockstarStatusBlock. */
 function ServiceStatusView({ go, onBack }: { go: (t: Tab) => void; onBack?: () => void }) {
   return (
-    <div>
+    <div className="status-view">
       <button type="button" className="btn-ghost btn-compact" onClick={() => (onBack ? onBack() : go("home"))} aria-label="Back to where you were">← Back</button>
-      <h2 className="font-display mt-4 text-2xl leading-tight">Rockstar service status</h2>
+      <h2 className="font-display mt-3 text-xl leading-tight sm:mt-4 sm:text-2xl">Rockstar service status</h2>
       <p className="mt-1 max-w-[560px] text-sm leading-relaxed text-[var(--dim)]">
         Whether Rockstar&apos;s games and online services are up right now — read from Rockstar&apos;s official service status page, never guessed. When GTA VI&apos;s online services launch, they will be listed on that same page.
       </p>
@@ -6664,7 +7219,7 @@ function SavedView({ go, playerKey, savedStore, trackedStore, openEgg, onOpenAut
     { label: "Easter eggs & ideas", n: savedEggs.length },
   ].filter((g) => g.n > 0);
   return (
-    <div>
+    <div className="saved-view">
       {/* Saved hero (owner's redesign): the sunset library artwork
           sits at the very top of the page and FADES AWAY as it goes
           down — full picture at the top, dissolving into the page
@@ -6677,13 +7232,13 @@ function SavedView({ go, playerKey, savedStore, trackedStore, openEgg, onOpenAut
           present. Saving or unsaving anything, here or on any other
           tab, rewrites this block the moment it happens. */}
       <section className="relative" aria-label={total === 0 ? "Your library is currently empty" : "Your saved library"}>
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-[248px] sm:h-[288px]" aria-hidden="true">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[190px] sm:h-[288px]" aria-hidden="true">
           <img decoding="async" src={savedHeroUrl} alt="" className="saved-fade-mask absolute inset-0 h-full w-full rounded-t-[24px] object-cover" />
           <div className="saved-fade-mask absolute inset-0 bg-gradient-to-tr from-[rgba(255,46,136,0.22)] via-transparent to-[rgba(45,212,191,0.16)]" />
           <div className="saved-fade-mask absolute inset-0 bg-gradient-to-t from-[rgba(10,10,18,0.88)] via-[rgba(10,10,18,0.22)] to-transparent" />
         </div>
-        <div className="relative px-1 pt-[118px] sm:pt-[138px]">
-          <h2 className="vice-display text-[36px] leading-none sm:text-[44px]">Saved</h2>
+        <div className="relative px-1 pt-[84px] sm:pt-[138px]">
+          <h2 className="vice-display text-[28px] leading-none sm:text-[44px]">Saved</h2>
           <p className="mt-2 max-w-[640px] text-sm leading-relaxed text-[#d8d3e6]">Everything you tapped Save on — saved to your account, organised by type, so it is never lost and comes back on any device you sign in on.</p>
           {total === 0 ? (
             <div className="mt-4">
@@ -6721,10 +7276,10 @@ function SavedView({ go, playerKey, savedStore, trackedStore, openEgg, onOpenAut
            rows the crew's own emblem. */
         const recNews = (news.data?.items ?? []).slice(0, 2);
         const recNewsArt = trendingArtFor(recNews);
-        const recs: { key: string; kind: "news" | "guide" | "clan"; id: number; type: string; title: string; meta: string; art?: { src: string; alt: string }; clan?: { tag: string; color: string; emblem: string } }[] = [
+        const recs: { key: string; kind: "news" | "guide" | "clan"; id: number; type: string; title: string; meta: string; art?: { src: string; alt: string }; clan?: { tag: string; color: string; emblem: string; effect: string; finish: string } }[] = [
           ...recNews.map((n, i) => ({ key: `news-${n.id}`, kind: "news" as const, id: n.id, type: "News", title: n.title, meta: n.sourceName, art: recNewsArt[i] ? { src: recNewsArt[i], alt: `Original ViceSunshine illustration for the news story: ${n.title}` } : undefined })),
           ...(guides.data?.items ?? []).slice(0, 2).map((g) => ({ key: `guide-${g.id}`, kind: "guide" as const, id: g.id, type: "Guide", title: g.title, meta: g.category, art: GUIDE_ART[g.category] })),
-          ...(clans.data?.items ?? []).slice(0, 2).map((c) => ({ key: `clan-${c.id}`, kind: "clan" as const, id: c.id, type: "Crew", title: c.name, meta: `${c.memberCount} members · ${c.league}`, clan: { tag: c.tag, color: c.color, emblem: c.emblem } })),
+          ...(clans.data?.items ?? []).slice(0, 2).map((c) => ({ key: `clan-${c.id}`, kind: "clan" as const, id: c.id, type: "Crew", title: c.name, meta: `${c.memberCount} members · ${c.league}`, clan: { tag: c.tag, color: c.color, emblem: c.emblem, effect: c.emblemEffect, finish: c.colorFinish } })),
         ];
         const cars = (vehiclesQ.data?.items ?? []).slice(0, 10);
         if (recs.length === 0 && cars.length === 0) return null;
@@ -6740,7 +7295,7 @@ function SavedView({ go, playerKey, savedStore, trackedStore, openEgg, onOpenAut
                       {r.art ? (
                         <img decoding="async" src={r.art.src} alt={r.art.alt} className="h-11 w-14 flex-none rounded-lg object-cover" loading="lazy" />
                       ) : r.clan ? (
-                        <span className="flex h-11 w-14 flex-none items-center justify-center"><ClanEmblem tag={r.clan.tag} color={r.clan.color} emblem={r.clan.emblem} size={40} /></span>
+                        <span className="flex h-11 w-14 flex-none items-center justify-center"><ClanEmblem tag={r.clan.tag} color={r.clan.color} emblem={r.clan.emblem} effect={r.clan.effect} finish={r.clan.finish} size={40} /></span>
                       ) : null}
                       <span className="w-[52px] flex-none text-[11px] font-extrabold uppercase tracking-wide text-[var(--dim)]">{r.type}</span>
                       <span className="min-w-0 flex-1">
@@ -6805,18 +7360,31 @@ function SavedView({ go, playerKey, savedStore, trackedStore, openEgg, onOpenAut
                     {canOpenSavedAuthor(p) ? (
                       <button type="button" className="block max-w-full truncate text-left font-bold" style={{ minHeight: 0, padding: 0 }} onClick={() => openSavedAuthor(p)} aria-label={`Open ${p.author}'s profile`}>{p.author}</button>
                     ) : (
-                      <p className="truncate font-bold">{p.author}</p>
+                      <p className="flex items-center gap-2 font-bold">
+                        <span className="truncate">{p.author}</span>
+                        {p.isAi && (
+                          <span className="flex-none rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ background: "var(--accent)", color: "#ffffff" }} aria-label="AI automatic account">
+                            AI
+                          </span>
+                        )}
+                      </p>
                     )}
                     <p className="text-xs text-[var(--dim)]">{p.kind} · {timeAgo(p.createdAt)}</p>
                   </div>
                 </div>
-                {p.mediaUrl ? (
+                {p.mediaUrl || p.mediaUrls.length > 1 ? (
                   <div className="mt-3">
-                    <FeedMediaBlock mediaUrl={p.mediaUrl} mediaType={p.mediaType} embedUrl={p.embedUrl} videoId={p.videoId} title={p.title || `Post by ${p.author}`} />
+                    <FeedMediaBlock mediaUrl={p.mediaUrl} mediaType={p.mediaType} embedUrl={p.embedUrl} videoId={p.videoId} title={p.title || `Post by ${p.author}`} mediaUrls={p.mediaUrls} />
                   </div>
                 ) : null}
                 {p.title && <h4 className="mt-3 font-bold leading-snug">{p.title}</h4>}
-                {p.body && <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-[var(--dim)]">{p.body}</p>}
+                {p.body && <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-[var(--dim)]">{linkifyText(p.body, (tag) => go("feed", `#${tag}`))}</p>}
+                {p.linkUrl && (
+                  <p className="mt-2 text-[13px] text-[var(--dim)]">
+                    Attached link ·{" "}
+                    <a className="font-bold text-[var(--accent2)] underline" href={p.linkUrl} target="_blank" rel="noreferrer" aria-label={`Open the link attached to this post: ${p.linkUrl}`}>{(() => { try { return new URL(p.linkUrl).hostname.replace(/^www\./, ""); } catch { return p.linkUrl; } })()} ↗</a>
+                  </p>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" className="btn-ghost" onClick={() => go("feed", p.title || p.author)} aria-label={`Open this ${p.kind.toLowerCase()} in the Community Feed`}>Open in Feed</button>
                   <SaveButton saved onToggle={() => unsavePost(p.id)} label={p.title || `post by ${p.author}`} />
@@ -6829,7 +7397,7 @@ function SavedView({ go, playerKey, savedStore, trackedStore, openEgg, onOpenAut
       {savedNews.length > 0 && (<section className="mt-7"><h3 className="text-lg font-extrabold tracking-tight">News</h3><div className="mt-3 grid gap-4">{savedNews.map((n) => (<article key={n.id} className="card p-6"><div className="flex flex-wrap items-center gap-2"><CategoryBadge category={n.category} /><span className="text-xs text-[var(--dim)]">{n.publishedAt} · {n.sourceName}</span></div><h4 className="mt-2 font-bold leading-snug">{n.title}</h4><p className="mt-1 text-sm leading-relaxed text-[var(--dim)]">{n.summary}</p><div className="mt-3 flex flex-wrap gap-2">{n.sourceUrl ? <a className="btn-ghost" href={n.sourceUrl} target="_blank" rel="noreferrer">Read source</a> : null}{n.category === "Official" ? <OfficialVerifyLink label="Verify on official site" /> : null}<SaveButton saved onToggle={() => savedStore.toggle("news", n.id)} label={n.title} /></div></article>))}</div></section>)}
       {savedGuides.length > 0 && (<section className="mt-7"><h3 className="text-lg font-extrabold tracking-tight">Guides</h3><div className="mt-3 grid gap-4">{savedGuides.map((g) => (<article key={g.id} className="card p-6"><span className="text-xs font-bold uppercase tracking-widest text-[var(--dim)]">{g.category}{g.author ? ` · by ${g.author}` : ""}</span><h4 className="mt-1 font-bold">{g.title}</h4><p className="mt-1 line-clamp-3 text-sm leading-relaxed text-[var(--dim)]">{g.body}</p><div className="mt-3 flex gap-2"><button type="button" className="btn-ghost" onClick={() => go("guides")}>Open in Guides</button><SaveButton saved onToggle={() => savedStore.toggle("guide", g.id)} label={g.title} /></div></article>))}</div></section>)}
       {savedBugs.length > 0 && (<section className="mt-7"><h3 className="text-lg font-extrabold tracking-tight">Bugs to watch</h3><div className="mt-3 grid gap-4">{savedBugs.map((b) => (<article key={b.id} className="card p-6"><div className="flex flex-wrap gap-2"><StatusBadge status={b.status} /><BugOriginBadge bug={b} /><span className="rounded-full bg-[var(--surface2)] px-2.5 py-0.5 text-xs font-bold">{b.platform}</span><span className="text-xs text-[var(--dim)]">{b.votes} reports of “I have this too”</span></div><h4 className="mt-2 font-bold">{b.title}</h4><p className="mt-1 text-sm text-[var(--dim)]">{b.description}</p>{b.auto && b.sourceUrl && (<p className="mt-2 text-xs font-semibold text-[var(--dim)]">Found automatically{b.sourceName ? ` · ${b.sourceName}` : ""} · <a href={b.sourceUrl} target="_blank" rel="noreferrer" className="font-bold text-[var(--accent2)] underline underline-offset-2">View source ↗</a></p>)}<div className="mt-3 flex gap-2"><button type="button" className="btn-ghost" onClick={() => go("bugs")}>Open in Bugs</button><SaveButton saved onToggle={() => savedStore.toggle("bug", b.id)} label={b.title} /></div></article>))}</div></section>)}
-      {savedClans.length > 0 && (<section className="mt-7"><h3 className="text-lg font-extrabold tracking-tight">Crews</h3><div className="mt-3 grid gap-4">{savedClans.map((c) => (<div key={c.id} className="card flex items-center gap-4 p-5"><ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} size={56} /><div className="min-w-0 flex-1"><p className="truncate font-bold">{c.name} <span className="text-[var(--dim)]">[{c.tag}]</span></p><p className="text-sm text-[var(--dim)]">{c.memberCount} members · {c.platform} · {c.league}</p></div><SaveButton saved onToggle={() => savedStore.toggle("clan", c.id)} label={c.name} /></div>))}</div></section>)}
+      {savedClans.length > 0 && (<section className="mt-7"><h3 className="text-lg font-extrabold tracking-tight">Crews</h3><div className="mt-3 grid gap-4">{savedClans.map((c) => (<div key={c.id} className="card flex items-center gap-4 p-5"><ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} effect={c.emblemEffect} finish={c.colorFinish} size={56} /><div className="min-w-0 flex-1"><p className="truncate font-bold"><span className="text-[var(--dim)]">[{c.tag}]</span> {c.name}</p><p className="text-sm text-[var(--dim)]">{c.memberCount} members · {c.platform} · {c.league}</p></div><SaveButton saved onToggle={() => savedStore.toggle("clan", c.id)} label={c.name} /></div>))}</div></section>)}
       {savedEvents.length > 0 && (<section className="mt-7"><h3 className="text-lg font-extrabold tracking-tight">Events</h3><div className="mt-3 grid gap-4">{savedEvents.map((e) => (<article key={e.id} className="card p-6"><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[var(--accent)] px-2.5 py-0.5 text-xs font-bold text-white">Community Event</span><span className="rounded-full bg-[var(--surface2)] px-2.5 py-0.5 text-xs font-bold">{e.type}</span><span className="text-xs text-[var(--dim)]">{(() => { const d = new Date(e.startsAt); return Number.isNaN(d.getTime()) ? e.startsAt : d.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }); })()}</span></div><h4 className="mt-2 font-bold leading-snug">{e.title}</h4><p className="mt-1 text-sm leading-relaxed text-[var(--dim)]">{e.description}</p><div className="mt-3 flex flex-wrap items-start gap-2"><OfficialPostLink url={OFFICIAL_GTA_VI_URL} label={e.title} /><TrackGoalButton tracked={trackedStore.has("event", e.id)} onToggle={() => trackedStore.toggle({ kind: "event", refId: e.id, title: e.title, date: e.startsAt, url: OFFICIAL_GTA_VI_URL })} label={e.title} /><SaveButton saved onToggle={() => savedStore.toggle("event", e.id)} label={e.title} /></div></article>))}</div></section>)}
       {savedDbEntries.length > 0 && (
         <section className="mt-7">
@@ -6906,8 +7474,20 @@ function IdeasView({ go, savedStore, openEgg }: { go: (t: Tab) => void; savedSto
     return art;
   });
   return (
-    <div>
-      <SectionTitle sub="Trending Easter egg ideas to try in Leonida — visual first, labelled by verification, regions only until locations are verified.">Ideas</SectionTitle>
+    <div className="ideas-view">
+      {/* Page header — PHONE gets a smaller title and a shorter
+          sub so the page reads as a mini version of the laptop
+          (owner's direction: minimize sentences and boxes on the
+          phone, same layout and style); the laptop keeps the
+          full-size title and full sub, exactly as SectionTitle
+          rendered them. */}
+      <div className="mb-3 sm:mb-4">
+        <h2 className="text-[22px] font-extrabold leading-tight tracking-tight sm:text-[28px]">Ideas</h2>
+        <p className="mt-1 text-xs text-[var(--dim)] sm:text-sm">
+          <span className="sm:hidden">Trending Easter egg ideas to try in Leonida — regions only until locations are verified.</span>
+          <span className="hidden sm:inline">Trending Easter egg ideas to try in Leonida — visual first, labelled by verification, regions only until locations are verified.</span>
+        </p>
+      </div>
 
       <section
         className="ideas-hero-frame cursor-pointer"
@@ -6920,23 +7500,28 @@ function IdeasView({ go, savedStore, openEgg }: { go: (t: Tab) => void; savedSto
        <div className="ideas-hero-inner relative">
           {/* Art strip: a short, wide calling-card band across the top.
               The text does NOT sit on the picture anymore — it lives
-              in the solid dark navy strip underneath, in full. */}
-          <div className="relative h-[74px] sm:h-[92px]">
+              in the solid dark navy strip underneath (shorter on the
+              phone, in full on the laptop). */}
+          <div className="relative h-[56px] sm:h-[92px]">
             <img decoding="async" src={ideasHeroUrl} alt="Original ViceSunshine illustration of a golden shrine glowing in a palm jungle alley under neon light — the Ideas hero, used only here" className="absolute inset-0 h-full w-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-tr from-[rgba(255,46,136,0.28)] via-transparent to-[rgba(45,212,191,0.20)]" aria-hidden="true" />
             <div className="absolute inset-0 bg-gradient-to-t from-[rgba(11,11,30,0.88)] via-[rgba(11,11,30,0.18)] to-transparent" aria-hidden="true" />
-            <div className="relative flex h-full flex-col justify-end px-4 pb-2.5 sm:px-5">
-              <span className="inline-flex w-fit items-center rounded-full bg-[var(--accent)] px-2.5 py-0.5 text-[10.5px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_24px_rgba(255,46,136,0.55)]">Trending now</span>
-              <h3 className="vice-display mt-1 text-[21px] leading-[1.02] sm:text-[25px]">Start with one good idea</h3>
+            <div className="relative flex h-full flex-col justify-end px-3 pb-2 sm:px-5 sm:pb-2.5">
+              <span className="inline-flex w-fit items-center rounded-full bg-[var(--accent)] px-2 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wide text-white shadow-[0_0_24px_rgba(255,46,136,0.55)] sm:px-2.5 sm:text-[10.5px]">Trending now</span>
+              <h3 className="vice-display mt-0.5 text-[17px] leading-[1.02] sm:mt-1 sm:text-[25px]">Start with one good idea</h3>
             </div>
           </div>
-          {/* Navy strip: the FULL hero paragraph — never clamped,
-              never hidden — set small and tight so it all fits inside
-              the low, wide banner, with the count and all 3 buttons. */}
-          <div className="border-t border-[rgba(255,255,255,0.08)] px-4 py-3 sm:px-5" style={{ background: "#0d0d20" }}>
-            <p className="text-[11px] leading-[1.45] text-[#cfcbd9] sm:text-[11.5px]">No invented secrets. Every idea below comes from a real community report in Easter Eggs, with its status shown — and the newest reports, the ones everyone is trying right now, come first. Locations are approximate regions only — no exact map pins until locations are verified after launch. Confirmed means multiple players have evidence; Rumor means unconfirmed — treat it that way.</p>
-            {ideas.length > 0 && <p className="mt-1.5 text-[11.5px] font-bold text-[var(--text)]">{ideas.length} {ideas.length === 1 ? "idea" : "ideas"} to try · Trending first · Regions only, no exact pins</p>}
-            <div className="mt-2.5 flex flex-wrap gap-2">
+          {/* Navy strip: the hero paragraph, the count and all 3
+              buttons. PHONE shows a shorter version of the paragraph
+              (owner's direction: minimize sentences on the phone);
+              the laptop keeps the FULL paragraph, exactly as before. */}
+          <div className="border-t border-[rgba(255,255,255,0.08)] px-3 py-2.5 sm:px-5 sm:py-3" style={{ background: "#0d0d20" }}>
+            <p className="text-[10.5px] leading-[1.45] text-[#cfcbd9] sm:text-[11.5px]">
+              <span className="sm:hidden">No invented secrets — every idea comes from a real community report in Easter Eggs, newest first. Regions only, no exact pins until locations are verified.</span>
+              <span className="hidden sm:inline">No invented secrets. Every idea below comes from a real community report in Easter Eggs, with its status shown — and the newest reports, the ones everyone is trying right now, come first. Locations are approximate regions only — no exact map pins until locations are verified after launch. Confirmed means multiple players have evidence; Rumor means unconfirmed — treat it that way.</span>
+            </p>
+            {ideas.length > 0 && <p className="mt-1 text-[10.5px] font-bold text-[var(--text)] sm:mt-1.5 sm:text-[11.5px]">{ideas.length} {ideas.length === 1 ? "idea" : "ideas"} to try · Trending first · Regions only, no exact pins</p>}
+            <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-2.5 sm:gap-2">
               <button type="button" className="btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); const first = ideas[0]; if (first) openEgg(first.id); else go("eggs"); }}>Try an idea now</button>
               <button type="button" className="btn-ghost btn-compact" onClick={(e) => { e.stopPropagation(); go("map"); }}>Map status &amp; known regions</button>
               <button type="button" className="btn-ghost btn-compact" onClick={(e) => { e.stopPropagation(); go("eggs"); }}>All Easter eggs</button>
@@ -6945,15 +7530,18 @@ function IdeasView({ go, savedStore, openEgg }: { go: (t: Tab) => void; savedSto
        </div>
       </section>
 
-      <div className="mt-10 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-[22px] font-extrabold tracking-tight">Trending ideas to try</h3>
-        <p className="text-[13px] text-[var(--dim)]">Newest reports first — that is what is hot right now</p>
+      <div className="mt-6 flex flex-wrap items-baseline justify-between gap-1.5 sm:mt-10 sm:gap-2">
+        <h3 className="text-[18px] font-extrabold tracking-tight sm:text-[22px]">Trending ideas to try</h3>
+        <p className="text-[11px] text-[var(--dim)] sm:text-[13px]">
+          <span className="sm:hidden">Newest reports first</span>
+          <span className="hidden sm:inline">Newest reports first — that is what is hot right now</span>
+        </p>
       </div>
 
-      {eggs.isPending && <p className="mt-5 text-sm text-[var(--dim)]">Loading ideas...</p>}
-      {eggs.data && eggs.data.items.length === 0 && <div className="mt-5"><EmptyNote>No Easter eggs reported yet. When players report finds after launch, they will appear here as ideas to try — nothing is guessed in advance.</EmptyNote></div>}
+      {eggs.isPending && <p className="mt-4 text-sm text-[var(--dim)] sm:mt-5">Loading ideas...</p>}
+      {eggs.data && eggs.data.items.length === 0 && <div className="mt-4 sm:mt-5"><EmptyNote>No Easter eggs reported yet. When players report finds after launch, they will appear here as ideas to try — nothing is guessed in advance.</EmptyNote></div>}
 
-      <div className="mt-6 grid gap-6 sm:gap-8">
+      <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-8">
         {ideas.map((egg, idx) => {
           const art = ideaArts[idx] ?? ideaArtFor(egg.name, egg.id);
           const trending = idx < 3;
@@ -6961,7 +7549,7 @@ function IdeasView({ go, savedStore, openEgg }: { go: (t: Tab) => void; savedSto
           return (
             <article
               key={egg.id}
-              className={`card overflow-hidden rounded-[24px]${isFirst ? " cursor-pointer" : ""}`}
+              className={`card overflow-hidden rounded-[20px] sm:rounded-[24px]${isFirst ? " cursor-pointer" : ""}`}
               {...(isFirst ? {
                 role: "button" as const,
                 tabIndex: 0,
@@ -6971,38 +7559,41 @@ function IdeasView({ go, savedStore, openEgg }: { go: (t: Tab) => void; savedSto
               } : {})}
             >
               <button type="button" className="relative block w-full text-left" onClick={(e) => { if (isFirst) e.stopPropagation(); openEgg(egg.id); }} aria-label={`Open the ${egg.name} Easter egg — its videos, guides and related posts`}>
-                <img decoding="async" src={art.src} alt={art.alt} className="h-[220px] w-full object-cover sm:h-[280px]" loading="lazy" />
+                <img decoding="async" src={art.src} alt={art.alt} className="h-[150px] w-full object-cover sm:h-[280px]" loading="lazy" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[rgba(10,10,18,0.72)] via-transparent to-transparent" aria-hidden="true" />
                 {trending && (
-                  <span className="absolute left-4 top-4 inline-flex items-center rounded-full bg-[var(--accent)] px-3.5 py-1.5 text-[13px] font-extrabold uppercase tracking-wide text-white shadow-lg" aria-label={`Trending number ${idx + 1}`}>
+                  <span className="absolute left-3 top-3 inline-flex items-center rounded-full bg-[var(--accent)] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white shadow-lg sm:left-4 sm:top-4 sm:px-3.5 sm:py-1.5 sm:text-[13px]" aria-label={`Trending number ${idx + 1}`}>
                     Trending #{idx + 1}
                   </span>
                 )}
-                <span className="glass absolute bottom-4 left-4 inline-flex items-center px-3.5 py-1.5 text-[13px] font-bold" style={{ borderRadius: 999 }}>
+                <span className="glass absolute bottom-3 left-3 inline-flex items-center px-2.5 py-1 text-[11px] font-bold sm:bottom-4 sm:left-4 sm:px-3.5 sm:py-1.5 sm:text-[13px]" style={{ borderRadius: 999 }}>
                   {egg.location || "Region to be confirmed"}
                 </span>
               </button>
-              <div className="p-6 sm:p-8">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="[&_span]:px-3.5 [&_span]:py-1 [&_span]:text-[13px]"><StatusBadge status={egg.status} /></span>
-                  <span className="inline-block rounded-full border border-[var(--amber)] px-3.5 py-1 text-[13px] font-bold text-[var(--amber)]">Unverified location</span>
+              <div className="p-4 sm:p-8">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5">
+                  <span className="[&_span]:px-2.5 [&_span]:py-0.5 [&_span]:text-[11px] sm:[&_span]:px-3.5 sm:[&_span]:py-1 sm:[&_span]:text-[13px]"><StatusBadge status={egg.status} /></span>
+                  <span className="inline-block rounded-full border border-[var(--amber)] px-2.5 py-0.5 text-[11px] font-bold text-[var(--amber)] sm:px-3.5 sm:py-1 sm:text-[13px]">Unverified location</span>
                 </div>
-                <h4 className="mt-4 text-[24px] font-extrabold leading-tight tracking-tight sm:text-[26px]">
+                <h4 className="mt-2.5 text-[17px] font-extrabold leading-tight tracking-tight sm:mt-4 sm:text-[26px]">
                   <button type="button" className="text-left" onClick={(e) => { if (isFirst) e.stopPropagation(); openEgg(egg.id); }} aria-label={`Open the ${egg.name} Easter egg — its videos, guides and related posts`}>{egg.name}</button>
                 </h4>
-                <p className="mt-3 max-w-[580px] text-[15px] leading-[1.75] text-[var(--dim)]">{egg.howTo || "Details are being verified by the community."}</p>
-                <div className="mt-5 rounded-2xl bg-[var(--surface2)] px-5 py-4">
-                  <p className="text-xs font-extrabold uppercase tracking-widest text-[var(--dim)]">Where to look</p>
-                  <p className="mt-1.5 text-[15px] font-bold leading-relaxed">{egg.location || "Region to be confirmed"}</p>
-                  <p className="mt-1 text-[13px] leading-relaxed text-[var(--dim)]">Approximate region only — not pinned to an exact map spot until verified after launch.</p>
+                <p className="mt-2 line-clamp-3 text-[12.5px] leading-[1.55] text-[var(--dim)] sm:mt-3 sm:max-w-[580px] sm:line-clamp-none sm:text-[15px] sm:leading-[1.75]">{egg.howTo || "Details are being verified by the community."}</p>
+                <div className="mt-3 rounded-xl bg-[var(--surface2)] px-3.5 py-3 sm:mt-5 sm:rounded-2xl sm:px-5 sm:py-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-[var(--dim)] sm:text-xs">Where to look</p>
+                  <p className="mt-1 text-[13px] font-bold leading-relaxed sm:mt-1.5 sm:text-[15px]">{egg.location || "Region to be confirmed"}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-[var(--dim)] sm:mt-1 sm:text-[13px] sm:leading-relaxed">
+                    <span className="sm:hidden">Approximate region only — not pinned to an exact map spot.</span>
+                    <span className="hidden sm:inline">Approximate region only — not pinned to an exact map spot until verified after launch.</span>
+                  </p>
                 </div>
-                <div className="mt-6 flex flex-wrap items-center gap-3">
-                  <button type="button" className="btn-primary" onClick={(e) => { if (isFirst) e.stopPropagation(); openEgg(egg.id); }} aria-label={`Open the ${egg.name} Easter egg — videos, guides and everything related`}>Try it — open this Easter egg</button>
+                <div className="idea-card-actions mt-4 flex flex-wrap items-center gap-2 sm:mt-6 sm:gap-3">
+                  <button type="button" className="btn-primary btn-phone-sm" onClick={(e) => { if (isFirst) e.stopPropagation(); openEgg(egg.id); }} aria-label={`Open the ${egg.name} Easter egg — videos, guides and everything related`}>Try it — open this Easter egg</button>
                   <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                     <SaveButton saved={savedStore.has("egg", egg.id)} onToggle={() => savedStore.toggle("egg", egg.id)} label={egg.name} />
                   </span>
                 </div>
-                <p className="mt-3 text-[13px] leading-relaxed text-[var(--dim)]">{isFirst ? "Tap anywhere on this card to open this egg in Easter Eggs — its own detail tab." : "Opens this egg's own page — its videos, guides and related posts, all in one place."}</p>
+                <p className="mt-2 text-[11px] leading-snug text-[var(--dim)] sm:mt-3 sm:text-[13px] sm:leading-relaxed">{isFirst ? "Tap anywhere on this card to open this egg in Easter Eggs — its own detail tab." : "Opens this egg's own page — its videos, guides and related posts, all in one place."}</p>
               </div>
             </article>
           );
@@ -7011,7 +7602,9 @@ function IdeasView({ go, savedStore, openEgg }: { go: (t: Tab) => void; savedSto
       {/* Official Source Check lives at the BOTTOM of Home now
           (owner's direction): the introduction and the Feed come
           first; the verify card sits down here by the footer. */}
-      <OfficialVerifyCard />
+      <div className="ideas-verify">
+        <OfficialVerifyCard />
+      </div>
     </div>
   );
 }
@@ -7056,22 +7649,40 @@ function NewsView({ search, savedStore, trackedStore, premium }: { search: strin
   const filteredItems = sourceType === "All News" ? allItems : allItems.filter((n) => newsSourceType(n) === sourceType);
   const featured = filteredItems.find((n) => n.category === "Official") ?? filteredItems[0];
   const restItems = featured ? filteredItems.filter((n) => n.id !== featured.id) : filteredItems;
-  // A related picture for every story card (owner's direction).
+  // A related picture for every story card (owner's direction),
+  // handed out through takeNewsArt so no two cards on the page
+  // share a picture while unique ones remain — stories about
+  // the same topic no longer all wear the identical picture.
   const cardArt = new Map<number, { img: string; topic: string }>();
-  for (const n of filteredItems) cardArt.set(n.id, newsCardArt(n.title, n.summary, n.category));
+  {
+    const usedImgs = new Set<string>();
+    let prevImg = "";
+    for (const n of filteredItems) {
+      const pick = takeNewsArt(newsCardArt(n.title, n.summary, n.category), `${n.title} ${n.summary}`, usedImgs, prevImg);
+      cardArt.set(n.id, pick);
+      prevImg = pick.img;
+    }
+  }
 
   return (
-    <div>
+    <div className="news-view">
       <SectionBanner src={secNewsUrl} alt="Original ViceSunshine illustration of a neon newsroom with screens showing a coastal city" />
-      <SectionTitle sub="Official Rockstar posts, videos and reports in one feed — every item links to its original post, and rumours are labelled.">
-        News
-      </SectionTitle>
+      {/* Page header — PHONE gets a smaller title and sub so the
+          page reads as a mini version of the laptop (owner's
+          direction: minimize + shorten the text on the phone,
+          nothing removed, nothing added); the laptop keeps the
+          full-size title and full sub, exactly as SectionTitle
+          rendered them. */}
+      <div className="mb-3 sm:mb-4">
+        <h2 className="text-[22px] font-extrabold leading-tight tracking-tight sm:text-[28px]">News</h2>
+        <p className="mt-1 text-xs text-[var(--dim)] sm:text-sm">Official Rockstar posts, videos and reports in one feed — every item links to its original post, and rumours are labelled.</p>
+      </div>
       <AutomationLine />
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <label className="flabel" htmlFor="news-search" style={{ marginTop: 0 }}>Search the news feed</label>
         <input id="news-search" className="field" type="search" {...FIELDS.listNews.search} placeholder="Search news, videos, investors…" value={localSearch} onChange={(e) => setLocalSearch(e.target.value)} aria-label="Search news, videos, investors" />
       </div>
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-3 flex flex-wrap gap-1.5 sm:mb-4 sm:gap-2">
         {["All News", "Newswire", "Videos", "Twitter / X", "Earnings Calls"].map((c) => (
           <button
             key={c}
@@ -7130,20 +7741,20 @@ function NewsView({ search, savedStore, trackedStore, premium }: { search: strin
         <EmptyNote>No news matches this filter. Try another filter, or hit Refresh to pull the latest from the web.</EmptyNote>
       )}
       {featured && (
-        <article className="card mb-5 overflow-hidden">
+        <article className="card mb-4 overflow-hidden sm:mb-5">
           <div className="grid sm:grid-cols-2">
-            <img decoding="async" src={cardArt.get(featured.id)?.img ?? newsFeaturedUrl} alt={`Original ViceSunshine illustration related to the featured story — ${cardArt.get(featured.id)?.topic ?? "a news camera and spotlight in front of an art-deco tower"}`} className="h-44 w-full object-cover sm:h-full" />
-            <div className="p-6">
-              <div className="flex flex-wrap items-center gap-2">
+            <img decoding="async" src={cardArt.get(featured.id)?.img ?? newsFeaturedUrl} alt={`Original ViceSunshine illustration related to the featured story — ${cardArt.get(featured.id)?.topic ?? "a news camera and spotlight in front of an art-deco tower"}`} className="h-32 w-full object-cover sm:h-full" />
+            <div className="p-4 sm:p-6">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 [&>span]:text-[10px] sm:[&>span]:text-xs">
                 <span className="rounded-full bg-[var(--accent)] px-2.5 py-0.5 text-xs font-extrabold text-white">FEATURED</span>
                 <span className="text-xs font-bold uppercase tracking-wider text-[var(--dim)]">{newsSourceType(featured)}</span>
                 <CategoryBadge category={featured.category} />
                 <span className="text-xs text-[var(--dim)]">{featured.publishedAt}</span>
               </div>
-              <h3 className="mt-2 text-[22px] font-extrabold leading-tight">{featured.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--dim)]">{featured.summary}</p>
-              <p className="mt-2 text-xs text-[var(--dim)]">Source: {featured.sourceName || "ViceSunshine"}</p>
-              <div className="mt-4 flex flex-wrap items-start gap-2">
+              <h3 className="mt-1.5 line-clamp-2 text-[17px] font-extrabold leading-tight sm:mt-2 sm:line-clamp-none sm:text-[22px]">{featured.title}</h3>
+              <p className="mt-1.5 line-clamp-3 text-xs leading-snug text-[var(--dim)] sm:mt-2 sm:line-clamp-none sm:text-sm sm:leading-relaxed">{featured.summary}</p>
+              <p className="mt-1.5 text-[11px] text-[var(--dim)] sm:mt-2 sm:text-xs">Source: {featured.sourceName || "ViceSunshine"}</p>
+              <div className="mt-3 flex flex-wrap items-start gap-1.5 sm:mt-4 sm:gap-2">
                 <a className="btn-primary" style={{ minHeight: 44, padding: "8px 18px" }} href={featured.sourceUrl || OFFICIAL_GTA_VI_URL} target="_blank" rel="noreferrer" aria-label={`Explore story: ${featured.title} (external link — official post)`}>Explore Story</a>
                 {savedStore ? <SaveButton saved={savedStore.has("news", featured.id)} onToggle={() => savedStore.toggle("news", featured.id)} label={featured.title} /> : null}
                 {trackedStore ? <TrackGoalButton tracked={trackedStore.has("news", featured.id)} onToggle={() => trackedStore.toggle({ kind: "news", refId: featured.id, title: featured.title, date: featured.publishedAt, url: featured.sourceUrl || OFFICIAL_GTA_VI_URL })} label={featured.title} /> : null}
@@ -7157,22 +7768,28 @@ function NewsView({ search, savedStore, trackedStore, premium }: { search: strin
           the grid flow at the midpoint and spanning both columns,
           plus ONE leaderboard at the bottom of the page. Nothing
           sits under the featured story any more. */}
-      <div className="grid gap-5 sm:grid-cols-2">
+      {/* Story boxes — PHONE keeps the SAME two-column box layout
+          as the laptop, just smaller (owner's direction): tighter
+          gaps and padding, smaller text, clamped titles and
+          excerpts, a shorter picture and compact actions pinned
+          to the bottom so both boxes in a row line up. The laptop
+          keeps its full-size cards exactly as before. */}
+      <div className="grid grid-cols-2 items-stretch gap-2.5 sm:gap-5">
         {restItems.flatMap((n, i) => {
           const card = (
-          <article key={n.id} className="card overflow-hidden"><div className="relative">
-            <img decoding="async" src={cardArt.get(n.id)?.img ?? secNewsUrl} alt={`Original ViceSunshine illustration related to this story — ${cardArt.get(n.id)?.topic ?? "a neon newsroom with screens showing a coastal city"}`} className="h-36 w-full object-cover" loading="lazy" />
-            <span className="absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-white">ViceSunshine illustration</span>
-            <span className="absolute inset-x-0 top-0 h-1.5" style={{ background: n.category === "Official" ? "var(--accent2)" : n.category === "Rumor" ? "var(--amber)" : "var(--border-strong)" }} aria-hidden="true" />
-          </div><div className="p-6">
-            <div className="flex flex-wrap items-center gap-2">
+          <article key={n.id} className="card flex min-w-0 flex-col overflow-hidden sm:block"><div className="relative">
+            <img decoding="async" src={cardArt.get(n.id)?.img ?? secNewsUrl} alt={`Original ViceSunshine illustration related to this story — ${cardArt.get(n.id)?.topic ?? "a neon newsroom with screens showing a coastal city"}`} className="h-[76px] w-full object-cover sm:h-36" loading="lazy" />
+            <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] font-bold text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-[10px]">ViceSunshine illustration</span>
+            <span className="absolute inset-x-0 top-0 h-1 sm:h-1.5" style={{ background: n.category === "Official" ? "var(--accent2)" : n.category === "Rumor" ? "var(--amber)" : "var(--border-strong)" }} aria-hidden="true" />
+          </div><div className="flex flex-1 flex-col p-3 sm:block sm:p-6">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 [&>span]:text-[10px] sm:[&>span]:text-xs">
               <CategoryBadge category={n.category} />
               <span className="text-xs font-bold uppercase tracking-wider text-[var(--dim)]">{newsSourceType(n)}</span>
               <span className="text-xs text-[var(--dim)]">{n.publishedAt} · {n.sourceName || "ViceSunshine"}</span>
             </div>
-            <h3 className="mt-2 text-lg font-bold leading-snug">{n.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--dim)]">{n.summary}</p>
-            <div className="mt-4 flex flex-wrap items-start gap-2">
+            <h3 className="mt-1.5 line-clamp-2 min-h-[2.3rem] text-[13px] font-bold leading-snug sm:mt-2 sm:min-h-0 sm:line-clamp-none sm:text-lg">{n.title}</h3>
+            <p className="mt-1.5 line-clamp-3 text-[11px] leading-snug text-[var(--dim)] sm:mt-2 sm:line-clamp-none sm:text-sm sm:leading-relaxed">{n.summary}</p>
+            <div className="news-card-actions mt-auto flex flex-wrap items-start gap-1.5 pt-3 sm:mt-4 sm:gap-2 sm:pt-0">
             <OfficialPostLink url={n.sourceUrl || OFFICIAL_GTA_VI_URL} label={n.title} />
             {savedStore ? <SaveButton saved={savedStore.has("news", n.id)} onToggle={() => savedStore.toggle("news", n.id)} label={n.title} /> : null}
             {trackedStore ? <TrackGoalButton tracked={trackedStore.has("news", n.id)} onToggle={() => trackedStore.toggle({ kind: "news", refId: n.id, title: n.title, date: n.publishedAt, url: n.sourceUrl || OFFICIAL_GTA_VI_URL })} label={n.title} /> : null}
@@ -7181,7 +7798,7 @@ function NewsView({ search, savedStore, trackedStore, premium }: { search: strin
           );
           if (!premium && restItems.length >= 4 && i === Math.floor(restItems.length / 2)) {
             return [(
-              <div key="news-mid-ad" className="sm:col-span-2">
+              <div key="news-mid-ad" className="col-span-2">
                 <AdSlot slot="news-mid-rect" format="mediumRect" premium={premium} flush />
               </div>
             ), card];
@@ -7192,7 +7809,7 @@ function NewsView({ search, savedStore, trackedStore, premium }: { search: strin
       <AdSlot slot="news-bottom" format="leaderboard" premium={premium} />
       {/* Official source check lives at the very bottom of News
           (owner's direction) — same card, moved, nothing changed. */}
-      <div className="mt-5">
+      <div className="mt-4 sm:mt-5">
         <OfficialVerifyCard />
       </div>
     </div>
@@ -7285,7 +7902,7 @@ function UpdatesView({ focus, onBack }: { focus: { id: number; n: number } | nul
   }
 
   return (
-    <div>
+    <div className="updates-view">
       {onBack && (
         <button type="button" className="btn-ghost btn-compact mb-4" onClick={onBack} aria-label="Back to where you were">← Back</button>
       )}
@@ -7479,20 +8096,31 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
   });
 
   return (
-    <div>
+    <div className="bugs-view">
       <SectionBanner src={secBugsUrl} alt="Original ViceSunshine illustration of a magnifying glass over a neon circuit board finding a small beetle" />
-      <SectionTitle sub="Updated automatically from Rockstar, GTA news and creators — and you can report bugs here too. A bug is only Confirmed after multiple players reproduce it — tap “I have this too” when you hit one.">
-        Bug &amp; glitch tracker
-      </SectionTitle>
+      {/* Page header — PHONE gets a smaller title and a shorter
+          sub so the page reads as a mini version of the laptop
+          (owner's direction: minimize the text more on the phone,
+          same layout and style); the laptop keeps the full-size
+          title and full sub, exactly as SectionTitle rendered
+          them. */}
+      <div className="mb-3 sm:mb-4">
+        <h2 className="text-[22px] font-extrabold leading-tight tracking-tight sm:text-[28px]">Bug &amp; glitch tracker</h2>
+        <p className="mt-1 text-xs text-[var(--dim)] sm:text-sm">
+          <span className="sm:hidden">Auto-updated from Rockstar &amp; GTA sources — tap “I have this too” when you hit one.</span>
+          <span className="hidden sm:inline">Updated automatically from Rockstar, GTA news and creators — and you can report bugs here too. A bug is only Confirmed after multiple players reproduce it — tap “I have this too” when you hit one.</span>
+        </p>
+      </div>
       {bugs.data && (
-        <p className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-[var(--dim)]" role="status">
-          <span className="inline-block h-2 w-2 flex-none animate-pulse rounded-full" style={{ background: "var(--accent2)" }} aria-hidden="true" />
+        <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-[var(--dim)] sm:mb-4 sm:text-xs" role="status">
+          <span className="inline-block h-1.5 w-1.5 flex-none animate-pulse rounded-full sm:h-2 sm:w-2" style={{ background: "var(--accent2)" }} aria-hidden="true" />
           <span>
-            Live — checks Rockstar, GTA sources and creators automatically{bugs.data.lastRefreshedAt ? ` · last checked ${timeAgo(bugs.data.lastRefreshedAt)}` : ""} · {bugs.data.autoCount} automatic · {bugs.data.communityCount} from players here. Found one yourself? Report it below — your report sits alongside the automatic finds.
+            <span className="sm:hidden">Live · {bugs.data.autoCount} automatic · {bugs.data.communityCount} from players{bugs.data.lastRefreshedAt ? ` · checked ${timeAgo(bugs.data.lastRefreshedAt)}` : ""}</span>
+            <span className="hidden sm:inline">Live — checks Rockstar, GTA sources and creators automatically{bugs.data.lastRefreshedAt ? ` · last checked ${timeAgo(bugs.data.lastRefreshedAt)}` : ""} · {bugs.data.autoCount} automatic · {bugs.data.communityCount} from players here. Found one yourself? Report it below — your report sits alongside the automatic finds.</span>
           </span>
         </p>
       )}
-      <div className="mb-2 flex flex-wrap gap-2">
+      <div className="mb-1.5 flex flex-wrap gap-1.5 sm:mb-2 sm:gap-2">
         <button type="button" className="chip" aria-pressed={sort === "votes"} onClick={() => setSort("votes")}>Most voted</button>
         <button type="button" className="chip" aria-pressed={sort === "newest"} onClick={() => setSort("newest")}>Newest</button>
         <button type="button" className="chip" aria-pressed={sort === "platform"} onClick={() => setSort("platform")}>Platform</button>
@@ -7504,8 +8132,8 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
         ))}
         <button type="button" className="chip" onClick={() => setShowForm(!showForm)}>+ Report a bug (30 seconds)</button>
       </div>
-      <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filter bugs by source">
-        <span className="text-xs font-bold text-[var(--dim)]">Source:</span>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:mb-4 sm:gap-2" role="group" aria-label="Filter bugs by source">
+        <span className="text-[11px] font-bold text-[var(--dim)] sm:text-xs">Source:</span>
         {(["All", "Automatic", "Community", "Official"] as BugSourceFilter[]).map((f) => (
           <button key={f} type="button" className="chip" aria-pressed={sourceFilter === f} onClick={() => setSourceFilter(f)}>
             {f === "All" ? "All sources" : f === "Automatic" ? "Automatic" : f === "Community" ? "From players" : "Official — Rockstar"}
@@ -7515,7 +8143,7 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
 
       {showForm && (
         <form
-          className="card mb-4 p-4"
+          className="card mb-3 p-3 sm:mb-4 sm:p-4"
           onSubmit={(e) => {
             e.preventDefault();
             setError("");
@@ -7524,7 +8152,10 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
             report.mutate();
           }}
         >
-          <p className="mb-3 text-sm leading-relaxed text-[var(--dim)]">Report a bug or glitch you hit yourself. Your report appears here as a <strong className="text-[var(--text)]">Community report</strong>, alongside the automatic finds from Rockstar, GTA news and creators.</p>
+          <p className="mb-2 text-xs leading-relaxed text-[var(--dim)] sm:mb-3 sm:text-sm">
+            <span className="sm:hidden">Report a bug you hit — it appears here as a <strong className="text-[var(--text)]">Community report</strong>.</span>
+            <span className="hidden sm:inline">Report a bug or glitch you hit yourself. Your report appears here as a <strong className="text-[var(--text)]">Community report</strong>, alongside the automatic finds from Rockstar, GTA news and creators.</span>
+          </p>
           <label className="flabel" htmlFor="bug-title">Bug title</label>
           <input id="bug-title" className="field" {...FIELDS.reportBug.title} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Car sinks through Ocean Drive bridge" />
           <label className="flabel" htmlFor="bug-platform">Platform</label>
@@ -7535,15 +8166,15 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
           <textarea id="bug-desc" className="field" rows={4} {...FIELDS.reportBug.description} value={description} onChange={(e) => setDescription(e.target.value)} />
           <label className="flabel" htmlFor="bug-workaround">Workaround (if you found one)</label>
           <input id="bug-workaround" className="field" {...FIELDS.reportBug.workaround} value={workaround} onChange={(e) => setWorkaround(e.target.value)} />
-          {error && <p className="mt-2 text-sm text-[var(--amber)]">{error}</p>}
-          <button type="submit" className="btn-primary mt-4" disabled={report.isPending}>
+          {error && <p className="mt-2 text-xs text-[var(--amber)] sm:text-sm">{error}</p>}
+          <button type="submit" className="btn-primary btn-phone-sm mt-3 sm:mt-4" disabled={report.isPending}>
             {report.isPending ? "Filing…" : "File report"}
           </button>
         </form>
       )}
 
-      {notice && <p className="mb-3 text-sm font-semibold text-[var(--accent2)]">{notice}</p>}
-      {bugs.isPending && <p className="text-sm text-[var(--dim)]">Loading bugs…</p>}
+      {notice && <p className="mb-2 text-xs font-semibold text-[var(--accent2)] sm:mb-3 sm:text-sm">{notice}</p>}
+      {bugs.isPending && <p className="text-xs text-[var(--dim)] sm:text-sm">Loading bugs…</p>}
       {bugs.data && bugs.data.items.length === 0 && (
         <EmptyNote>
           Nothing here yet. The tracker checks Rockstar, GTA news and creators automatically, so new bugs and glitches land here on their own — and when you hit one yourself, tap “+ Report a bug” above and file it here with your platform and steps to reproduce it.
@@ -7554,25 +8185,34 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
           No {sourceFilter === "Official" ? "official Rockstar" : sourceFilter.toLowerCase()} bugs in this view yet — try “All sources”. Automatic finds from Rockstar, GTA news and creators appear here on their own, and players can report bugs themselves any time.
         </EmptyNote>
       )}
-      <div className="grid gap-5">
+      {/* Bug cards — PHONE keeps the SAME layout as the laptop,
+          just smaller (owner's direction: minimize the text more
+          on the phone): tighter card padding and gaps, smaller
+          badges, the title clamped to two lines, the description
+          clamped to four lines, a shorter source line and a
+          compact workaround box, with compact action buttons
+          (see .bugs-view in theme.css). The laptop keeps its
+          full-size cards exactly as before. */}
+      <div className="grid gap-3 sm:gap-5">
         {visibleBugs.map((b: BugItem) => (
-          <article key={b.id} className="card p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={b.status} />
-              <BugOriginBadge bug={b} />
-              <span className="rounded-full bg-[var(--surface2)] px-2.5 py-0.5 text-xs font-bold">{b.platform}</span>
+          <article key={b.id} className="card p-3.5 sm:p-5">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="[&_span]:px-2 [&_span]:py-0 [&_span]:text-[10px] sm:[&_span]:px-2.5 sm:[&_span]:py-0.5 sm:[&_span]:text-xs"><StatusBadge status={b.status} /></span>
+              <span className="[&_span]:px-2 [&_span]:py-0 [&_span]:text-[10px] sm:[&_span]:px-2.5 sm:[&_span]:py-0.5 sm:[&_span]:text-xs"><BugOriginBadge bug={b} /></span>
+              <span className="rounded-full bg-[var(--surface2)] px-2 py-0 text-[10px] font-bold sm:px-2.5 sm:py-0.5 sm:text-xs">{b.platform}</span>
               {b.flagged && (
-                <span className="rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ border: "1px solid var(--amber)", color: "var(--amber)" }}>
+                <span className="rounded-full px-2 py-0 text-[10px] font-bold sm:px-2.5 sm:py-0.5 sm:text-xs" style={{ border: "1px solid var(--amber)", color: "var(--amber)" }}>
                    Flagged ({b.reports} reports)
                 </span>
               )}
-              {!b.auto && b.reporter && <span className="text-xs text-[var(--dim)]">by {b.reporter}</span>}
+              {!b.auto && b.reporter && <span className="text-[10px] text-[var(--dim)] sm:text-xs">by {b.reporter}</span>}
             </div>
-            <h3 className="mt-2 font-bold leading-snug">{b.title}</h3>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--dim)]">{b.description}</p>
+            <h3 className="mt-1.5 line-clamp-2 text-[15px] font-bold leading-snug sm:mt-2 sm:line-clamp-none sm:text-base">{b.title}</h3>
+            <p className="mt-1 line-clamp-4 text-xs leading-relaxed text-[var(--dim)] sm:line-clamp-none sm:text-sm">{b.description}</p>
             {b.auto && (
-              <p className="mt-2 text-xs font-semibold text-[var(--dim)]">
-                Found automatically{b.sourceName ? ` · reported by ${b.sourceName}` : ""} — an outside report, not confirmed here until players reproduce it.{" "}
+              <p className="mt-1.5 line-clamp-2 text-[10px] font-semibold text-[var(--dim)] sm:mt-2 sm:line-clamp-none sm:text-xs">
+                <span className="sm:hidden">Found automatically{b.sourceName ? ` · ${b.sourceName}` : ""} — not confirmed here yet.{" "}</span>
+                <span className="hidden sm:inline">Found automatically{b.sourceName ? ` · reported by ${b.sourceName}` : ""} — an outside report, not confirmed here until players reproduce it.{" "}</span>
                 {b.sourceUrl && (
                   <a href={b.sourceUrl} target="_blank" rel="noreferrer" className="font-bold text-[var(--accent2)] underline underline-offset-2">
                     View source ↗
@@ -7581,11 +8221,11 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
               </p>
             )}
             {b.workaround && (
-              <p className="mt-2 rounded-lg bg-[var(--surface2)] p-3 text-sm">
+              <p className="mt-1.5 line-clamp-3 rounded-lg bg-[var(--surface2)] p-2.5 text-xs sm:mt-2 sm:line-clamp-none sm:p-3 sm:text-sm">
                 <strong className="text-[var(--accent2)]">Workaround:</strong> {b.workaround}
               </p>
             )}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="bug-card-actions mt-2.5 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
               <button
                 type="button"
                 className={b.votedByMe ? "btn-ghost" : "btn-primary"}
@@ -7616,7 +8256,7 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
             </div>
             {reportId === b.id && (
               <form
-                className="mt-3 rounded-lg border border-[var(--border)] p-3"
+                className="mt-2.5 rounded-lg border border-[var(--border)] p-2.5 sm:mt-3 sm:p-3"
                 onSubmit={(e) => { e.preventDefault(); flag.mutate(b.id); }}
               >
                 <label className="flabel" htmlFor={`bug-report-${b.id}`} style={{ marginTop: 0 }}>
@@ -7630,7 +8270,7 @@ function BugsView({ search, gamertag, playerKey, savedStore }: { search: string;
                   onChange={(e) => setReportReason(e.target.value)}
                   placeholder="What's wrong with this post?"
                 />
-                <button type="submit" className="btn-primary mt-2" disabled={flag.isPending}>
+                <button type="submit" className="btn-primary btn-phone-sm mt-2" disabled={flag.isPending}>
                   {flag.isPending ? "Sending…" : "Send report"}
                 </button>
               </form>
@@ -7668,7 +8308,7 @@ function BugModerator({ bug, onDone }: { bug: BugItem; onDone: () => void }) {
     onError: (e) => setModError(e.message),
   });
   return (
-    <div className="mt-3 rounded-lg border border-[var(--border)] p-3">
+    <div className="mt-2.5 rounded-lg border border-[var(--border)] p-2.5 sm:mt-3 sm:p-3">
       <label className="flabel" htmlFor={`mod-status-${bug.id}`}>Status</label>
       <select id={`mod-status-${bug.id}`} className="field" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
         <option>Reported</option><option>Confirmed</option><option>Investigating</option>
@@ -7682,13 +8322,13 @@ function BugModerator({ bug, onDone }: { bug: BugItem; onDone: () => void }) {
       )}
       <label className="flabel" htmlFor={`mod-wa-${bug.id}`}>Verified workaround</label>
       <input id={`mod-wa-${bug.id}`} className="field" {...FIELDS.setBugStatus.workaround} value={workaround} onChange={(e) => setWorkaround(e.target.value)} />
-      <button type="button" className="btn-primary mt-3" disabled={save.isPending} onClick={() => save.mutate()}>
+      <button type="button" className="btn-primary btn-phone-sm mt-3" disabled={save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? "Saving…" : "Save status"}
       </button>
       {bug.flagged && (
         <button
           type="button"
-          className="btn-ghost mt-3 ml-2"
+          className="btn-ghost btn-phone-sm mt-3 ml-2"
           disabled={remove.isPending}
           onClick={() => remove.mutate()}
           aria-label={`Remove flagged bug report ${bug.title}`}
@@ -7704,9 +8344,6 @@ function BugModerator({ bug, onDone }: { bug: BugItem; onDone: () => void }) {
 /* ------------------------------ MAP + EGGS ------------------------------ */
 
 type EggItem = ApiResponse<typeof api, "listEggs">["items"][number];
-
-const MAP_NOT_RELEASED_LABEL =
-  "Map not released yet — fan-made concept schematic only, not official, not to scale.";
 
 /* Region cards are picture-first (owner: people like visuals
    more) — each region carries its own original ViceSunshine
@@ -7758,8 +8395,8 @@ const KNOWN_REGIONS = [
    and in the map's own labels, not in paragraphs here. */
 function MapNotReleasedBanner() {
   return (
-    <p className="mb-5 flex items-center gap-2.5 rounded-full border border-[var(--amber)] bg-[var(--surface)] px-4 py-2.5 text-[13px] font-bold leading-snug text-[var(--text)]" role="note" aria-label="Map release status">
-      <span className="h-2 w-2 flex-none rounded-full bg-[var(--amber)]" aria-hidden="true" />
+    <p className="mb-4 flex items-center gap-2 rounded-full border border-[var(--amber)] bg-[var(--surface)] px-3 py-2 text-xs font-bold leading-snug text-[var(--text)] sm:mb-5 sm:gap-2.5 sm:px-4 sm:py-2.5 sm:text-[13px]" role="note" aria-label="Map release status">
+      <span className="h-1.5 w-1.5 flex-none rounded-full bg-[var(--amber)] sm:h-2 sm:w-2" aria-hidden="true" />
       Fan-made map — not official, locations unverified.
     </p>
   );
@@ -8818,7 +9455,7 @@ function MapView({ playerKey, gamertag, go, onBack }: { playerKey: string; gamer
   );
 
   return (
-    <div>
+    <div className="map-view">
       {/* The Display — the Interactive Map card on the Map page,
           styled exactly like the reference the owner named (the
           Interactive Map card in the top right of TRN's home
@@ -8836,26 +9473,35 @@ function MapView({ playerKey, gamertag, go, onBack }: { playerKey: string; gamer
           illustration — never TRN's or Rockstar's map image or
           pin data — and the fan-made / not-official labelling
           lives in the Map heading block and banner directly
-          under the card and inside the map itself. */}
+          under the card and inside the map itself. PHONE shows a
+          mini version of this card (owner's direction): shorter
+          card, smaller heading, description and Open pill — the
+          laptop keeps the full 365px reference proportions. */}
       <div role="button" tabIndex={0} onClick={openFullMap}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFullMap(); } }}
         aria-label="Open the Map — press to open the full interactive map of Leonida. Fan-made community base map, not official"
-        className="relative mb-5 h-[360px] cursor-pointer overflow-hidden focus-visible:ring-2 focus-visible:ring-[#ff9ec4] sm:h-[365px]" style={{ borderRadius: 16, border: "none", background: "#071018" }}>
+        className="relative mb-4 h-[236px] cursor-pointer overflow-hidden focus-visible:ring-2 focus-visible:ring-[#ff9ec4] sm:mb-5 sm:h-[365px]" style={{ borderRadius: 16, border: "none", background: "#071018" }}>
         <img decoding="async" src={mapDisplayNightUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.34) 38%, rgba(0,0,0,0.78) 68%, rgba(0,0,0,0.94) 100%)" }} aria-hidden="true" />
-        <div className="absolute inset-0 flex flex-col justify-end p-6 pb-16 sm:p-8 sm:pb-[72px]">
-          <span className="w-fit rounded-md px-3 py-1 text-xs font-extrabold uppercase tracking-[0.14em]" style={{ color: "#ff9ec4", border: "1px solid rgba(255,158,196,0.8)", background: "rgba(10,8,20,0.45)" }}>Featured</span>
-          <h2 className="font-display mt-3 text-[38px] font-extrabold uppercase leading-[1.02] tracking-tight text-white sm:text-[40px]">Interactive Map</h2>
-          <p className="mt-2.5 max-w-[520px] text-[15px] leading-relaxed text-[#c9cbe8] sm:text-base">Explore the GTA 6 map of Leonida: safehouses, stores, vehicle spawns, collectibles and landmarks.</p>
-          <span className="mt-4 inline-flex w-fit items-center gap-3 rounded-[10px] px-6 py-3 text-base font-bold" style={{ background: "#f9a8c9", color: "#22101c", minHeight: 50 }} aria-hidden="true">
+        <div className="absolute inset-0 flex flex-col justify-end p-4 pb-9 sm:p-8 sm:pb-[72px]">
+          <span className="w-fit rounded-md px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.14em] sm:px-3 sm:py-1 sm:text-xs" style={{ color: "#ff9ec4", border: "1px solid rgba(255,158,196,0.8)", background: "rgba(10,8,20,0.45)" }}>Featured</span>
+          <h2 className="font-display mt-2 text-[24px] font-extrabold uppercase leading-[1.02] tracking-tight text-white sm:mt-3 sm:text-[40px]">Interactive Map</h2>
+          <p className="mt-1.5 max-w-[520px] text-xs leading-snug text-[#c9cbe8] sm:mt-2.5 sm:text-base sm:leading-relaxed">Explore the GTA 6 map of Leonida: safehouses, stores, vehicle spawns, collectibles and landmarks.</p>
+          <span className="map-open-pill mt-3 inline-flex w-fit items-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-bold sm:mt-4 sm:gap-3 sm:px-6 sm:py-3 sm:text-base" style={{ background: "#f9a8c9", color: "#22101c", minHeight: 50 }} aria-hidden="true">
             <span>Open the Map</span>
-            <span className="text-xl leading-none">→</span>
+            <span className="text-base leading-none sm:text-xl">→</span>
           </span>
         </div>
       </div>
-      <SectionTitle sub="Fan-made community map — not official.">
-        Map
-      </SectionTitle>
+      {/* Page header — PHONE gets a smaller title and sub so the
+          page reads as a mini version of the laptop (owner's
+          direction: same layout, just smaller on the phone); the
+          laptop keeps the full-size title and sub, exactly as
+          SectionTitle rendered them. */}
+      <div className="mb-3 sm:mb-4">
+        <h2 className="text-[22px] font-extrabold leading-tight tracking-tight sm:text-[28px]">Map</h2>
+        <p className="mt-1 text-xs text-[var(--dim)] sm:text-sm">Fan-made community map — not official.</p>
+      </div>
       <MapNotReleasedBanner />
       {/* Map section page ads (owner's direction, Nov 21 2026): ads
           are welcome on this page, around the featured card above
@@ -9452,24 +10098,28 @@ function MapView({ playerKey, gamertag, go, onBack }: { playerKey: string; gamer
       {/* Regions — picture-first cards (owner: visuals over
           writing): a big original illustration per region, the
           name, ONE short line, the Unverified / Reported badge
-          on the picture, and Show on map. No paragraphs. */}
-      <h3 className="mt-8 text-lg font-extrabold tracking-tight">Regions</h3>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          on the picture, and Show on map. No paragraphs. PHONE
+          gets a mini version of the laptop grid (owner's
+          direction): two smaller cards side by side, tighter
+          padding and text, compact Show on map button — the
+          laptop keeps the full-size cards exactly as before. */}
+      <h3 className="mt-5 text-[15px] font-extrabold tracking-tight sm:mt-8 sm:text-lg">Regions</h3>
+      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {KNOWN_REGIONS.map((r) => (
           <article key={r.name} className="card overflow-hidden">
             <div className="relative">
               <img decoding="async" src={r.img} alt={r.alt} className="aspect-[16/9] w-full object-cover" loading="lazy" />
-              <span className="absolute left-3 top-3 rounded-full px-2.5 py-0.5 text-xs font-bold text-[#FFC53D]" style={{ background: "rgba(8,6,16,0.72)", border: "1px solid rgba(255,197,61,0.65)" }}>Unverified / Reported</span>
+              <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9.5px] font-bold text-[#FFC53D] sm:left-3 sm:top-3 sm:px-2.5 sm:text-xs" style={{ background: "rgba(8,6,16,0.72)", border: "1px solid rgba(255,197,61,0.65)" }}>Unverified / Reported</span>
             </div>
-            <div className="p-4">
-              <h4 className="font-bold leading-snug">{fixedLabel(r.name)}</h4>
-              <p className="mt-0.5 text-sm text-[var(--dim)]">{r.area}</p>
-              <button type="button" className="btn-ghost mt-3" onClick={() => { const pos = MAP_REGION_POS[r.name] ?? { x: 50, y: 50 }; openFullMap(); setSelected(r.name); setTimeout(() => centerOn(pos.x, pos.y, 2), 140); }}>Show on map</button>
+            <div className="p-2.5 sm:p-4">
+              <h4 className="text-[13px] font-bold leading-snug sm:text-base">{fixedLabel(r.name)}</h4>
+              <p className="mt-0.5 text-[11px] leading-snug text-[var(--dim)] sm:text-sm">{r.area}</p>
+              <button type="button" className="btn-ghost btn-phone-sm mt-2 sm:mt-3" onClick={() => { const pos = MAP_REGION_POS[r.name] ?? { x: 50, y: 50 }; openFullMap(); setSelected(r.name); setTimeout(() => centerOn(pos.x, pos.y, 2), 140); }}>Show on map</button>
             </div>
           </article>
         ))}
       </div>
-      <p className="mt-6 text-sm text-[var(--dim)]">After launch, pins get rebuilt from locations players verify in-game.</p>
+      <p className="mt-4 text-xs text-[var(--dim)] sm:mt-6 sm:text-sm">After launch, pins get rebuilt from locations players verify in-game.</p>
       <AdSlot slot="map-after-regions" format="mediumRect" premium={mapPremium} />
     </div>
   );
@@ -9503,18 +10153,55 @@ function EggsView({ search, savedStore, playerKey, openEgg, premium, goPremium }
     onError: (e) => setError(e.message),
   });
 
+  // Card art, de-duplicated across the grid the same way Ideas does
+  // it: every card gets its own illustration (ideaArtFor picks by
+  // name), and a picture already on the page is swapped for the next
+  // unused fallback, so no two egg cards here show the same picture.
+  const eggItems = eggs.data?.items ?? [];
+  const usedEggArt = new Set<string>();
+  const eggArts = eggItems.map((egg) => {
+    let art = ideaArtFor(egg.name, egg.id);
+    if (usedEggArt.has(art.src)) {
+      const unused = EGG_FALLBACK_ART.find((f) => !usedEggArt.has(f.src));
+      if (unused) art = unused;
+    }
+    usedEggArt.add(art.src);
+    return art;
+  });
+
   return (
     <div>
       <SectionBanner src={secEggsUrl} alt="Original ViceSunshine illustration of a flashlight beam finding a small glowing hidden object in a dark neon alley" />
-      <SectionTitle sub="Community-reported secrets, labelled by verification. Regions only — nothing is pinned to an exact spot until it is verified after launch.">
-        Easter eggs &amp; secrets
-      </SectionTitle>
-      <AdSlot slot="eggs-top" format="leaderboard" premium={premium} flush />
-      <div className="mb-5 rounded-[20px] border border-[var(--border)] bg-[var(--surface)] p-5">
-        <p className="text-sm font-bold">{MAP_NOT_RELEASED_LABEL}</p>
-        <p className="mt-1 max-w-[620px] text-sm leading-relaxed text-[var(--dim)]">
-          Because the map is not released yet, finds are listed by approximate region (for example, Vice City or Leonida Keys), never as exact map pins. Exact locations will only be added after launch on Nov 19, 2026, once players verify them in-game.
+      {/* Page header — PHONE gets a smaller title and the short
+          one-line sub (owner + his sister: too much text on the
+          phone); laptop keeps the full-size title and full sub. */}
+      <div className="mb-4">
+        <h2 className="text-[22px] font-extrabold leading-tight tracking-tight sm:text-[28px]">Easter eggs &amp; secrets</h2>
+        <p className="mt-1 text-xs text-[var(--dim)] sm:text-sm">
+          <span className="sm:hidden">Community-reported secrets, labelled by verification.</span>
+          <span className="hidden sm:inline">Community-reported secrets, labelled by verification. Regions only — nothing is pinned to an exact spot until it is verified after launch.</span>
         </p>
+      </div>
+      <AdSlot slot="eggs-top" format="leaderboard" premium={premium} flush />
+      {/* Quick visual strip: the five Leonida regions as picture
+          tiles, so the page opens with colour and places instead of
+          plain text. The tiles now drift slowly from left to right
+          in a seamless loop (owner: make the top visuals move),
+          the same on phone and laptop: the track holds the set
+          twice and slides from -50% back to 0, so the restart is
+          invisible. Purely visual — the region names ride on the
+          tiles themselves, so the moving copies are hidden from
+          assistive tech and the strip is labelled once. */}
+      <div className="region-marquee mb-5 overflow-hidden" role="img" aria-label="Leonida regions where secrets are reported: Vice City, Leonida Keys, Port Gellhorn, Ambrosia and Mount Kalaga National Park">
+        <div className="region-marquee-track flex w-max" aria-hidden="true">
+          {[...KNOWN_REGIONS, ...KNOWN_REGIONS].map((r, i) => (
+            <figure key={`${r.name}-${i}`} className="relative mr-2 w-[31vw] max-w-[210px] flex-none overflow-hidden rounded-2xl border border-[var(--border)] sm:mr-3 sm:w-[220px] sm:max-w-none">
+              <img decoding="async" src={r.img} alt="" className="h-[64px] w-full object-cover sm:h-[92px]" loading="lazy" />
+              <span className="absolute inset-0 bg-gradient-to-t from-[rgba(10,10,18,0.78)] via-transparent to-transparent" aria-hidden="true" />
+              <figcaption className="absolute inset-x-2 bottom-1.5 truncate text-[11px] font-extrabold text-white sm:inset-x-3 sm:bottom-2 sm:text-[13px]">{r.name}</figcaption>
+            </figure>
+          ))}
+        </div>
       </div>
       <div className="mt-4 mb-3 flex flex-wrap gap-2">
         <button type="button" className="chip" onClick={() => setShowForm(!showForm)}>+ Report a find</button>
@@ -9534,14 +10221,14 @@ function EggsView({ search, savedStore, playerKey, openEgg, premium, goPremium }
           <input id="egg-name" className="field" {...FIELDS.addEgg.name} value={name} onChange={(e) => setName(e.target.value)} />
           <label className="flabel" htmlFor="egg-loc">Approximate region</label>
           <input id="egg-loc" className="field" {...FIELDS.addEgg.location} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Vice City or Leonida Keys — region only, not an exact spot" />
-          <p className="mt-1 text-xs leading-relaxed text-[var(--dim)]">Region only for now. Do not claim an exact map location — none are verified until after launch.</p>
+          <p className="mt-1 hidden text-xs leading-relaxed text-[var(--dim)] sm:block">Region only for now. Do not claim an exact map location — none are verified until after launch.</p>
           <label className="flabel" htmlFor="egg-how">How to find it</label>
           <textarea id="egg-how" className="field" rows={3} {...FIELDS.addEgg.howTo} value={howTo} onChange={(e) => setHowTo(e.target.value)} />
           <label className="flabel" htmlFor="egg-status">Status</label>
           <select id="egg-status" className="field" value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
             <option>Reported</option><option>Rumor</option>
           </select>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--dim)]">New finds start as Reported or Rumor. Confirmed is reserved for finds verified after launch. If a moderator verifies your find, you earn +25 Rank Points.</p>
+          <p className="mt-1 hidden text-xs leading-relaxed text-[var(--dim)] sm:block">New finds start as Reported or Rumor. Confirmed is reserved for finds verified after launch. If a moderator verifies your find, you earn +25 Rank Points.</p>
           <button type="submit" className="btn-primary mt-4" disabled={add.isPending}>
             {add.isPending ? "Submitting…" : "Submit for verification"}
           </button>
@@ -9552,58 +10239,75 @@ function EggsView({ search, savedStore, playerKey, openEgg, premium, goPremium }
         <EmptyNote>No secrets match your search yet.</EmptyNote>
       )}
       {/* Aligned grid (owner): every card is the same width and
-          height — badges row, two-line title, three-line description
-          and the note all reserve fixed space, and the action row is
-          pinned to the bottom (mt-auto) so Open / Save / Verify sit
-          on the same baseline in every card. One theme-matched house
-          ad sits inside the grid as a card of its own, clearly
-          labelled Ad; Premium members never see it. */}
-      <div className="grid items-stretch gap-4 md:grid-cols-2">
+          height — picture header, badges row, two-line title,
+          clamped description and the note all reserve fixed space,
+          and the action row is pinned to the bottom (mt-auto) so
+          Open / Save / Verify sit on the same baseline in every
+          card. PHONE keeps the SAME two-column box layout as the
+          laptop, just smaller (owner's direction): tighter gaps and
+          padding, smaller text, a shorter picture and note, and
+          compact buttons. One theme-matched house ad sits inside
+          the grid as a card of its own, clearly labelled Ad;
+          Premium members never see it. */}
+      <div className="grid grid-cols-2 items-stretch gap-2.5 sm:gap-4">
         {eggs.data?.items.flatMap((egg: EggItem, idx: number) => {
+          const art = eggArts[idx] ?? ideaArtFor(egg.name, egg.id);
           const card = (
-            <article key={egg.id} className="card flex h-full flex-col p-5">
-              <div className="flex min-h-[26px] flex-wrap items-center gap-2">
-                <StatusBadge status={egg.status} />
-                <span className="rounded-full border border-[var(--amber)] px-2.5 py-0.5 text-xs font-bold text-[var(--amber)]">Unverified location</span>
-                <span className="truncate text-xs text-[var(--dim)]">{egg.location}</span>
-              </div>
-              <h3 className="mt-2 line-clamp-2 min-h-[3.1rem] font-bold leading-snug">
-                <button type="button" className="text-left" onClick={() => openEgg(egg.id)} aria-label={`Open the ${egg.name} Easter egg — videos, guides and everything related`}>{egg.name}</button>
-              </h3>
-              <p className="mt-1 line-clamp-3 min-h-[4.05rem] text-sm leading-relaxed text-[var(--dim)]">{egg.howTo}</p>
-              <p className="mt-2 text-xs leading-relaxed text-[var(--dim)]">Approximate region only — not pinned to an exact map spot. Exact locations are added only after they are verified after launch.</p>
-              <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
-                <button type="button" className="btn-primary" onClick={() => openEgg(egg.id)} aria-label={`Open the ${egg.name} Easter egg — videos, guides and everything related`}>Open this egg</button>
-                {savedStore ? <SaveButton saved={savedStore.has("egg", egg.id)} onToggle={() => savedStore.toggle("egg", egg.id)} label={egg.name} /> : null}
-                <label className="text-xs font-semibold text-[var(--dim)]" htmlFor={`egg-status-${egg.id}`}>
-                  Verify:
-                </label>
-                <select
-                  id={`egg-status-${egg.id}`}
-                  className="field w-auto"
-                  value={egg.status}
-                  onChange={(e) => setStatusMut.mutate({ id: egg.id, status: e.target.value as "Confirmed" | "Reported" | "Rumor" })}
-                  aria-label={`Verification status for ${egg.name}`}
-                >
-                  <option>Reported</option><option>Rumor</option><option>Confirmed</option>
-                </select>
+            <article key={egg.id} className="card flex h-full flex-col overflow-hidden">
+              <button type="button" className="relative block w-full flex-none text-left" onClick={() => openEgg(egg.id)} aria-label={`Open the ${egg.name} Easter egg — videos, guides and everything related`}>
+                <img decoding="async" src={art.src} alt={art.alt} className="h-[72px] w-full object-cover sm:h-[130px]" loading="lazy" />
+                <span className="absolute inset-0 bg-gradient-to-t from-[rgba(10,10,18,0.55)] via-transparent to-transparent" aria-hidden="true" />
+                <span className="absolute bottom-1.5 left-2 inline-flex max-w-[calc(100%-1rem)] items-center truncate rounded-full bg-[rgba(10,10,18,0.72)] px-2 py-0.5 text-[10px] font-bold text-white sm:bottom-2.5 sm:left-3 sm:px-2.5 sm:text-xs">{egg.location || "Region to be confirmed"}</span>
+              </button>
+              <div className="flex flex-1 flex-col p-3 sm:p-5">
+                <div className="flex min-h-[20px] flex-wrap items-center gap-1.5 sm:min-h-[26px] sm:gap-2 [&>span]:px-2 [&>span]:text-[10px] sm:[&>span]:px-2.5 sm:[&>span]:text-xs">
+                  <StatusBadge status={egg.status} />
+                  <span className="rounded-full border border-[var(--amber)] py-0.5 font-bold text-[var(--amber)]">Unverified location</span>
+                </div>
+                <h3 className="mt-1.5 line-clamp-2 min-h-[2.3rem] text-[13px] font-bold leading-snug sm:mt-2 sm:min-h-[3.1rem] sm:text-base">
+                  <button type="button" className="text-left" onClick={() => openEgg(egg.id)} aria-label={`Open the ${egg.name} Easter egg — videos, guides and everything related`}>{egg.name}</button>
+                </h3>
+                <p className="mt-1 line-clamp-2 min-h-[1.9rem] text-[11px] leading-snug text-[var(--dim)] sm:line-clamp-3 sm:min-h-[4.05rem] sm:text-sm sm:leading-relaxed">{egg.howTo}</p>
+                <p className="mt-1.5 text-[10px] leading-snug text-[var(--dim)] sm:mt-2 sm:text-xs sm:leading-relaxed">
+                  <span className="sm:hidden">Approximate region only — not pinned to an exact map spot.</span>
+                  <span className="hidden sm:inline">Approximate region only — not pinned to an exact map spot. Exact locations are added only after they are verified after launch.</span>
+                </p>
+                <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-3 sm:gap-2 sm:pt-4">
+                  <button type="button" className="btn-primary btn-phone-sm" onClick={() => openEgg(egg.id)} aria-label={`Open the ${egg.name} Easter egg — videos, guides and everything related`}>Open this egg</button>
+                  {savedStore ? <SaveButton saved={savedStore.has("egg", egg.id)} onToggle={() => savedStore.toggle("egg", egg.id)} label={egg.name} /> : null}
+                  <label className="text-[11px] font-semibold text-[var(--dim)] sm:text-xs" htmlFor={`egg-status-${egg.id}`}>
+                    Verify:
+                  </label>
+                  <select
+                    id={`egg-status-${egg.id}`}
+                    className="field field-phone-sm w-auto"
+                    value={egg.status}
+                    onChange={(e) => setStatusMut.mutate({ id: egg.id, status: e.target.value as "Confirmed" | "Reported" | "Rumor" })}
+                    aria-label={`Verification status for ${egg.name}`}
+                  >
+                    <option>Reported</option><option>Rumor</option><option>Confirmed</option>
+                  </select>
+                </div>
               </div>
             </article>
           );
           if (!premium && idx === 1) {
             return [card, (
-              <article key="eggs-ad" className="ad-slot flex h-full flex-col p-5 text-left" aria-label="Advertisement — ViceSunshine Premium">
-                <div className="flex min-h-[26px] flex-wrap items-center gap-2">
-                  <span className="ad-pill">Ad</span>
-                  <span className="text-xs font-bold uppercase tracking-widest text-[var(--dim)]">ViceSunshine Premium</span>
-                </div>
-                <h3 className="mt-2 line-clamp-2 min-h-[3.1rem] font-bold leading-snug">Hunt every egg — with zero ads</h3>
-                <p className="mt-1 line-clamp-3 min-h-[4.05rem] text-sm leading-relaxed text-[var(--dim)]">
-                  Premium members never see ads anywhere on ViceSunshine — and get animated emblem effects (Fire, Lightning, Ice, Neon…), 250 Vice Credits every week and the Premium Discord role + private Premium lounge.
-                </p>
-                <p className="mt-2 text-xs leading-relaxed text-[var(--dim)]">One plan, every page ad-free — Feed, Map, Database and right here.</p>
-                <div className="mt-auto pt-4">
-                  <button type="button" className="btn-primary" onClick={goPremium} aria-label={`See ViceSunshine Premium — ${premiumPriceLabel(displayCurrency)} per month, no ads`}>Premium — {premiumPriceLabel(displayCurrency)}/mo</button>
+              <article key="eggs-ad" className="ad-slot flex h-full flex-col overflow-hidden text-left" aria-label="Advertisement — ViceSunshine Premium">
+                <img decoding="async" src={premiumAdUrl} alt="Original ViceSunshine illustration of a gold luxury sports car under a palm-lined neon hotel canopy at night" className="h-[72px] w-full flex-none object-cover sm:h-[130px]" loading="lazy" />
+                <div className="flex flex-1 flex-col p-3 sm:p-5">
+                  <div className="flex min-h-[20px] flex-wrap items-center gap-1.5 sm:min-h-[26px] sm:gap-2">
+                    <span className="ad-pill">Ad</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--dim)] sm:text-xs">ViceSunshine Premium</span>
+                  </div>
+                  <h3 className="mt-1.5 line-clamp-2 min-h-[2.3rem] text-[13px] font-bold leading-snug sm:mt-2 sm:min-h-[3.1rem] sm:text-base">Hunt every egg — with zero ads</h3>
+                  <p className="mt-1 line-clamp-2 min-h-[1.9rem] text-[11px] leading-snug text-[var(--dim)] sm:line-clamp-3 sm:min-h-[4.05rem] sm:text-sm sm:leading-relaxed">
+                    Premium members never see ads anywhere on ViceSunshine — and get animated emblem effects (Fire, Lightning, Ice, Neon…), 250 Vice Credits every week and the Premium Discord role + private Premium lounge.
+                  </p>
+                  <p className="mt-1.5 hidden text-xs leading-relaxed text-[var(--dim)] sm:mt-2 sm:block">One plan, every page ad-free — Feed, Map, Database and right here.</p>
+                  <div className="mt-auto pt-3 sm:pt-4">
+                    <button type="button" className="btn-primary btn-phone-sm" onClick={goPremium} aria-label={`See ViceSunshine Premium — ${premiumPriceLabel(displayCurrency)} per month, no ads`}>Premium — {premiumPriceLabel(displayCurrency)}/mo</button>
+                  </div>
                 </div>
               </article>
             )];
@@ -10530,9 +11234,9 @@ function GuidesView({ search, savedStore }: { search: string; savedStore?: Retur
   });
 
   return (
-    <div>
-      <div className="mb-4">
-        <h2 className="text-[28px] font-extrabold leading-tight tracking-tight">Guide Categories</h2>
+    <div className="guides-view">
+      <div className="mb-3 sm:mb-4">
+        <h2 className="text-[22px] font-extrabold leading-tight tracking-tight sm:text-[28px]">Guide Categories</h2>
       </div>
       {/* The two guide categories — kept simple on purpose: each is
           a plain box with a picture, a title, one short description
@@ -10550,7 +11254,7 @@ function GuidesView({ search, savedStore }: { search: string; savedStore?: Retur
             aria-label="Open All Guides — the full Guides library, every category"
           >
             <span className="guide-cat-media">
-              <img decoding="async" src={guideMissionsUrl} alt="Original ViceSunshine illustration of two partners planning a getaway on a motel balcony at dusk" loading="lazy" draggable={false} />
+              <img decoding="async" src={guidesLibraryUrl} alt="Original ViceSunshine illustration of an open road atlas, a folded map, a compass and a camera on the hood of a classic car at sunset" loading="lazy" draggable={false} />
               <span className="guide-cat-count">Full library</span>
             </span>
             <span className="guide-cat-body">
@@ -10672,35 +11376,46 @@ const PLAYSTYLE_LABELS: Record<string, string> = {
   All: "All", Racing: "Racing", Heists: "Heists", Chill: "Chill", Competitive: "Competitive", Exploring: "Exploring",
 };
 const PLAYSTYLE_ICONS = PLAYSTYLE_LABELS;
-const ROLE_ORDER = ["Leader", "Co-Leader", "Elder", "Member", "Recruit"];
 const ROLE_ICONS: Record<string, string> = { Leader: "", "Co-Leader": "", Elder: "", Member: "", Recruit: "" };
-const ROLE_SHORT: Record<string, string> = {
-  Leader: "Runs the crew",
-  "Co-Leader": "Second in command",
-  Elder: "Trusted veteran",
-  Member: "Full member",
-  Recruit: "On trial",
-};
 const ROLE_COLORS: Record<string, string> = {
   Leader: "#FF2E88", "Co-Leader": "#B388FF", Elder: "#FFB03A", Member: "#19E3C2", Recruit: "#9B97AD",
 };
 // The crew customisation catalogue's Crew Colours and Crew
-// Emblems (owner's direction, Nov 21 2026): Create a Crew Step 1,
-// the Crew Settings details form and Crew Settings → Crew
-// customisation all pick from THESE lists — the same items the
-// server catalogue (COSMETIC_ITEMS) holds, 5 free + 3 Premium
-// each, with the same Premium rule (the crew's owner needs
-// Premium). Keep in step with the server catalogue.
-const CREW_CATALOGUE_COLORS: { value: string; name: string; premiumOnly?: boolean }[] = [
+// Emblems: Create a Crew Step 1, the Crew Settings details form
+// and Crew Settings → Crew customisation all pick from THESE
+// lists — the same items the server catalogue (COSMETIC_ITEMS)
+// holds. Emblems run 5 free + 3 Premium (the crew's owner needs
+// Premium). ALL 8 named colours are FREE (owner's direction,
+// Nov 22 2026 — the Premium colours were removed): the Premium
+// colour perk is the CUSTOM colour tool below them (any colour,
+// plus the finishes in CREW_COLOR_FINISHES). Keep in step with
+// the server catalogue.
+const CREW_CATALOGUE_COLORS: { value: string; name: string }[] = [
   { value: "#2DD4BF", name: "Classic Teal" },
   { value: "#FFD166", name: "Gold" },
   { value: "#7DF9FF", name: "Ice" },
   { value: "#9B5DE5", name: "Ultraviolet" },
   { value: "#FF2E88", name: "Vice Pink" },
-  { value: "#FF7A00", name: "Molten Orange", premiumOnly: true },
-  { value: "#39E07A", name: "Emerald", premiumOnly: true },
-  { value: "#5B2A86", name: "Midnight Violet", premiumOnly: true },
+  { value: "#FF7A00", name: "Molten Orange" },
+  { value: "#39E07A", name: "Emerald" },
+  { value: "#5B2A86", name: "Midnight Violet" },
 ];
+// Crew colour finishes — the Premium Custom colour tool's
+// finishes (Chrome, Gold Chrome, Rose Gold, Iridescent). A finish
+// renders as this gradient on the emblem tile and the crew-card
+// header; its hex is the crew colour stored server-side, colouring
+// member tags and text accents. "" = a solid colour. Keep the
+// keys and hexes in step with CREW_COLOR_FINISHES on the server.
+type CrewColorFinishId = "" | "chrome" | "gold" | "rose-gold" | "iridescent";
+const CREW_COLOR_FINISHES: { id: Exclude<CrewColorFinishId, "">; name: string; hex: string; gradient: string }[] = [
+  { id: "chrome", name: "Chrome", hex: "#C7D0DC", gradient: "linear-gradient(145deg, #fdfdff 0%, #c3ccd8 28%, #f4f7fb 48%, #8d99ab 70%, #e6ecf3 100%)" },
+  { id: "gold", name: "Gold Chrome", hex: "#FFD166", gradient: "linear-gradient(145deg, #fff6c9 0%, #f7c948 30%, #fff3b0 52%, #c8912a 76%, #ffe9a3 100%)" },
+  { id: "rose-gold", name: "Rose Gold", hex: "#E8A58F", gradient: "linear-gradient(145deg, #ffe9e2 0%, #eda58c 30%, #ffdcd2 52%, #b76e79 78%, #f6c9b8 100%)" },
+  { id: "iridescent", name: "Iridescent", hex: "#C4B5FD", gradient: "linear-gradient(135deg, #f0abfc 0%, #7dd3fc 28%, #86efac 52%, #fde68a 76%, #f9a8d4 100%)" },
+];
+function crewFinishGradient(finish: string): string {
+  return CREW_COLOR_FINISHES.find((f) => f.id === finish)?.gradient ?? "";
+}
 const CREW_CATALOGUE_EMBLEMS: { value: string; name: string; premiumOnly?: boolean }[] = [
   { value: "sunset", name: "Sunset" },
   { value: "crown", name: "Gold Crown" },
@@ -10711,7 +11426,6 @@ const CREW_CATALOGUE_EMBLEMS: { value: string; name: string; premiumOnly?: boole
   { value: "eclipse", name: "Eclipse", premiumOnly: true },
   { value: "royal-palm", name: "Royal Palm", premiumOnly: true },
 ];
-const LEAGUE_ICONS: Record<string, string> = { "Ocean Drive": "", "Vice Beach": "", "Neon Strip": "", "Downtown Vice": "", "Leonida Elite": "", "Vice Legend": "" };
 const AVATAR_COLORS = ["#FF2E88", "#19E3C2", "#FFB03A", "#B388FF", "#4FC3F7", "#FF7043", "#7CFC00", "#C77DFF"];
 
 function avatarColor(name: string): string {
@@ -10720,28 +11434,128 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length] ?? "#FF2E88";
 }
 
-// There are no emblem effects in ViceSunshine anymore — ClanEmblem
-// renders the plain monogram, plus one special case: the Vice Crest,
-// the Premium clan emblem, which gets a gold frame and a small crest
-// diamond so it is recognisably different everywhere it appears.
-function ClanEmblem({ tag, color, size = 96, emblem = "" }: { tag: string; color: string; emblem?: string; size?: number }) {
+// The crew emblems are full AI-designed artwork (owner's direction,
+// Nov 22 2026 — the emblems were changed COMPLETELY): every emblem
+// value in the catalogue maps to its own generated design — a neon
+// sunset, a jewelled gold crown, a coiled serpent, a blazing
+// diamond, a curling wave, the gold Vice Crest, a violet eclipse, a
+// crowned royal palm and the Phoenix season award — rendered as a
+// framed picture tile by ClanEmblem, with the crew colour (or its
+// Premium finish) as the frame around the art. The legacy alias
+// values (gem / palm / flame) point at the same artwork as their
+// catalogue twins. The line glyphs below remain ONLY as the
+// fallback for emblem values with no artwork (e.g. the old shield
+// default), drawn behind the crew's initials on a colour tile.
+const EMBLEM_GLYPHS: Record<string, ReactNode> = {
+  sunset: (<><path d="M4.5 16.5a7.5 7.5 0 0 1 15 0" /><path d="M2.5 16.5h19" /><path d="M5 20.5h14" /><path d="M12 5.5v2.5M5.6 8.1l1.8 1.8M18.4 8.1l-1.8 1.8" /></>),
+  crown: (<path d="M3.5 8.5 8 12l4-6.5L16 12l4.5-3.5L19 18H5z" />),
+  serpent: (<><path d="M16.5 4.5c-4.5-1-8 1.2-8 4.3 0 5.2 9.5 3.4 9.5 8 0 2-2 3.2-4.8 3.2" /><circle cx="16.8" cy="4.3" r="0.7" fill="currentColor" stroke="none" /></>),
+  diamond: (<><path d="M7 4.5h10L20.5 9 12 19.5 3.5 9z" /><path d="M3.5 9h17" /><path d="M12 19.5 8.8 9l1.7-4.5h3L15.2 9z" /></>),
+  gem: (<><path d="M7 4.5h10L20.5 9 12 19.5 3.5 9z" /><path d="M3.5 9h17" /><path d="M12 19.5 8.8 9l1.7-4.5h3L15.2 9z" /></>),
+  wave: (<><path d="M2.5 9.5c3.2-3.8 6.3-3.8 9.5 0s6.3 3.8 9.5 0" /><path d="M2.5 16c3.2-3.8 6.3-3.8 9.5 0s6.3 3.8 9.5 0" /></>),
+  eclipse: (<><circle cx="12" cy="12" r="6.5" /><circle cx="15.8" cy="8.6" r="4.6" fill="currentColor" stroke="none" opacity="0.85" /></>),
+  "royal-palm": (<><path d="M11 21c0-5 1-9 3.5-12.5" /><path d="M14.5 8.5C12 5.8 8.5 5.2 5.5 6.5c2.7.2 4.9 1.2 6.5 3M14.5 8.5c-.2-2.8.3-5 1.5-6.8M14.5 8.5c2.3-2.1 5-2.7 7.5-2-2.1 1-3.8 2.2-5 3.9" /></>),
+  palm: (<><path d="M11 21c0-5 1-9 3.5-12.5" /><path d="M14.5 8.5C12 5.8 8.5 5.2 5.5 6.5c2.7.2 4.9 1.2 6.5 3M14.5 8.5c-.2-2.8.3-5 1.5-6.8M14.5 8.5c2.3-2.1 5-2.7 7.5-2-2.1 1-3.8 2.2-5 3.9" /></>),
+  phoenix: (<path d="M12 3.5s5.5 5.2 5.5 10a5.5 5.5 0 0 1-11 0c0-2.2 1.2-3.9 2.4-5.4.4 1.6 1.3 2.4 2.4 2.7C10.9 8.3 11.3 5.7 12 3.5z" />),
+  flame: (<path d="M12 3.5s5.5 5.2 5.5 10a5.5 5.5 0 0 1-11 0c0-2.2 1.2-3.9 2.4-5.4.4 1.6 1.3 2.4 2.4 2.7C10.9 8.3 11.3 5.7 12 3.5z" />),
+  star: (<path d="m12 3.8 2.5 5.2 5.7.7-4.2 3.9 1.1 5.6L12 16.5l-5.1 2.7L8 13.6 3.8 9.7l5.7-.7z" />),
+  bolt: (<path d="M13.2 3 5 13.8h5.4L9.6 21l8.2-10.8h-5.4z" />),
+  shield: (<path d="M12 3.5 19 6v5.5c0 4.3-2.9 7.3-7 9-4.1-1.7-7-4.7-7-9V6z" />),
+  vicecrest: (<><path d="M12 3.5 19 6v5.5c0 4.3-2.9 7.3-7 9-4.1-1.7-7-4.7-7-9V6z" /><path d="M12 8.2 14.8 12 12 15.8 9.2 12z" /></>),
+};
+const EMBLEM_ART: Record<string, string> = {
+  sunset: emblemSunsetUrl,
+  crown: emblemCrownUrl,
+  serpent: emblemSerpentUrl,
+  diamond: emblemDiamondUrl,
+  gem: emblemDiamondUrl,
+  wave: emblemWaveUrl,
+  vicecrest: emblemVicecrestUrl,
+  eclipse: emblemEclipseUrl,
+  "royal-palm": emblemRoyalPalmUrl,
+  palm: emblemRoyalPalmUrl,
+  phoenix: emblemPhoenixUrl,
+  flame: emblemPhoenixUrl,
+};
+function EmblemGlyph({ emblem }: { emblem: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ width: "100%", height: "100%", display: "block" }}>
+      {EMBLEM_GLYPHS[emblem] ?? EMBLEM_GLYPHS.shield}
+    </svg>
+  );
+}
+const EMBLEM_NAMES: Record<string, string> = {
+  sunset: "Sunset", crown: "Gold Crown", serpent: "Serpent", diamond: "Diamond", wave: "Wave",
+  vicecrest: "Vice Crest", eclipse: "Eclipse", "royal-palm": "Royal Palm", phoenix: "Phoenix",
+  shield: "Shield", star: "Star", bolt: "Bolt", palm: "Palm", flame: "Flame", gem: "Gem",
+};
+// The animated emblem effects (Crew Settings → Crew customisation →
+// Emblem Effects): the value stored on the crew row, the name used
+// in labels, and the `.emblem-fx-<value>` CSS animation in theme.css
+// all share these keys — one list, so an equipped effect can never
+// be a name with no animation behind it.
+const EMBLEM_FX_NAMES: Record<string, string> = {
+  neon: "Neon Glow", shine: "Vice Shine", frost: "Frost", bubbles: "Bubbles",
+  "sunset-shimmer": "Sunset Shimmer", fire: "Fire", lightning: "Lightning", gold: "Champion Gold",
+};
+
+// ClanEmblem renders the crew's emblem. Every catalogue emblem is
+// a full AI-designed artwork (see EMBLEM_ART): the tile is the
+// artwork itself, framed by the crew colour — or by the Premium
+// colour finish's gradient when one is applied — so the crew's
+// colour still shows on its emblem without washing over the art.
+// When the crew has an emblem effect equipped, the effect's
+// animation plays INSIDE the tile, clipped over the artwork. The
+// effect is a live equipped look read from the crew row, rendered
+// the same way on the crew card, crew page, rankings, crew chat and
+// everywhere else this component is used. Emblem values with no
+// artwork (legacy values like the old shield default) keep the
+// older monogram tile: colour gradient, line glyph and initials.
+function ClanEmblem({ tag, color, size = 96, emblem = "", effect = "", finish = "" }: { tag: string; color: string; emblem?: string; effect?: string; size?: number; finish?: string }) {
   const initials = (tag || "VV").slice(0, 2).toUpperCase();
   const radius = Math.round(size * 0.24);
   const crest = emblem === "vicecrest";
+  const fxName = EMBLEM_FX_NAMES[effect];
+  const emblemName = EMBLEM_NAMES[emblem];
+  // A Premium colour finish (Chrome, Gold Chrome, Rose Gold,
+  // Iridescent) replaces the flat colour gradient on the tile —
+  // the stored colour still drives tags and text accents.
+  const finishGradient = crewFinishGradient(finish);
+  const finishName = CREW_COLOR_FINISHES.find((f) => f.id === finish)?.name ?? "";
+  const art = EMBLEM_ART[emblem];
+  const label = `${tag} crew emblem${emblemName ? ` — the ${emblemName} design` : ""}${fxName ? ` with the ${fxName} emblem effect playing` : ""}${finishName ? ` with a ${finishName} colour finish` : ""}`;
+  if (art) {
+    const frame = Math.max(2, Math.round(size * 0.05));
+    return (
+      <span role="img" aria-label={label} style={{ position: "relative", width: size, height: size, display: "inline-block", flex: "none" }}>
+        <span aria-hidden="true" style={{ position: "absolute", inset: 0, borderRadius: radius, overflow: "hidden", background: finishGradient || `linear-gradient(145deg, ${color}, ${color}99)`, border: crest ? "2px solid #FFD166" : "1px solid rgba(255,255,255,0.22)", boxSizing: "border-box", padding: frame }}>
+          <span style={{ position: "relative", display: "block", width: "100%", height: "100%", borderRadius: Math.max(2, radius - frame), overflow: "hidden", background: "#0a0a12" }}>
+            <img src={art} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            {fxName ? <span className={`emblem-fx emblem-fx-${effect}`} /> : null}
+          </span>
+        </span>
+        {crest && (
+          <span aria-hidden="true" style={{ position: "absolute", top: -Math.round(size * 0.07), right: -Math.round(size * 0.07), width: Math.round(size * 0.26), height: Math.round(size * 0.26), background: "#FFD166", transform: "rotate(45deg)", borderRadius: Math.round(size * 0.05), border: "2px solid #0a0a12" }} />
+        )}
+      </span>
+    );
+  }
   return (
-    <span role="img" aria-label={`${tag} crew monogram${crest ? " with the Vice Crest emblem" : ""}`} style={{ position: "relative", width: size, height: size, borderRadius: radius, background: `linear-gradient(145deg, ${color}, ${color}99)`, border: crest ? "2px solid #FFD166" : "1px solid rgba(255,255,255,0.22)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", color: "#fff", fontWeight: 800, fontSize: Math.round(size * 0.34), letterSpacing: "0.02em" }}>
-      {initials}
+    <span role="img" aria-label={`${tag} crew monogram${emblemName ? ` — ${emblemName} emblem` : ""}${fxName ? ` with the ${fxName} emblem effect playing` : ""}${finishName ? ` with a ${finishName} colour finish` : ""}`} style={{ position: "relative", width: size, height: size, display: "inline-block", flex: "none" }}>
+      <span aria-hidden="true" style={{ position: "absolute", inset: 0, borderRadius: radius, overflow: "hidden", background: finishGradient || `linear-gradient(145deg, ${color}, ${color}99)`, border: crest ? "2px solid #FFD166" : "1px solid rgba(255,255,255,0.22)", boxSizing: "border-box", color: "#fff" }}>
+        {size >= 40 && emblem ? (
+          <span style={{ position: "absolute", left: "50%", top: "50%", width: Math.round(size * 0.74), height: Math.round(size * 0.74), transform: "translate(-50%, -50%)", opacity: 0.3 }}>
+            <EmblemGlyph emblem={emblem} />
+          </span>
+        ) : null}
+        <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: Math.round(size * 0.34), letterSpacing: "0.02em", textShadow: finishGradient ? "0 1px 4px rgba(10,10,25,0.65)" : undefined }}>
+          {initials}
+        </span>
+        {fxName ? <span className={`emblem-fx emblem-fx-${effect}`} /> : null}
+      </span>
       {crest && (
         <span aria-hidden="true" style={{ position: "absolute", top: -Math.round(size * 0.07), right: -Math.round(size * 0.07), width: Math.round(size * 0.26), height: Math.round(size * 0.26), background: "#FFD166", transform: "rotate(45deg)", borderRadius: Math.round(size * 0.05), border: "2px solid #0a0a12" }} />
       )}
-    </span>
-  );
-}
-
-function LeagueBadge({ league }: { league: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide" style={{ border: "1px solid var(--amber)", color: "var(--amber)", background: "rgba(11,11,20,0.7)" }}>
-      <span aria-hidden="true">{LEAGUE_ICONS[league] ?? ""}</span> {league}
     </span>
   );
 }
@@ -10780,12 +11594,14 @@ function CrewCardHeader({ c }: { c: ClanSummary }) {
           <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,11,20,0.38) 0%, rgba(11,11,20,0.62) 55%, rgba(11,11,20,0.85) 100%)" }} aria-hidden="true" />
         </>
       ) : null}
-      <div className="absolute left-3 top-3 z-10">
-        <LeagueBadge league={c.league} />
-      </div>
-      <span className="trophy-pill absolute right-3 top-3 z-10">{c.trophies} pts</span>
+      {!c.headerImageUrl && !design && crewFinishGradient(c.colorFinish) ? (
+        <>
+          <div className="absolute inset-0" style={{ background: crewFinishGradient(c.colorFinish) }} aria-hidden="true" />
+          <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,11,20,0.52) 0%, rgba(11,11,20,0.66) 55%, rgba(11,11,20,0.86) 100%)" }} aria-hidden="true" />
+        </>
+      ) : null}
       <div className="relative z-10 flex min-w-0 flex-col items-center">
-        <ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} size={92} />
+        <ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} effect={c.emblemEffect} finish={c.colorFinish} size={92} />
       </div>
       <h3 className="font-display relative z-10 mt-1 flex w-full items-center justify-center gap-2 text-center text-lg uppercase leading-tight">
         <span className="truncate" title={c.name}>{c.name}</span>
@@ -10803,14 +11619,15 @@ function CrewCardHeader({ c }: { c: ClanSummary }) {
 
 /* ONE crew card layout for every crew (owner's direction,
    Nov 21 2026 — the NEON TIDE CARTEL layout): fixed-height header
-   → points pills → MEMBERS / EVENTS stat boxes → members line →
-   Save → View crew / Join pinned to the bottom. There is NO
-   separate banner strip above the header for any crew (a crew's
-   banner artwork is its header background instead — see
-   CrewCardHeader), NO season rank and NO wins anywhere on the
-   card (ViceSunshine does not track them), and no member cap:
-   crews hold unlimited members, so the line under the stats is
-   just the member count. */
+   → MEMBERS / EVENTS stat boxes → members line → Save → View
+   crew / Join pinned to the bottom. There is NO separate banner
+   strip above the header for any crew (a crew's banner artwork
+   is its header background instead — see CrewCardHeader), and NO
+   ranking anywhere on the card (owner's direction, Nov 22 2026 —
+   the whole rank system is gone: no points, no trophies, no
+   league, no season rank, no wins), and no member cap: crews
+   hold unlimited members, so the line under the stats is just
+   the member count. */
 function ClanCard({ c, onOpen, onJoin, joinDisabled, joinPending, savedStore }: {
   c: ClanSummary;
   onOpen: () => void;
@@ -10823,10 +11640,6 @@ function ClanCard({ c, onOpen, onJoin, joinDisabled, joinPending, savedStore }: 
     <article className="card flex h-full flex-col overflow-hidden">
       <CrewCardHeader c={c} />
       <div className="flex flex-1 flex-col p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-center gap-1.5 text-[11px] font-bold">
-          <span className="rounded-full bg-[var(--surface2)] px-2.5 py-1">{c.effectiveSeasonPoints} season pts</span>
-          <span className="rounded-full bg-[var(--surface2)] px-2.5 py-1">x{c.multiplier.toFixed(2)} member bonus</span>
-        </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="stat-tile"><div className="num"> {c.memberCount}</div><div className="lbl">Members</div></div>
           <div className="stat-tile"><div className="num"> {c.eventsHeld}</div><div className="lbl">Events</div></div>
@@ -10942,7 +11755,7 @@ function DefaultAvatarSilhouette() {
   );
 }
 
-function CosmeticAvatar({ name, size = 44, role, avatarUrl = "" }: { name: string; size?: number; role?: string; avatarUrl?: string }) {
+function CosmeticAvatar({ name, size = 44, role, avatarUrl = "", eager = false }: { name: string; size?: number; role?: string; avatarUrl?: string; eager?: boolean }) {
   const bg = role ? (ROLE_COLORS[role] ?? avatarColor(name)) : avatarColor(name);
   return (
     <span
@@ -10959,7 +11772,7 @@ function CosmeticAvatar({ name, size = 44, role, avatarUrl = "" }: { name: strin
         }}
       >
         {avatarUrl ? (
-          <img decoding="async" src={avatarUrl} alt="" className="avatar-anim h-full w-full object-cover" loading="lazy" />
+          <img decoding="async" src={avatarUrl} alt="" className="avatar-anim h-full w-full object-cover" loading={eager ? "eager" : "lazy"} {...(eager ? { fetchPriority: "high" as const } : {})} />
         ) : (
           <DefaultAvatarSilhouette />
         )}
@@ -11215,9 +12028,9 @@ function LeaderboardView({
   }
 
   return (
-    <div>
+    <div className="leaderboard-view">
       <button type="button" className="btn-ghost btn-compact" onClick={() => (onBack ? onBack() : go("home"))} aria-label="Back to where you were">← Back</button>
-      <h2 className="font-display mt-4 text-2xl leading-tight">Crew Leaderboard</h2>
+      <h2 className="font-display mt-3 text-xl leading-tight sm:mt-4 sm:text-2xl">Crew Leaderboard</h2>
       {/* Season-end countdown (owner's direction): one compact line
           under the title — the only thing above the list. It ticks
           every second toward the end of the current season month,
@@ -11402,10 +12215,10 @@ function LeaderboardView({
                       {c.trend === "same" && <span className="text-[16px] font-extrabold text-[var(--dim)]">=</span>}
                       {c.trend === "new" && <span className="rounded-full px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wide" style={{ background: "rgba(0,229,204,0.16)", color: "var(--accent2)" }}>New</span>}
                     </span>
-                    <ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} size={c.rank <= 3 ? 48 : 42} />
+                    <ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} effect={c.emblemEffect} finish={c.colorFinish} size={c.rank <= 3 ? 48 : 42} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-bold" style={c.rank <= 3 ? { fontSize: 17 } : undefined}>
-                        {c.name} <span className="text-[12px] font-semibold text-[var(--dim)]">[{c.tag}]</span>
+                        <span className="text-[12px] font-semibold text-[var(--dim)]">[{c.tag}]</span> {c.name}
                       </span>
                       <span className="block truncate text-xs text-[var(--dim)]">
                         {c.league} · x{c.multiplier.toFixed(2)}
@@ -11561,6 +12374,7 @@ function ClansView({
     queryKey: ["clans", playstyle, search],
     queryFn: () => api.listClans({ platform: "All", playstyle, search }),
   });
+  const [joinNotice, setJoinNotice] = useState("");
   const join = useMutation({
     mutationFn: async (clan: ClanSummary) =>
       await api.joinClan({
@@ -11575,7 +12389,20 @@ function ClansView({
       qc.invalidateQueries({ queryKey: ["clans"] });
       qc.invalidateQueries({ queryKey: ["clanRankings"] });
       qc.invalidateQueries({ queryKey: ["my-clan"] });
-      if (res.joined) setOpenClanId(clan.id);
+      if (res.joined) {
+        setJoinNotice("");
+        setOpenClanId(clan.id);
+      } else if (res.requested) {
+        // The anti-spam gate closed on this one: the tap sent a
+        // join request into the crew's chat for its Leader.
+        setJoinNotice(
+          res.requestReason === "returning"
+            ? `Request sent to ${clan.name} — you were in that crew before, so there's no direct way back in. The Leader can accept your request in the crew chat.`
+            : `Request sent to ${clan.name} — you already joined a crew this week (one direct join a week). The Leader can accept your request in the crew chat.`,
+        );
+      } else if (res.applied) {
+        setJoinNotice(`Application sent to ${clan.name} — a Leader or Co-Leader will review it.`);
+      }
     },
     onError: (e) => setError(e.message),
   });
@@ -11614,25 +12441,21 @@ function ClansView({
   }
 
   const items = clans.data?.items ?? [];
-  const top = items[0];
-  const noFilters = playstyle === "All" && !search.trim();
-  const totalTrophies = items.reduce((s, c) => s + c.trophies, 0);
   const totalMembers = items.reduce((s, c) => s + c.memberCount, 0);
 
   return (
-    <div>
+    <div className="clans-view">
       {onBack && (
         <button type="button" className="btn-ghost btn-compact mb-3" onClick={onBack} aria-label="Back to where you were">← Back</button>
       )}
       {viewSwitcher}
       <section className="relative overflow-hidden rounded-2xl border border-[var(--border)]">
-        <img decoding="async" src={clanArenaUrl} alt="Painted illustration of a neon Vice City crew arena with trophy towers and palm trees — original fan artwork" className="h-[260px] w-full object-cover sm:h-[300px]" loading="lazy" />
+        <img decoding="async" src={clanArenaUrl} alt="Painted illustration of a neon Vice City crew arena with trophy towers and palm trees — original fan artwork" className="h-[190px] w-full object-cover sm:h-[300px]" loading="lazy" />
         <div className="absolute inset-0 bg-[rgba(11,11,20,0.45)]" />
-        <div className="absolute inset-x-0 bottom-0 p-5">
-          <h2 className="text-[30px] font-extrabold leading-tight tracking-tight">Crews</h2>
-          <p className="mt-1 max-w-[480px] text-[15px] leading-relaxed text-[#e6e3ef]">Find a crew that fits how you play. Clear roles, honest stats, and rankings you can verify.</p>
+        <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
+          <h2 className="text-[24px] font-extrabold leading-tight tracking-tight sm:text-[30px]">Crews</h2>
+          <p className="mt-1 max-w-[480px] text-[13px] leading-relaxed text-[#e6e3ef] sm:text-[15px]">Found your own crew and lead it — or find one that fits how you play. Clear roles, honest stats, unlimited members.</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="trophy-pill">{totalTrophies} points total</span>
             <span className="trophy-pill">{items.length} crews</span>
             <span className="trophy-pill">{totalMembers} members</span>
             <span className="trophy-pill">{items.filter((c) => c.privacy === "Public").length} crews recruiting now</span>
@@ -11649,67 +12472,32 @@ function ClansView({
         </p>
       )}
 
-      {top && noFilters && (
-        <section className="card mt-4 overflow-hidden" aria-label="Top crew">
-          <div className="flex flex-col items-center gap-4 p-5 sm:flex-row" style={{ background: `linear-gradient(120deg, ${top.color}44, rgba(11,11,20,0) 70%), var(--surface2)` }}>
-            <ClanEmblem tag={top.tag} color={top.color} emblem={top.emblem} size={110} />
-            <div className="min-w-0 flex-1 text-center sm:text-left">
-              <p className="text-xs font-extrabold uppercase tracking-widest text-[var(--amber)]"> Highest-ranked crew</p>
-              <h3 className="font-display mt-1 truncate text-2xl uppercase">{top.name}{top.badge ? <span className="ml-2 align-middle rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">{top.badge}</span> : null}</h3>
-              <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
-                <span className="trophy-pill">{top.trophies} pts</span>
-                <LeagueBadge league={top.league} />
-              </div>
-            </div>
-            <div className="flex gap-2 sm:flex-col">
-              <button type="button" className="btn-ghost" onClick={() => setOpenClanId(top.id)} aria-label={`Open ${top.name} crew home`}> Home</button>
-              <button type="button" className="btn-game" disabled={!gamertag || join.isPending} onClick={() => join.mutate(top)} aria-label={`Join ${top.name}`}>Join</button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {crewPulse.data && crewPulse.data.items.length > 0 && (
-        <section className="card mt-4 p-4" aria-label="Live crew activity">
-          <h3 className="flex items-center gap-2 text-[15px] font-extrabold tracking-tight">
-            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent2)]" aria-hidden="true" />
-            Live in crews right now
-          </h3>
-          <ul className="mt-2.5 grid gap-2">
-            {crewPulse.data.items.slice(0, 6).map((a) => (
-              <li key={a.id} className="flex items-center gap-2.5 text-[13.5px]">
-                <span className="flex-none"><ClanEmblem tag={a.clanTag} color={a.clanColor} emblem={a.clanEmblem} size={26} /></span>
-                <span className="min-w-0 flex-1 truncate"><strong>{a.clanName}</strong> — {a.text}</span>
-                <span className="flex-none text-[12px] text-[var(--dim)]">{a.at ? timeAgo(a.at) : ""}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6" role="group" aria-label="Filter by playstyle">
-        {["All", ...PLAYSTYLES].map((p) => (
-          <button key={p} type="button" className="picker-tile" aria-pressed={playstyle === p} onClick={() => setPlaystyle(p)} aria-label={`Playstyle: ${p}`}>
-            {p}
+      {/* Found your own crew — FIRST, above every suggestion
+          (owner's direction, Nov 22 2026): most players here want
+          to create a clan, not join one, so creating leads the
+          page, in full Vice City neon. The old "Highest-ranked
+          crew" card that sat here is gone with the rank system.
+          The founder form opens directly under this panel. */}
+      <section
+        className="relative mt-4 overflow-hidden rounded-2xl border p-5 sm:p-6"
+        style={{
+          borderColor: "var(--accent)",
+          background: "linear-gradient(120deg, rgba(255,46,136,0.18), rgba(124,58,237,0.15) 55%, rgba(25,227,194,0.12)), var(--surface)",
+        }}
+        aria-label="Found your own crew"
+      >
+        <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-[var(--accent2)]">Your crew · Your rules</p>
+        <h3 className="font-display mt-1.5 text-[26px] uppercase leading-tight sm:text-3xl">Found your own crew</h3>
+        <p className="mt-2 max-w-[540px] text-sm leading-relaxed text-[var(--dim)]">
+          Most players on ViceSunshine lead their own crew. Name it, pick your emblem and colour, and your crew chat opens the moment it&apos;s founded — unlimited members, and you start as Leader. Leaders with Premium can found with the gold Vice Crest, Eclipse and Royal Palm emblems, a custom colour and chrome finishes.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button type="button" className="btn-game" style={{ minHeight: 50, padding: "10px 22px", fontSize: 16 }} onClick={() => setShowCreate(!showCreate)} aria-expanded={showCreate} aria-label={showCreate ? "Close the crew founder form" : "Create a crew — open the founder form"}>
+            {showCreate ? "Close the founder" : " Create a crew"}
           </button>
-        ))}
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {CREW_LEADERBOARD_ENABLED && <span className="text-xs font-semibold text-[var(--dim)]">PlayStation and Xbox boards are on the Crew Leaderboard — that split lives only there.</span>}
-        <button type="button" className="btn-game teal ml-auto" onClick={() => setShowCreate(!showCreate)} aria-expanded={showCreate}>
-           Create a crew
-        </button>
-      </div>
-      <label htmlFor="clan-search" className="sr-only">Search crews by name or tag</label>
-      <input
-        id="clan-search"
-        className="field mt-3"
-        {...FIELDS.listClans.search}
-        placeholder=" Search crews by name or tag…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      {error && <p className="mt-3 text-sm text-[var(--amber)]" role="alert">{error}</p>}
+          <span className="text-[13px] font-semibold text-[var(--dim)]">Founding costs 500 Vice Credits — every new account starts with exactly 500.</span>
+        </div>
+      </section>
       {showCreate && (
         <div className="mt-4">
           <CreateClanForm
@@ -11721,33 +12509,54 @@ function ClansView({
           />
         </div>
       )}
-      {noFilters && items.length > 1 && (
-        <section className="mt-8" aria-label={myClanId > 0 ? "Trending crews" : "Suggested crews for you"}>
-          <h3 className="font-display text-xl leading-tight">{myClanId > 0 ? "Trending crews" : "Suggested for you"}</h3>
-          <p className="mt-0.5 text-sm text-[var(--dim)]">
-            {myClanId > 0
-              ? "The biggest, busiest crews in Leonida right now."
-              : "Two popular crews with room for you — join one and you land in its crew chat straight away, or create your own above."}
-          </p>
-          {/* Two suggestions only, in one neat grid — and they
-              are the SAME crew card as the main grid below (one
-              layout for every crew card on this page: no banner
-              strip, no second card design). */}
-          <div className="mt-4 grid items-stretch gap-4 sm:grid-cols-2">
-            {[...items].sort((a, b) => b.memberCount - a.memberCount || b.trophies - a.trophies).slice(0, 2).map((c) => (
-              <ClanCard
-                key={c.id}
-                c={c}
-                onOpen={() => setOpenClanId(c.id)}
-                onJoin={() => join.mutate(c)}
-                joinDisabled={!gamertag}
-                joinPending={join.isPending}
-                savedStore={savedStore}
-              />
+
+      {crewPulse.data && crewPulse.data.items.length > 0 && (
+        <section className="card mt-4 p-4" aria-label="Live crew activity">
+          <h3 className="flex items-center gap-2 text-[15px] font-extrabold tracking-tight">
+            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent2)]" aria-hidden="true" />
+            Live in crews right now
+          </h3>
+          <ul className="mt-2.5 grid gap-2">
+            {crewPulse.data.items.slice(0, 6).map((a) => (
+              <li key={a.id} className="flex items-center gap-2.5 text-[13.5px]">
+                <span className="flex-none"><ClanEmblem tag={a.clanTag} color={a.clanColor} emblem={a.clanEmblem} effect={a.clanEmblemEffect} finish={a.clanColorFinish} size={26} /></span>
+                <span className="min-w-0 flex-1 truncate"><strong>{a.clanName}</strong> — {a.text}</span>
+                <span className="flex-none text-[12px] text-[var(--dim)]">{a.at ? timeAgo(a.at) : ""}</span>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       )}
+
+      {/* Browse crews — one aligned directory: a section header,
+          an even playstyle filter grid (6 tiles: 3 × 2 on phone,
+          one row of 6 on desktop), a full-width search in line
+          with the grid below, then the crew cards. The separate
+          "Suggested for you" / "Trending crews" block that used
+          to sit here is gone (owner's direction, Nov 22 2026 —
+          fewer suggestions; creating leads the page instead),
+          and creating lives at the top of the page now, not in
+          a button buried beside the filters. */}
+      <h3 className="font-display mt-8 text-xl leading-tight">Browse crews</h3>
+      <p className="mt-0.5 text-sm text-[var(--dim)]">Every crew in Leonida — open one to see its page, or join straight from its card and land in its crew chat.</p>
+      <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6" role="group" aria-label="Filter by playstyle">
+        {["All", ...PLAYSTYLES].map((p) => (
+          <button key={p} type="button" className="picker-tile" aria-pressed={playstyle === p} onClick={() => setPlaystyle(p)} aria-label={`Playstyle: ${p}`}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <label htmlFor="clan-search" className="sr-only">Search crews by name or tag</label>
+      <input
+        id="clan-search"
+        className="field mt-3"
+        {...FIELDS.listClans.search}
+        placeholder=" Search crews by name or tag…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      {error && <p className="mt-3 text-sm text-[var(--amber)]" role="alert">{error}</p>}
+      {joinNotice && <p className="mt-3 text-sm font-semibold text-[var(--accent2)]" role="status">{joinNotice}</p>}
 
       {clans.isPending && <p className="mt-4 text-sm text-[var(--dim)]">Loading crews...</p>}
       {clans.data && items.length === 0 && (
@@ -11773,52 +12582,21 @@ function ClansView({
 
       <CommunityEventsPromo playerKey={playerKey} go={go} />
 
-      {/* The full Crew Leaderboard is its own page (owner's
-          direction — where Home's Crew Leaderboard card leads):
-          Global, Local, PlayStation and Xbox categories, Top 1000
-          crews each, with search and Compare. This card is the way
-          in from Crews; the board itself lives only on that page.
-          Hidden while CREW_LEADERBOARD_ENABLED is off (the
-          leaderboard is removed for now, kept restorable). */}
-      {CREW_LEADERBOARD_ENABLED && (
-      <button
-        type="button"
-        className="card card-big mt-6 block w-full p-5 text-left"
-        onClick={() => go("leaderboard")}
-        aria-label="Open the full Crew Leaderboard — Global, Local, PlayStation and Xbox categories, Top 1000 crews in each"
-      >
-        <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="font-display text-lg leading-tight">Crew Leaderboard</span>
-          <span className="ml-auto text-[12.5px] font-bold text-[var(--accent)]">Global · Local · PlayStation · Xbox →</span>
-        </span>
-        <span className="mt-2 block text-sm leading-relaxed text-[var(--dim)]">
-          Every crew ranked by this season&apos;s Rank Points — the Top 1000 in each category, with search and a Compare tool. The PlayStation / Xbox split lives only on the leaderboard.
-        </span>
-      </button>
-      )}
-
       {/* The XP / points-earning panel is on hold
           (SHOW_POINTS_EARNING above) — hidden, not deleted. */}
       {SHOW_POINTS_EARNING && <HowToEarnPanel />}
 
-      <ClanPerksPanel />
+      {/* The Crew perks section is off for now
+          (SHOW_CREW_PERKS above) — hidden, not deleted. */}
+      {SHOW_CREW_PERKS && <ClanPerksPanel />}
 
-      <section className="card mt-6 p-5" aria-label="Crew ranks">
-        <h3 className="font-display text-center uppercase">Rank ladder</h3>
-        <div className="mt-4 flex flex-wrap items-stretch justify-center gap-2">
-          {[...ROLE_ORDER].reverse().map((r, i, arr) => (
-            <div key={r} className="flex items-center gap-2">
-              <div className="stat-tile" style={{ minWidth: 104, borderColor: ROLE_COLORS[r] }}>
-                <div className="text-3xl" aria-hidden="true">{ROLE_ICONS[r]}</div>
-                <div className="mt-1 text-sm font-extrabold">{r}</div>
-                <div className="lbl">{ROLE_SHORT[r]}</div>
-              </div>
-              {i < arr.length - 1 && <span className="text-xl text-[var(--accent2)]" aria-hidden="true"></span>}
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-center text-xs text-[var(--dim)]">Only a higher rank can promote, demote or kick a lower one. Every change is logged.</p>
-      </section>
+      {/* Nothing else follows the directory (owner's direction,
+          Nov 22 2026): the Crew Leaderboard entry card and the
+          Rank ladder section that used to close this page are
+          REMOVED — there is no ranking system in ViceSunshine.
+          Crew roles (Leader, Co-Leader, Elder, Member, Recruit)
+          still exist inside each crew for managing members;
+          they are simply not displayed as a ladder here. */}
     </div>
   );
 }
@@ -11908,7 +12686,7 @@ function CreateClanForm({
   }
 
   const preview: ClanSummary = {
-    id: 0, name: name.trim() || "Your Crew", tag: tag.trim().toUpperCase() || "NVDA", color, emblem, emblemEffect: "",
+    id: 0, name: name.trim() || "Your Crew", tag: tag.trim().toUpperCase() || "NVDA", color, colorFinish: "", emblem, emblemEffect: "",
     motto, description, rules, requirements, badge: "", themeAccent: "", platform: clanPlatform, region, language, playstyle, privacy,
     maxMembers: 0, memberCount: 1, eventsHeld: 0, wins: 0,
     faction: "", factionPoints: 0, trophies: 0, league: "Ocean Drive",
@@ -11937,7 +12715,10 @@ function CreateClanForm({
         create.mutate();
       }}
     >
-      <h3 className="font-display uppercase"> Found your crew</h3>
+      <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-[var(--accent2)]">Crew founder</p>
+      <h3 className="font-display mt-1 text-2xl uppercase leading-tight sm:text-[28px]"> Found your crew</h3>
+      <p className="mt-1.5 max-w-[520px] text-sm leading-relaxed text-[var(--dim)]">Three quick steps — name it, style it, launch it. Your crew chat opens the moment it&apos;s founded. Premium Leaders can found with the Premium emblems, a custom colour and chrome finishes.</p>
+      <div className="mt-4 h-[3px] rounded-full" style={{ background: "linear-gradient(90deg, var(--accent), var(--accent2), transparent)" }} aria-hidden="true" />
 
       {/* Step indicator: 1 Identity → 2 Details → 3 Review */}
       <ol className="mt-4 flex items-center gap-1.5" aria-label="Create a crew — steps">
@@ -12013,7 +12794,7 @@ function CreateClanForm({
                   {availMsg(tagChecked && tagFormatOk && !tagTaken, tagTaken, `✓ Tag [${tag.trim().toUpperCase()}] is available.`, `Tag [${tag.trim().toUpperCase()}] is already taken by another crew — no two crews can share a tag. Try another.`)}
                 </div>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--dim)]">
-                  Your tag shows next to every member&apos;s name while they are in the crew — like <strong className="text-[var(--text)]">{gamertag}</strong> <strong style={{ color }}>[{tag.trim().toUpperCase() || "NVDA"}]</strong> — and it disappears the moment they leave.
+                  Your tag shows in front of every member&apos;s name while they are in the crew — like <strong style={{ color }}>[{tag.trim().toUpperCase() || "NVDA"}]</strong> <strong className="text-[var(--text)]">{gamertag}</strong> — and it disappears the moment they leave.
                 </p>
               </div>
 
@@ -12033,15 +12814,21 @@ function CreateClanForm({
               {!premium && <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--dim)]">Premium members can also found their crew with the gold Vice Crest, Eclipse or Royal Palm emblem.</p>}
 
               <span className="flabel" id="color-label">Crew colour</span>
-              <p className="mb-2 text-[13px] leading-relaxed text-[var(--dim)]">The Crew Colours catalogue — the same colours as Crew Settings → Crew customisation. This colour is your crew's colour: it colours the Crew tag next to every member's name and the crew emblem. Premium colours need your Premium.</p>
+              <p className="mb-2 text-[13px] leading-relaxed text-[var(--dim)]">The Crew Colours catalogue — the same colours as Crew Settings → Crew customisation. This colour is your crew's colour: it colours the Crew tag in front of every member's name and the crew emblem. Every named colour is free; the custom colour tool below is part of Premium.</p>
               <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="color-label">
-                {CREW_CATALOGUE_COLORS.map((col) => {
-                  const lockedPremium = !!col.premiumOnly && !premium;
-                  return (
-                    <button key={col.value} type="button" className="swatch" style={{ background: col.value, opacity: lockedPremium ? 0.35 : 1 }} aria-pressed={color.toLowerCase() === col.value.toLowerCase()} disabled={lockedPremium} onClick={() => setColor(col.value)} aria-label={lockedPremium ? `Crew colour ${col.name} — included with Premium` : `Crew colour ${col.name}${col.premiumOnly ? " — Premium" : ""}`} />
-                  );
-                })}
+                {CREW_CATALOGUE_COLORS.map((col) => (
+                  <button key={col.value} type="button" className="swatch" style={{ background: col.value }} aria-pressed={color.toLowerCase() === col.value.toLowerCase()} onClick={() => setColor(col.value)} aria-label={`Crew colour ${col.name}`} />
+                ))}
               </div>
+              <p className="mt-3 text-[13px] font-bold">Or a custom colour — any colour you like {premium ? "" : "— Premium"}:</p>
+              <div className="mt-1.5">
+                <CustomColorControl id="clan-custom-color" value={color} onChange={setColor} fieldProps={FIELDS.createClan.color} disabled={!premium} />
+              </div>
+              {premium ? (
+                <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--dim)]">Your Premium is on — the custom colour applies to your emblem, your members&apos; tags and your crew card the moment the crew is founded. Chrome, Gold Chrome, Rose Gold and Iridescent finishes live in Crew Settings → Crew customisation once your crew exists.</p>
+              ) : (
+                <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--dim)]">Custom colours are included with Premium — pick any named colour above for free, or go Premium to found your crew with a custom colour and finishes like Chrome.</p>
+              )}
             </div>
           )}
 
@@ -12440,7 +13227,15 @@ function ClanHome({
       await api.joinClan({ clanId, playerKey, gamertag, platform: "PS5", message: applyMsg }),
     onSuccess: (res) => {
       setError("");
-      setNotice(res.joined ? "Welcome in — you joined as a Recruit. Say hello in chat!" : "Application sent. A Leader or Co-Leader will review it.");
+      setNotice(
+        res.joined
+          ? "Welcome in — you joined as a Recruit. Say hello in chat!"
+          : res.requested
+            ? res.requestReason === "returning"
+              ? "Request sent — you were in this crew before, so there's no direct way back in. Your request is in the crew chat now, and the Leader can accept it there."
+              : "Request sent — you already joined a crew this week (one direct join a week, to stop crew-hopping). Your request is in the crew chat now, and the Leader can accept it there."
+            : "Application sent. A Leader or Co-Leader will review it.",
+      );
       invalidate();
     },
     onError: fail,
@@ -12550,19 +13345,13 @@ function ClanHome({
             <div className="h-[190px] w-full sm:h-[220px]" style={{ background: `linear-gradient(135deg, ${accent}55, rgba(11,11,20,0.92) 65%), var(--surface2)` }} role="img" aria-label="This crew has not equipped a calling card banner yet — its crew colour shows here instead" />
           )}
           <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${accent}33, rgba(11,11,20,0.88) 88%)` }} />
-          <div className="absolute right-3 top-3 flex gap-2">
-            <LeagueBadge league={c.league} />
-          </div>
-          <div className="absolute left-3 top-3">
-            <span className="trophy-pill">{c.trophies} pts</span>
-          </div>
         </div>
         <div className="relative px-5 pb-5">
           <div className="-mt-14 flex flex-col items-center text-center">
             <span className="block">
-              <ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} size={104} />
+              <ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} effect={c.emblemEffect} finish={c.colorFinish} size={104} />
             </span>
-            <h2 className="font-display mt-1 text-3xl uppercase leading-tight">{c.name}{c.badge ? <span className="ml-2 align-middle rounded-full bg-[var(--accent)] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white">{c.badge}</span> : null}</h2>
+            <h2 className="font-display mt-1 text-3xl uppercase leading-tight"><span style={{ color: c.color }}>[{c.tag}]</span> {c.name}{c.badge ? <span className="ml-2 align-middle rounded-full bg-[var(--accent)] px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white">{c.badge}</span> : null}</h2>
             <p className="italic text-[var(--dim)]">{c.motto || "Ready for Leonida"}</p>
             <p className="mt-1.5 text-sm font-bold">Crew tag <span style={{ color: c.color }}>[{c.tag}]</span> <span className="font-semibold text-[var(--dim)]">— every member shows it in front of their name while they are in this crew</span></p>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
@@ -12577,19 +13366,18 @@ function ClanHome({
             </div>
           </div>
 
-          <div className="mx-auto mt-4 grid max-w-lg grid-cols-4 gap-2">
-            <div className="stat-tile"><div className="num" style={{ color: "var(--amber)" }}>{c.trophies}</div><div className="lbl"> Trophies</div></div>
+          {/* Crew stats — four even tiles. "Events" and
+              "Events held" are SEPARATE stats again (restored,
+              owner's question Nov 22 2026): Events counts the
+              Community Events this crew has on the books right
+              now (getClan's eventsCount, counted live from the
+              events rows it hosts); Events held is the crew's
+              lifetime counter, which only ever goes up. */}
+          <div className="mx-auto mt-4 grid max-w-xl grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="stat-tile"><div className="num">{c.memberCount}</div><div className="lbl"> Members · Unlimited</div></div>
-            <div className="stat-tile"><div className="num">{c.wins}</div><div className="lbl"> Wins</div></div>
-            <div className="stat-tile"><div className="num">{c.eventsHeld}</div><div className="lbl"> Events</div></div>
-          </div>
-
-          <div className="mx-auto mt-4 grid max-w-lg grid-cols-3 gap-2">
-            <div className="stat-tile"><div className="num">{c.effectiveSeasonPoints}</div><div className="lbl">Season points</div></div>
-            <div className="stat-tile"><div className="num">{c.walletCredits}</div><div className="lbl">Crew wallet (VC)</div></div>
+            <div className="stat-tile"><div className="num">{d.eventsCount}</div><div className="lbl">Events</div></div>
             <div className="stat-tile"><div className="num">{c.eventsHeld}</div><div className="lbl">Events held</div></div>
-            <div className="stat-tile"><div className="num">{c.seasonRank ? `#${c.seasonRank}` : "—"}</div><div className="lbl">Season rank (Global)</div></div>
-            <div className="stat-tile"><div className="num">{c.avgMemberLevel.toFixed(1)}</div><div className="lbl">Avg member level</div></div>
+            <div className="stat-tile"><div className="num">{c.walletCredits}</div><div className="lbl">Crew wallet (VC)</div></div>
           </div>
 
 
@@ -12625,12 +13413,29 @@ function ClanHome({
               <button
                 type="button"
                 className="btn-game mt-3 w-full"
-                disabled={!gamertag || join.isPending}
+                disabled={!gamertag || join.isPending || (c.privacy === "Public" && d.myJoinState.pendingRequest)}
                 onClick={() => join.mutate()}
+                aria-label={c.privacy === "Public" && d.myJoinState.pendingRequest ? `Your join request for ${c.name} is already with the Leader` : undefined}
               >
-                {c.privacy === "Public" ? " Join as Recruit" : " Apply to join"}
+                {c.privacy === "Public"
+                  ? d.myJoinState.pendingRequest
+                    ? "Request sent — waiting for the Leader"
+                    : d.myJoinState.directAllowed
+                      ? " Join as Recruit"
+                      : " Request to join"
+                  : " Apply to join"}
               </button>
               {!gamertag && <p className="mt-2 text-center text-sm text-[var(--amber)]">Set your gamertag in your profile first.</p>}
+              {c.privacy === "Public" && d.myJoinState.pendingRequest && (
+                <p className="mt-2 text-center text-sm leading-relaxed text-[var(--dim)]">Your request is in this crew&apos;s chat — the Leader accepts it there, and you&apos;re in the moment they do.</p>
+              )}
+              {c.privacy === "Public" && !d.myJoinState.pendingRequest && !d.myJoinState.directAllowed && (
+                <p className="mt-2 text-center text-sm leading-relaxed text-[var(--dim)]">
+                  {d.myJoinState.reason === "returning"
+                    ? "You were in this crew before — coming back needs the Leader's OK, so this sends a request into the crew chat instead of putting you straight back in."
+                    : "You already joined a crew this week — one direct join a week, to stop crew-hopping. This sends a request into the crew chat for the Leader to accept instead."}
+                </p>
+              )}
               <p className="mt-2 text-center text-sm leading-relaxed text-[var(--dim)]">Joining gives you this crew&apos;s Crew tag — <strong style={{ color: c.color }}>[{c.tag}]</strong> shows in front of your name, in this crew&apos;s colour, for as long as you are a member.</p>
             </div>
           )}
@@ -12649,6 +13454,7 @@ function ClanHome({
                         : `You are the only member — leaving dissolves ${c.name} and its crew chat, and your Crew tag [${c.tag}] comes off your name.`
                       : `You will leave ${c.name} and its crew chat, and your Crew tag [${c.tag}] comes off your name the moment you leave. You can only be in one crew at a time, so leaving frees you to join another — and you will get that crew's tag instead.`}
                   </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-[var(--dim)]">Heads up: there&apos;s no direct way back into a crew you&apos;ve been in — coming back means sending a request the Leader accepts in the crew chat. And direct crew joins are one a week.</p>
                   <div className="mt-2.5 flex justify-center gap-2">
                     <button type="button" className="btn-game" disabled={leave.isPending} onClick={() => leave.mutate()} aria-label={`Confirm leaving ${c.name}`}>Yes, leave</button>
                     <button type="button" className="btn-ghost" onClick={() => setConfirmLeave(false)}>Stay</button>
@@ -12703,9 +13509,9 @@ function ClanHome({
         )}
       </section>
 
-      {/* Members — every member shows the crew tag next to their
-          name, rendered live from their membership: it is here
-          while they are in the crew and gone the moment they
+      {/* Members — every member shows the crew tag in front of
+          their name, rendered live from their membership: it is
+          here while they are in the crew and gone the moment they
           leave or are kicked. */}
       <section className="card mt-4 p-5" aria-label={`${c.name} members`}>
         <h3 className="font-display uppercase">Members · {d.members.length} <span className="text-sm font-bold normal-case text-[var(--dim)]">— unlimited spots</span></h3>
@@ -12720,8 +13526,8 @@ function ClanHome({
                 <CosmeticAvatar name={m.gamertag} size={38} avatarUrl={m.avatarUrl} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-bold">
-                    {m.gamertag}{" "}
-                    <span className="ml-1 inline-block rounded-md px-1.5 py-0.5 align-middle text-[11px] font-extrabold" style={{ background: "var(--surface2)", color: c.color, border: `1px solid ${c.color}` }}>[{c.tag}]</span>
+                    <span className="mr-1.5 inline-block rounded-md px-1.5 py-0.5 align-middle text-[11px] font-extrabold" style={{ background: "var(--surface2)", color: c.color, border: `1px solid ${c.color}` }}>[{c.tag}]</span>
+                    {m.gamertag}
                     {m.isMe && <span className="ml-1.5 text-[12px] font-semibold text-[var(--dim)]">(you)</span>}
                   </span>
                   <span className="block text-[12px] text-[var(--dim)]">{m.platform} · joined {new Date(m.joinedAt).toLocaleDateString()}</span>
@@ -12760,10 +13566,17 @@ function ClanHome({
               <li key={a.id} className="flex flex-wrap items-center gap-2.5 rounded-xl border border-[var(--border)] px-3 py-2.5">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-bold">{a.gamertag}</span>
+                  {a.kind === "join_request" && <span className="block text-[12px] font-bold text-[var(--dim)]">Join request — couldn&apos;t join directly, so it&apos;s waiting on the Leader (it&apos;s also a card in the crew chat).</span>}
                   {a.message && <span className="block truncate text-[13px] text-[var(--dim)]">“{a.message}”</span>}
                 </span>
-                <button type="button" className="btn-game" style={{ minHeight: 34, padding: "4px 12px", fontSize: 13 }} disabled={reviewApp.isPending} onClick={() => reviewApp.mutate({ applicationId: a.id, approve: true })} aria-label={`Approve ${a.gamertag}'s application`}>Approve</button>
-                <button type="button" className="btn-ghost" style={{ minHeight: 34, padding: "4px 12px", fontSize: 13 }} disabled={reviewApp.isPending} onClick={() => reviewApp.mutate({ applicationId: a.id, approve: false })} aria-label={`Decline ${a.gamertag}'s application`}>Decline</button>
+                {a.kind === "join_request" && d.myRole !== "Leader" ? (
+                  <span className="flex-none text-[12.5px] font-bold text-[var(--dim)]">Leader decides</span>
+                ) : (
+                  <>
+                    <button type="button" className="btn-game" style={{ minHeight: 34, padding: "4px 12px", fontSize: 13 }} disabled={reviewApp.isPending} onClick={() => reviewApp.mutate({ applicationId: a.id, approve: true })} aria-label={`Approve ${a.gamertag}'s application`}>Approve</button>
+                    <button type="button" className="btn-ghost" style={{ minHeight: 34, padding: "4px 12px", fontSize: 13 }} disabled={reviewApp.isPending} onClick={() => reviewApp.mutate({ applicationId: a.id, approve: false })} aria-label={`Decline ${a.gamertag}'s application`}>Decline</button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -12863,7 +13676,11 @@ function ClanHome({
                           <button key={col.value} type="button" className="swatch" style={{ background: col.value }} aria-pressed={eColor.toLowerCase() === col.value.toLowerCase()} onClick={() => setEColor(col.value)} aria-label={`Crew colour ${col.name}`} />
                         ))}
                       </div>
-                      <p className="mt-1.5 text-[12.5px] text-[var(--dim)]">The Crew Colours catalogue — the same colours as Crew customisation. Premium colours need the crew owner to have Premium; pick those in the Crew customisation tab.</p>
+                      <p className="mt-1.5 text-[12.5px] text-[var(--dim)]">The Crew Colours catalogue — the same colours as Crew customisation, and every named colour is free. The custom colour tool below is part of Premium{d.ownerPremiumActive ? " — your Premium is on, so any colour you pick applies" : " — it unlocks while the crew's owner has Premium; finishes like Chrome live in the Crew customisation tab"}.</p>
+                      <p className="mt-3 text-[12.5px] font-bold">Or a custom colour — any colour you like{d.ownerPremiumActive ? "" : " — Premium"}:</p>
+                      <div className="mt-1.5">
+                        <CustomColorControl id="crew-edit-custom-color" value={eColor} onChange={setEColor} fieldProps={FIELDS.updateClan.color} disabled={!d.ownerPremiumActive} />
+                      </div>
                     </div>
                   </div>
                   <p className="mt-2 text-[13px] text-[var(--dim)]">Bio, rules and requirements live in the Bio &amp; Rules tab — one place, no duplicates. Members: Unlimited — crews have no member cap, so there is no cap to set here.</p>
@@ -12897,7 +13714,7 @@ function ClanHome({
                   the customisation sections (owner's direction):
                   Leader-only, like everything in this tab. */}
               <CrewHeaderBackgroundEditor clan={c} playerKey={playerKey} onChanged={invalidate} />
-              <CrewCustomisationPanel clanId={clanId} playerKey={playerKey} clanName={c.name} clanColor={c.color} clanTag={c.tag} goPremium={goPremium} />
+              <CrewCustomisationPanel clanId={clanId} playerKey={playerKey} clanName={c.name} clanColor={c.color} clanFinish={c.colorFinish} clanTag={c.tag} clanEmblem={c.emblem} clanEffect={c.emblemEffect} goPremium={goPremium} />
             </div>
           )}
         </section>
@@ -13119,7 +13936,7 @@ function EventCard({
   const countdownText = !Number.isNaN(startMs) && startMs > nowMs ? formatCountdown(startMs - nowMs) : "";
   return (
     <article className="card overflow-hidden">
-      <div className="relative h-[168px] w-full">
+      <div className="relative h-[120px] w-full sm:h-[168px]">
         <img decoding="async"
           src={ev.imageUrl || eventArtForType(ev.type).img}
           alt={ev.imageUrl ? `Picture for ${ev.title}, uploaded by the host` : eventArtForType(ev.type).alt}
@@ -13132,8 +13949,8 @@ function EventCard({
         </span>
         <span className="absolute bottom-3 right-4 rounded-full bg-[rgba(11,11,20,0.85)] px-3 py-1.5 text-[12.5px] font-bold text-white">{ev.going}/{ev.maxPlayers} going</span>
       </div>
-      <div className="p-5">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="p-3.5 sm:p-5">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
         <span className="rounded-full bg-[var(--accent)] px-2.5 py-0.5 text-xs font-bold text-white">Community Event</span>
         <span className="rounded-full bg-[var(--surface2)] px-2.5 py-0.5 text-xs font-bold">{ev.type}</span>
         <span className="rounded-full bg-[var(--surface2)] px-2.5 py-0.5 text-xs font-bold">{ev.platform}</span>
@@ -13149,9 +13966,9 @@ function EventCard({
         {live && <span className="rounded-full bg-[var(--accent2)] px-2.5 py-0.5 text-xs font-extrabold text-[#04211d]">Live now</span>}
         {soon && ev.myRsvp === "Going" && <span className="rounded-full px-2.5 py-0.5 text-xs font-bold" style={{ border: "1px solid var(--amber)", color: "var(--amber)" }}>Starts within the hour — your reminder</span>}
       </div>
-      <h3 className="mt-2 text-lg font-bold">{ev.title}</h3>
-      <p className="mt-1 text-sm font-semibold text-[var(--accent2)]">{fmtEventWhen(ev.startsAt, ev.timezone)}</p>
-      <p className="text-sm text-[var(--dim)]">
+      <h3 className="mt-2 text-[15px] font-bold sm:text-lg">{ev.title}</h3>
+      <p className="mt-1 text-[13px] font-semibold text-[var(--accent2)] sm:text-sm">{fmtEventWhen(ev.startsAt, ev.timezone)}</p>
+      <p className="text-[13px] text-[var(--dim)] sm:text-sm">
         Hosted by {ev.host || "the community"}{ev.hostClanName ? <> · <strong className="text-[var(--text)]">{ev.hostClanName}</strong> crew</> : ""} · max {ev.maxPlayers} players (GTA lobby limit: 32) · {ev.spotsLeft > 0 ? `${ev.spotsLeft} spot${ev.spotsLeft === 1 ? "" : "s"} left` : "Full"} · {ev.prize}
       </p>
       {ev.hashtags.length > 0 && (
@@ -13163,8 +13980,8 @@ function EventCard({
           ))}
         </div>
       )}
-      {ev.description && <p className="mt-2 text-sm leading-relaxed text-[var(--dim)]">{ev.description}</p>}
-      {ev.rules && <p className="mt-1 text-sm text-[var(--dim)]"><strong className="text-[var(--text)]">Rules:</strong> {ev.rules}</p>}
+      {ev.description && <p className="mt-2 line-clamp-3 text-[13px] leading-relaxed text-[var(--dim)] sm:line-clamp-none sm:text-sm">{ev.description}</p>}
+      {ev.rules && <p className="mt-1 line-clamp-2 text-[13px] text-[var(--dim)] sm:line-clamp-none sm:text-sm"><strong className="text-[var(--text)]">Rules:</strong> {ev.rules}</p>}
       {ev.results && (
         <p className="mt-2 rounded-lg bg-[var(--surface2)] p-3 text-sm whitespace-pre-line">
           <strong className="text-[var(--amber)]">Results:</strong> {ev.results}
@@ -13575,7 +14392,7 @@ function EventsView({
   const pickTag = (t: string) => { setTag(t); setSearch(""); };
 
   return (
-    <div>
+    <div className="events-view">
       <SectionBanner src={secEventsUrl} alt="Original ViceSunshine illustration of a car meet at dusk with rows of colourful muscle cars" />
       <SectionTitle sub="Car meets, races, time trials, screenshot contests and crew events — hosted by crew Leaders whose crew has 10 or more members. Find one by name or by hashtag, and RSVP to join. Public events are open to everyone; private events are invite-only. Voice chat and lobbies happen on the ViceSunshine Discord server — find the invite in the Discord tab under Community.">
         Community Events
@@ -13731,7 +14548,7 @@ function EventsView({
                 <div className="mt-2">
                   <label className="flabel" htmlFor="ev-clan">Host crew</label>
                   <select id="ev-clan" className="field" value={activeClanId} onChange={(e) => setClanId(Number(e.target.value))} aria-label="Crew hosting this event">
-                    {eligibleClans.map((c) => <option key={c.clanId} value={c.clanId}>{c.clanName} [{c.clanTag}] · {c.memberCount} members</option>)}
+                    {eligibleClans.map((c) => <option key={c.clanId} value={c.clanId}>[{c.clanTag}] {c.clanName} · {c.memberCount} members</option>)}
                   </select>
                 </div>
               )}
@@ -14378,6 +15195,10 @@ function SettingsView({ playerKey, gamertag, go, openLegal, onClose, initialSect
     setLoggingOut(true);
     try {
       window.localStorage.setItem("leonida-player-key", SIGNED_OUT_MARKER);
+      // The backup slot playerKey() recovers from gets the marker
+      // too, so a deliberate sign-out is never resurrected by the
+      // key-recovery path.
+      window.localStorage.setItem("leonida-player-key-backup", SIGNED_OUT_MARKER);
       window.localStorage.removeItem("viceverse-saved-v1");
       window.localStorage.removeItem("viceverse-tracked-goals-v1");
       window.localStorage.removeItem("viceverse-saved-feed-v1");
@@ -14391,7 +15212,7 @@ function SettingsView({ playerKey, gamertag, go, openLegal, onClose, initialSect
     // storage flush is slow. The reload stays as the fallback for
     // any mount without the callback.
     window.setTimeout(() => {
-      try { window.localStorage.setItem("leonida-player-key", SIGNED_OUT_MARKER); } catch { /* ignore */ }
+      try { window.localStorage.setItem("leonida-player-key", SIGNED_OUT_MARKER); window.localStorage.setItem("leonida-player-key-backup", SIGNED_OUT_MARKER); } catch { /* ignore */ }
       if (onSignedOut) onSignedOut(); else window.location.reload();
     }, 450);
   };
@@ -15219,7 +16040,7 @@ function TikTokPlayer({
    Events, Bugs, Guides, Crews, Database). Before this, the field
    was not in a form and had no submit path at all, so Enter and
    suggestion taps visibly did nothing. */
-function SocialTopBar({ playerKey, gamertag, go, searchValue, onSearchChange, searchPlaceholder, searchLabel, onCreate, onSearchSubmit, centerLogo, onOpenMenu, avatarUrl, drawerOpen, stickyTop }: {
+function SocialTopBar({ playerKey, gamertag, go, searchValue, onSearchChange, searchPlaceholder, searchLabel, onCreate, onSearchSubmit, centerLogo, onOpenMenu, avatarUrl, drawerOpen }: {
   playerKey: string;
   gamertag: string;
   go: (t: Tab) => void;
@@ -15250,26 +16071,6 @@ function SocialTopBar({ playerKey, gamertag, go, searchValue, onSearchChange, se
   onOpenMenu?: () => void;
   avatarUrl?: string;
   drawerOpen?: boolean;
-  // Feed only (owner's direction, Nov 21 2026): on PHONE ONLY the
-  // row STICKS to the top of the scrolling page as a small thin
-  // layer while the Feed scrolls under it, so the profile circle,
-  // +, VS logo and the search / messages / bell icons stay
-  // reachable — and the way out stays in reach — even scrolled
-  // all the way down. On PC the row is NOT sticky: it scrolls away
-  // with the page like any other row (owner's correction, Nov 21
-  // 2026). The pinned layer sits FLUSH at the very top of the
-  // screen with no gap (owner's correction, Nov 21 2026): the
-  // shell gives the Feed tab NO top padding at all (see the
-  // <main> classes), so this wrapper needs no negative top
-  // margin — sticky pins its margin box at top: 0, and a negative
-  // margin would leave a strip of scrolled Feed showing above
-  // the pinned bar, half-cutting whatever scrolls through it.
-  // The wrapper only bleeds out over the main column's SIDE
-  // padding, with matching inner side padding, and keeps a slim
-  // top padding so the whole top section stays compact and
-  // starts all the way at the top on phone and PC alike. The row
-  // itself looks exactly the same; only its behaviour changes.
-  stickyTop?: boolean;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [seenAt, setSeenAt] = useState<number>(() => {
@@ -15316,7 +16117,7 @@ function SocialTopBar({ playerKey, gamertag, go, searchValue, onSearchChange, se
   const plusGlyphCls = centerLogo ? "h-[21px] w-[21px] lg:h-[26px] lg:w-[26px]" : undefined;
   const btnMin = centerLogo ? 40 : 44;
   return (
-    <div className={stickyTop ? "sticky top-0 z-30 -mx-5 mb-1 bg-[var(--bg)] px-5 pb-1 pt-1.5 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:mb-2 lg:px-0 lg:pb-0 lg:pt-1.5" : "mb-3"}>
+    <div className="mb-3">
       <div className={`flex items-center ${centerLogo ? "relative gap-1 lg:gap-1.5" : "gap-1.5"} ${onCreate ? "justify-between" : "justify-end"}`}>
         {(onOpenMenu || onCreate) && (
           <div className="flex items-center gap-1 lg:gap-1.5">
@@ -15330,7 +16131,7 @@ function SocialTopBar({ playerKey, gamertag, go, searchValue, onSearchChange, se
                 aria-expanded={drawerOpen ?? false}
                 aria-label="Open the menu — your account, Profile, Subscription, History, Settings and all sections"
               >
-                <CosmeticAvatar name={gamertag || "Guest"} size={32} avatarUrl={avatarUrl ?? ""} />
+                <CosmeticAvatar name={gamertag || "Guest"} size={32} avatarUrl={avatarUrl ?? ""} eager />
               </button>
             )}
             {onCreate && (
@@ -15710,12 +16511,12 @@ function NotificationsView({ playerKey, gamertag, go, onOpenProfile, onBack }: {
     </li>
   );
   return (
-    <div className="mx-auto w-full max-w-[680px]">
+    <div className="notifications-view mx-auto w-full max-w-[680px]">
       <div className="flex items-center gap-2 pb-3">
         <button type="button" className="flex h-11 w-11 flex-none items-center justify-center rounded-full hover:bg-[var(--surface2)]" style={{ minHeight: 44 }} onClick={onBack} aria-label="Back to where you were">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
         </button>
-        <h2 className="flex-1 text-[22px] font-extrabold tracking-tight">Notifications</h2>
+        <h2 className="flex-1 text-[19px] font-extrabold tracking-tight sm:text-[22px]">Notifications</h2>
       </div>
       <div className="flex flex-wrap gap-2 pb-4" role="group" aria-label="Filter notifications">
         {chips.map((c) => (
@@ -16358,17 +17159,22 @@ type CreatorDest = "post" | "story" | "clip";
    uploadFeedMedia store as every other upload, so a camera
    photo is a real post, story or video — nothing is faked,
    and a denied camera falls back to upload cleanly.
-   Swipe + pinned switcher (owner's direction, Nov 21 2026):
-   SWIPING DOWN on the camera opens the New post tab (the
-   post picker), the same as tapping Post in the mode bar.
-   On that picker tab the Post / Story switcher sits at the
-   BOTTOM of the screen and stays FIXED there — it does not
-   scroll away with the picker grid, and it stays put when
-   switching between the Post and Story tabs. */
+   Swipe down (owner's direction, Nov 21 2026): SWIPING
+   DOWN on the camera opens the New post tab (the post
+   picker), the same as tapping Post in the mode bar. There
+   is NO Post / Story row at the bottom of that picker tab —
+   the owner had it removed; the picker you land on is the
+   one you opened, and the publish destination is picked on
+   the Details step instead. */
 type CreatorItem = {
   blob: Blob;
   kind: "image" | "video";
   url: string;
+  // Taken with the live camera just now (as opposed to picked
+  // from the gallery / album). A live capture posts ON ITS OWN
+  // (owner's direction, Nov 21 2026): one live picture or one
+  // live video per post — only gallery picks can be several.
+  live?: boolean;
   duration: number;
   exposure: number;
   contrast: number;
@@ -16492,9 +17298,15 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   const pressActiveRef = useRef(false);
   const heldRecordRef = useRef(false);
   const pointerUsedRef = useRef(false);
-  // Step by step (owner's direction): Capture → Preview →
-  // Edit → Details. Nothing is all on one screen any more, and
-  // stories cannot be viewed from here — this is only posting.
+  // The post flow (owner's direction, Nov 21 2026 — the
+  // original simple process restored): camera / picker →
+  // straight to the New post details screen → Share. There is
+  // NO Preview step and NO Edit step on the post path any
+  // more — the 4-step wizard (Capture → Preview → Edit →
+  // Details, with its step indicator) was added without the
+  // owner's consent and is removed. The story and clip paths
+  // still pass through Preview (and Edit) before their
+  // details screen, exactly as they did.
   const [step, setStep] = useState<"capture" | "preview" | "edit" | "details">("capture");
   const [items, setItems] = useState<CreatorItem[]>([]);
   const [sel, setSel] = useState(0);
@@ -16505,7 +17317,7 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   // starts on STORY (initialDest) — the same camera, aimed at a
   // story instead of a post.
   const [dest, setDest] = useState<CreatorDest>(initialDest);
-  const [postCat, setPostCat] = useState<"Post" | "Meme" | "Funny" | "Gameplay" | "Car Meet" | "Tutorial" | "Discussion" | "Screenshot">("Post");
+  const [postCat] = useState<"Post" | "Meme" | "Funny" | "Gameplay" | "Car Meet" | "Tutorial" | "Discussion" | "Screenshot">("Post");
   const [facing, setFacing] = useState<"user" | "environment">("environment");
   // No camera rail (owner's direction, Nov 21 2026): Create,
   // Effects and the collapse chevron are gone from the camera
@@ -16515,9 +17327,11 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   // and the X close button (top right).
   const [torchOn, setTorchOn] = useState(false);
   // Instagram picker screens (owner's direction, Nov 20 2026):
-  // the bottom bar has only Post and Story. Pressing one opens
-  // its picker — "New post" or "Add to story" — on laptop and
-  // phone alike. The camera restarts when the picker closes.
+  // pressing Post on the camera opens the "New post" picker,
+  // and the Your story entry opens the same creator aimed at
+  // a story — on laptop and phone alike. There is no Post /
+  // Story row at the bottom of the picker any more (removed
+  // Nov 21 2026). The camera restarts when the picker closes.
   // Opened from the Profile's Upload buttons (initialPicker)
   // the matching picker starts OPEN — "post" for a photo post,
   // "clip" for a clip — so Upload lands on the picker, never
@@ -16546,26 +17360,89 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   // kind can even be tapped.
   const albumKind: "image" | "video" | null = uploadKind === "photos" ? "image" : uploadKind === "clips" || picker === "clip" ? "video" : null;
   const albumQ = useFullAlbum(playerKey, Boolean(picker));
+  // Session picks that also joined the album in the background
+  // (a device pick is uploaded and recorded under an album URL
+  // while the pick itself keeps its own device URL): maps the
+  // pick's URL to its album URL, so the picker grid can hide
+  // the album twin tile while the pick is in the post — the
+  // same photo must show ONCE in the grid, not twice (owner's
+  // report, Nov 21 2026: a duplicate tile made it look like
+  // two photos were picked when only one was).
+  const albumTwinRef = useRef(new Map<string, string>());
   const albumGridItems = albumQ.items.filter((it) => !albumKind || it.kind === albumKind);
+  // The album tiles actually SHOWN in the picker grid: an album
+  // photo that is picked FROM the album stays in the grid as
+  // its one tile, carrying its pick-number badge — one photo,
+  // one tile, so what you see picked is exactly what posts
+  // (the earlier duplicate-photo bug, owner's report Nov 21
+  // 2026, was the same photo showing as TWO tiles). A device
+  // pick's album twin (the same photo saved into the album in
+  // the background under a different URL) IS hidden while its
+  // pick is in the post — that pick already shows once, as its
+  // own picked tile.
+  const albumGridShown = albumGridItems.filter((ai) => !items.some((it) => it.url !== ai.url && albumTwinRef.current.get(it.url) === ai.url));
   // New post picker hero (owner's direction, Nov 21 2026):
   // Instagram style — the most recent photo sits LARGE above
-  // the Recents grid. The hero follows the current selection:
-  // once the user has picked something this session it shows
-  // the selected pick (tapping a grid tile moves the
-  // selection, so the big photo follows the tap); before any
-  // pick it shows the newest album photo (the album sources
-  // are newest first). Only the New post picker gets the
-  // hero — Add to story and New clip keep the plain grid.
+  // the Recents grid, in its OWN aspect ratio (never stretched
+  // or cropped into a fixed frame) and slim: its height is
+  // capped, so a wide photo stays a wide, short picture and a
+  // tall one is not blown up past half the screen. The hero
+  // follows the current selection: once the user has picked
+  // something this session it shows the selected pick
+  // (tapping a grid tile moves the selection, so the big
+  // photo follows the tap); before any pick it shows the
+  // newest album photo (the album sources are newest first).
+  // The New post and New clip pickers get the hero — Add to
+  // story keeps its plain grid.
   const postHero: { url: string; kind: "image" | "video" } | null = items[sel] ?? items[0] ?? albumGridItems[0] ?? null;
+  // Which picks live in the album grid under their own URL
+  // (album picks): in the post / clip pickers those show as
+  // their album tile with the pick badge, not as a second
+  // picked tile — one photo, one tile.
+  const albumUrlSet = new Set(albumGridItems.map((a) => a.url));
+  // Selecting several pictures (owner's direction, Nov 21
+  // 2026, later message — "being able to select multiple
+  // pictures, but make it actually work that u can post"):
+  // in the New post picker, taps ACCUMULATE — tap a photo to
+  // pick it (it gets the next pick number), tap the picked
+  // one on show again to un-pick it, up to 4 in one post, and
+  // Next / Share post them all as one swipeable post. The
+  // earlier tap-replaces-the-pick model made multi-select
+  // feel missing: every second tap silently threw the first
+  // photo away. The New clip picker stays single-pick (a
+  // video posts on its own, so a clip is exactly one video —
+  // a tap there replaces the pick). The story picker is
+  // untouched: a tap there takes the one tapped item straight
+  // to Preview.
+  const singlePick = picker === "clip";
   const [albumBusyUrl, setAlbumBusyUrl] = useState("");
   const [camSeq, setCamSeq] = useState(0);
+  // Camera tile options (owner's direction, Nov 21 2026): the
+  // picker's camera tile no longer jumps straight to the live
+  // camera — it opens a small options sheet with "Your
+  // library" (the device file picker) and "Take a picture"
+  // (the device camera). The old "Your library" tile is gone
+  // from the grid; the library lives behind this sheet now.
+  const [camMenuOpen, setCamMenuOpen] = useState(false);
   // "Add Yours" prompt written on the story as its sticker.
   const [storySticker, setStorySticker] = useState("");
   const [addYoursOpen, setAddYoursOpen] = useState(false);
   const [camState, setCamState] = useState<"starting" | "live" | "denied">("starting");
   const [recording, setRecording] = useState(false);
   const [caption, setCaption] = useState("");
-  const [title, setTitle] = useState("");
+  // The Details step's Add link (owner's direction, Nov 21
+  // 2026 — the Instagram-style New post screen): one optional
+  // web link that rides on the post and renders as a link chip
+  // under the caption in the Feed.
+  const [linkUrl, setLinkUrl] = useState("");
+  // The New post screen's Add location (owner's reference
+  // screenshots, Nov 21 2026): one optional place name that
+  // rides on the post (createFeedPost's location) and shows
+  // on the published post in the Feed. The Add location and
+  // Add link rows each expand in place to their input.
+  const [postLocation, setPostLocation] = useState("");
+  const [locOpen, setLocOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const [error, setError] = useState("");
   const [doneMsg, setDoneMsg] = useState("");
 
@@ -16610,8 +17487,18 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   }, [step, facing, gamertag, camSeq, picker]);
 
   const addBlob = (blob: Blob, kind: "image" | "video", duration = 0) => {
+    // Live captures post one at a time (owner's direction):
+    // a photo or video taken with the camera right now is the
+    // whole post — it never joins picks already made, and
+    // nothing joins it. Only gallery / album picks can be
+    // several (photos only — see onFiles). A story set is
+    // exempt: every item becomes its own story anyway.
+    if (dest !== "story" && items.length > 0) {
+      setError("A live capture posts on its own — you already have something picked. Finish this post first, or remove what's picked and take the shot again.");
+      return;
+    }
     const item: CreatorItem = {
-      blob, kind, url: URL.createObjectURL(blob), duration,
+      blob, kind, url: URL.createObjectURL(blob), duration, live: true,
       exposure: 100, contrast: 100, saturate: 100, shadow: 0, preset: "none",
     };
     setItems((prev) => {
@@ -16626,7 +17513,11 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
     if (kind === "video") setDest((d) => (d === "post" ? "clip" : d));
     else setDest((d) => (d === "clip" ? "post" : d));
     stopCamera();
-    setStep("preview");
+    // A capture aimed at a POST goes straight to the New post
+    // details screen (owner's restored simple flow) — no
+    // Preview, no Edit. Stories and clips keep their Preview.
+    const routedDest: CreatorDest = kind === "video" ? (dest === "post" ? "clip" : dest) : (dest === "clip" ? "post" : dest);
+    setStep(routedDest === "post" ? "details" : "preview");
   };
 
   const capturePhoto = () => {
@@ -16745,6 +17636,10 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
     }
     const picked = allowed.slice(0, Math.max(0, 4 - items.length));
     if (picked.length === 0) { setError("You can post up to 4 photos or videos at once — remove one to add another."); return; }
+    // Never drop the overflow silently: if the device picker
+    // handed back more than the post can hold, say so once the
+    // ones that fit are in.
+    const overflowPicked = allowed.length > picked.length;
     const made: CreatorItem[] = [];
     let skippedLongClip = false;
     for (const f of picked) {
@@ -16768,30 +17663,50 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
     }
     if (made.length === 0 && skippedLongClip) { setError("That video is over 60 seconds — clips are short. Trim it to 60 seconds or less and pick it again."); return; }
     if (made.length > 0) {
+      // What a post can hold (owner's direction, Nov 21 2026):
+      // several photos from the gallery, OR one video on its
+      // own — never a mix, never two videos, and a live capture
+      // already in the post always stays alone.
+      if (dest !== "story" && items.some((it) => it.live)) { setError("This post started with a live capture, and a live capture posts on its own — finish it, or remove it to pick from your gallery instead."); return; }
+      const combined = [...items, ...made];
+      const videoCount = combined.filter((it) => it.kind === "video").length;
+      if (dest !== "story" && videoCount > 1) { setError("Only one video per post — pick a single video, or pick photos instead."); return; }
+      if (dest !== "story" && videoCount === 1 && combined.length > 1) { setError("A video posts on its own — pick just the video, or pick photos without it."); return; }
+    }
+    if (made.length > 0) {
       setItems((prev) => [...prev, ...made].slice(0, 4));
       setSel(items.length);
+      if (overflowPicked) setError("A post holds up to 4 photos — the first ones that fit were added, the rest were left out.");
       if (!picker) {
         stopCamera();
-        setStep("preview");
+        // From the camera's gallery button: a post goes
+        // straight to the New post details screen; stories
+        // and clips keep their Preview step.
+        setStep(dest === "post" ? "details" : "preview");
       }
       // Album access is automatic (owner's direction): every
       // device pick also joins the player's album, so the same
       // pictures show in the picker grid from then on — not
       // just this once. Best-effort and in the background: the
       // pick itself has already worked either way.
-      for (const it of made) void savePickToAlbum(it.blob, it.kind);
+      for (const it of made) void savePickToAlbum(it.blob, it.kind, it.url);
     }
   };
 
   // Save one device pick into the player's ViceSunshine album:
   // upload it (photos downscaled first, like every upload),
   // then record it as an album addition.
-  const savePickToAlbum = async (blob: Blob, kind: "image" | "video") => {
+  const savePickToAlbum = async (blob: Blob, kind: "image" | "video", itemUrl = "") => {
     try {
       const { dataBase64, mimeType } = kind === "video" ? await blobToBase64(blob) : await optimizedPhotoUpload(blob, 1600);
       if (!dataBase64) return;
       const res = await api.uploadFeedMedia({ playerKey, filename: kind === "video" ? "album-clip.webm" : "album-photo.jpg", mimeType, dataBase64 });
       await api.addAlbumMedia({ playerKey, mediaUrl: res.url, mediaType: kind });
+      // Remember which album URL this session pick became
+      // BEFORE the album refetch below re-renders the grid, so
+      // the grid hides the pick's album twin tile and the photo
+      // shows once (see albumGridShown).
+      if (itemUrl) albumTwinRef.current.set(itemUrl, res.url);
       void qc.invalidateQueries({ queryKey: ["album-uploads", playerKey] });
     } catch { /* best-effort — the pick itself already worked */ }
   };
@@ -16801,15 +17716,51 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   // like a fresh device pick (its bytes are fetched so the
   // normal Preview → Edit → publish flow works unchanged, and
   // the clips 60-second rule is checked from its real length).
-  const addAlbumItem = async (ai: AlbumItem) => {
-    setError("");
+  const addAlbumItem = async (ai: AlbumItem, quiet = false) => {
+    // `quiet` is the hero auto-pick on picker open: a failure
+    // there must not greet the user with an error before they
+    // have tapped anything — the photo just stays un-picked.
+    const fail = (msg: string) => { if (!quiet) setError(msg); };
+    if (!quiet) setError("");
     const existing = items.findIndex((it) => it.url === ai.url);
     if (existing >= 0) {
-      setSel(existing);
-      if (picker === "story") { setPicker(null); setStep("preview"); }
+      if (picker === "story") {
+        setSel(existing);
+        setPicker(null);
+        setStep("preview");
+        return;
+      }
+      if (picker === "post") {
+        // Taps toggle in the New post picker: tapping a picked
+        // photo that is not on show puts it on show; tapping
+        // the one on show un-picks it.
+        if (existing !== sel) { setSel(existing); return; }
+        setItems((prev) => {
+          const next = prev.filter((_, j) => j !== existing);
+          setSel(Math.max(0, Math.min(sel, next.length - 1)));
+          return next;
+        });
+        return;
+      }
+      // New clip picker (single-pick): the tapped video is the
+      // pick — it becomes the only one.
+      const only = items[existing];
+      if (only && items.length > 1) setItems([only]);
+      setSel(0);
       return;
     }
-    if (items.length >= 4) { setError("You can post up to 4 photos or videos at once — remove one to add another."); return; }
+    // The 4-at-once cap and the mix rules bind when the tap
+    // ADDS to the picks (the New post picker's accumulating
+    // taps, or the story picker). A clip-picker tap replaces
+    // the pick, so the result is always exactly one item and
+    // always valid on its own.
+    if (!singlePick && items.length >= 4) { fail("You can post up to 4 photos at once — un-pick one to add another."); return; }
+    // Same composition rules as a fresh gallery pick: a live
+    // capture already in the post stays alone, and a video
+    // always posts on its own.
+    if (dest !== "story" && items.some((it) => it.live)) { fail("This post started with a live capture, and a live capture posts on its own — finish it, or remove it to use your album instead."); return; }
+    if (!singlePick && dest !== "story" && ai.kind === "video" && items.length > 0) { fail("A video posts on its own — remove what's picked to post this video, or keep the photos and skip the video."); return; }
+    if (!singlePick && dest !== "story" && ai.kind === "image" && items.some((it) => it.kind === "video")) { fail("This post already has its video, and a video posts on its own — remove the video to post photos instead."); return; }
     if (albumBusyUrl) return;
     setAlbumBusyUrl(ai.url);
     try {
@@ -16827,17 +17778,24 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
           v.onerror = () => resolve(0);
         });
         URL.revokeObjectURL(objUrl);
-        if (uploadKind === "clips" && duration > 60) { setError("That video is over 60 seconds — clips are short. Pick one of 60 seconds or less."); return; }
+        if (uploadKind === "clips" && duration > 60) { fail("That video is over 60 seconds — clips are short. Pick one of 60 seconds or less."); return; }
       }
       const item: CreatorItem = { blob, kind: ai.kind, url: ai.url, duration, exposure: 100, contrast: 100, saturate: 100, shadow: 0, preset: "none" };
-      setItems((prev) => {
-        const next = [...prev, item].slice(0, 4);
-        setSel(next.length - 1);
-        return next;
-      });
+      if (singlePick) {
+        // Single mode: this tap is the whole pick — just the
+        // one photo or video, nothing else stays selected.
+        setItems([item]);
+        setSel(0);
+      } else {
+        setItems((prev) => {
+          const next = [...prev, item].slice(0, 4);
+          setSel(next.length - 1);
+          return next;
+        });
+      }
       if (picker === "story") { setPicker(null); setStep("preview"); }
     } catch {
-      setError("Could not load that one from your album — try Your library instead.");
+      fail("Could not load that one from your album — try Your library instead.");
     } finally {
       setAlbumBusyUrl("");
     }
@@ -16853,6 +17811,30 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
       return next;
     });
   };
+
+  // The hero is a real pick (owner's direction, Nov 21 2026):
+  // when the New post / New clip picker opens with nothing
+  // picked yet, the newest album item the hero shows is picked
+  // automatically — like Instagram, where the most recent
+  // photo starts selected and Next works straight away. Before
+  // this, the big hero photo was only a picture: Next sat
+  // disabled with nothing picked, which read as "posting is
+  // broken". Once per picker opening (the ref resets when the
+  // picker closes), and quietly — if that one photo cannot
+  // load, nothing is picked and no error is shown.
+  const autoPickRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!picker) { autoPickRef.current = null; return; }
+    if (picker === "story" || autoPickRef.current === picker) return;
+    if (items.length > 0) { autoPickRef.current = picker; return; }
+    const first = albumGridItems[0];
+    if (!first) return;
+    autoPickRef.current = picker;
+    void addAlbumItem(first, true);
+    // addAlbumItem is re-created every render; the ref guard
+    // above is what keeps this to one auto-pick per opening.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picker, items.length, albumGridItems]);
 
   const retakeAll = () => {
     items.forEach((it) => URL.revokeObjectURL(it.url));
@@ -16905,6 +17887,16 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
     mutationFn: async (): Promise<CreatorDest> => {
       const finals: { url: string; kind: "image" | "video" }[] = [];
       for (const it of items) {
+        // An album pick that was not edited is already stored
+        // under its album URL (only album picks carry a stored
+        // URL — device picks and camera captures carry device
+        // URLs) — publish that URL instead of uploading a second
+        // copy of the same photo. A second copy is what put the
+        // same photo into the album twice under two URLs.
+        if (!it.url.startsWith("blob:") && (it.kind === "video" || creatorFilterIsIdentity(it))) {
+          finals.push({ url: it.url, kind: it.kind });
+          continue;
+        }
         const blob = it.kind === "image" && !creatorFilterIsIdentity(it) ? await bakeImage(it) : it.blob;
         const url = await uploadOne(blob, it.kind === "image" ? "vice-photo.jpg" : "vice-clip.webm");
         finals.push({ url, kind: it.kind });
@@ -16919,19 +17911,24 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
         return "story";
       }
       const body = caption.trim() || (finals[0]?.kind === "video" ? "Shared a clip — it plays right here in ViceSunshine, above." : finals.length > 0 ? "Shared a photo with the community." : "");
-      if (finals.length === 0) {
-        await api.createFeedPost({ playerKey, author: gamertag, kind: postCat, title: title.trim(), body, mediaUrl: "" });
-      }
-      for (const f of finals) {
-        await api.createFeedPost({
-          playerKey,
-          author: gamertag,
-          kind: dest === "clip" ? "Clip" : postCat === "Post" && f.kind === "video" ? "Clip" : postCat,
-          title: title.trim(),
-          body,
-          mediaUrl: f.url,
-        });
-      }
+      // ONE post for the whole pick (owner's direction, Nov 21
+      // 2026): several photos ride together in a single post —
+      // the Feed renders them as one swipeable set — and a
+      // video is always a post of its own. Before this, every
+      // photo became a separate post. The caption (hashtags
+      // included) and the Add link belong to the one post.
+      const urls = finals.map((f) => f.url);
+      await api.createFeedPost({
+        playerKey,
+        author: gamertag,
+        kind: dest === "clip" ? "Clip" : postCat === "Post" && finals[0]?.kind === "video" ? "Clip" : postCat,
+        title: "",
+        body,
+        mediaUrl: urls[0] ?? "",
+        mediaUrls: urls,
+        linkUrl: linkUrl.trim(),
+        location: postLocation.trim(),
+      });
       return dest;
     },
     onSuccess: (d) => {
@@ -16940,7 +17937,10 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
       setItems([]);
       setSel(0);
       setCaption("");
-      setTitle("");
+      setLinkUrl("");
+      setPostLocation("");
+      setLocOpen(false);
+      setLinkOpen(false);
       setStorySticker("");
       setAddYoursOpen(false);
       setStep("capture");
@@ -16964,7 +17964,29 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
     if (dest === "clip" && (items.length === 0 || items.some((it) => it.kind !== "video"))) { setError("Videos need videos only — record one with the camera or upload a video from your device. Photos can go out as a Post or a Story instead."); return; }
     if ((dest === "clip" || dest === "story") && items.some((it) => it.kind === "video" && it.duration > 60)) { setError("One of those clips is over 60 seconds — trim it for a Story or Clip, or publish it as a Post."); return; }
     if (dest === "post" && items.length === 0 && !caption.trim()) { setError("Write your post, or add a photo or video first."); return; }
+    // The post composition rules, checked once more at Share
+    // (the server checks them too): several photos, or one
+    // video on its own; a live capture always posts alone.
+    if (dest === "post") {
+      const videoCount = items.filter((it) => it.kind === "video").length;
+      if (videoCount > 1) { setError("Only one video per post — remove the extra video and Share again."); return; }
+      if (videoCount === 1 && items.length > 1) { setError("A video posts on its own — remove the photos to share the video, or remove the video to share the photos."); return; }
+      if (items.length > 1 && items.some((it) => it.live)) { setError("A live capture posts on its own — remove the other picks and Share again."); return; }
+    }
+    if (linkUrl.trim() && !/^(https?:\/\/)?[\w-]+(\.[\w-]+)+/.test(linkUrl.trim())) { setError("That link doesn't look right — paste a full web address, like youtube.com/@channel, or clear it."); return; }
     publish.mutate();
+  };
+
+  // Hashtag quick-add chips on the Details step: people tag
+  // every post, so the common GTA tags are one tap away —
+  // tapping appends the tag to the caption (or the story
+  // text), and typing #tag by hand works exactly the same.
+  const HASHTAG_CHIPS = ["GTAVI", "GTA6", "ViceCity", "Leonida", "CarMeet", "Gameplay", "Meme", "Screenshot"] as const;
+  const appendHashtag = (tag: string) => {
+    setCaption((c) => {
+      if (new RegExp(`#${tag}\\b`, "i").test(c)) return c;
+      return c.trim() ? `${c.replace(/\s+$/, "")} #${tag}` : `#${tag}`;
+    });
   };
 
   if (!gamertag) {
@@ -16983,8 +18005,6 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   }
 
   const current = items[sel] ?? items[0];
-  const stepIdx = step === "capture" ? 0 : step === "preview" ? 1 : step === "edit" ? 2 : 3;
-  const stepNames = ["Capture", "Preview", "Edit", "Details"] as const;
 
   const destBtn = (id: CreatorDest, label: string) => (
     <button
@@ -17147,39 +18167,47 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
   // nothing under it — on laptop and phone alike. Closing it
   // (the X on the camera) goes back to For you.
   return (
-    <section className="fixed inset-0 z-[80] overflow-y-auto bg-black" aria-label="Create — step by step: capture, preview, edit, then details">
-      <div className="mx-auto w-full max-w-[680px] px-4 pb-6 pt-4">
-      {/* Stepper — one step at a time, never everything at once.
-          Hidden on the capture step: the camera is full-screen,
-          like Instagram's camera. */}
-      {step !== "capture" && (
-      <ol className="mb-3 flex items-center gap-1.5" aria-label="Posting steps">
-        {stepNames.map((n, i) => (
-          <li key={n} className="flex flex-1 items-center gap-1.5" aria-current={i === stepIdx ? "step" : undefined}>
-            <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full text-[11px] font-extrabold" style={{ background: i === stepIdx ? "var(--accent)" : i < stepIdx ? "var(--accent2)" : "var(--surface3)", color: i <= stepIdx ? "#fff" : "var(--dim)" }}>{i + 1}</span>
-            <span className="text-[12px] font-extrabold" style={{ color: i === stepIdx ? "var(--text)" : "var(--dim)" }}>{n}</span>
-            {i < stepNames.length - 1 && <span className="h-px flex-1" style={{ background: "var(--border)" }} aria-hidden="true" />}
-          </li>
-        ))}
-      </ol>
-      )}
+    <section className="fixed inset-0 z-[80] overflow-y-auto bg-black" aria-label="Create — camera or picker, then the New post screen and Share">
+      <div className={picker || (step === "details" && dest === "post") ? "mx-auto w-full max-w-[680px] px-4 pb-6 pt-0" : "mx-auto w-full max-w-[680px] px-4 pb-6 pt-4"}>
+      {/* No step indicator (owner's direction, Nov 21 2026):
+          the numbered Capture → Preview → Edit → Details
+          stepper belonged to the removed wizard. The flow is
+          now just: pick or take your media, then the New post
+          screen, then Share. */}
 
       {step === "capture" && picker && (
         <div aria-label={picker === "post" ? "New post — pick from your library" : picker === "clip" ? "New clip — pick from your library" : "Add to story — pick from your library"}>
-          {/* Header: X / title / Next (New post and New clip), like Instagram. */}
-          <div className="flex items-center gap-2">
+          {/* Header bar (owner's direction, Nov 21 2026): the
+              "New post" header runs flush to the very top of
+              the screen — no gap above it — as a full-width bar
+              that stays pinned while the grid scrolls under it,
+              so Next is always in reach and the picture below
+              gets the room the gap used to take. X / title /
+              Next (New post and New clip), like Instagram. */}
+          <div className="sticky top-0 z-30 -mx-4 flex items-center gap-2 px-4 py-3" style={{ background: "rgba(0,0,0,0.94)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.09)" }}>
             <button type="button" className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-white" style={{ background: "rgba(255,255,255,0.08)", minHeight: 44 }} onClick={() => { setPicker(null); setCamSeq((n) => n + 1); }} aria-label="Close the picker — back to the camera">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg>
             </button>
             <h3 className="flex-1 text-center text-[19px] font-extrabold tracking-tight text-white">{picker === "post" ? "New post" : picker === "clip" ? "New clip" : "Add to story"}</h3>
             {picker === "post" || picker === "clip" ? (
-              <button type="button" className="flex-none rounded-full px-4 py-2 text-[15px] font-extrabold" style={{ background: items.length > 0 ? "var(--accent)" : "rgba(255,255,255,0.12)", color: "#fff", minHeight: 44, opacity: items.length > 0 ? 1 : 0.6 }} disabled={items.length === 0} onClick={() => { if (picker === "clip") setDest("clip"); setPicker(null); setStep("preview"); }} aria-label={picker === "clip" ? "Next — preview your clip" : "Next — preview your post"}>
-                Next
+              <button type="button" className="flex-none rounded-full px-4 py-2 text-[15px] font-extrabold" style={{ background: items.length > 0 ? "var(--accent)" : "rgba(255,255,255,0.12)", color: "#fff", minHeight: 44, opacity: items.length > 0 ? 1 : 0.6 }} disabled={items.length === 0} onClick={() => { if (picker === "clip") { setDest("clip"); setPicker(null); setStep("preview"); } else { setPicker(null); setStep("details"); } }} aria-label={picker === "clip" ? "Next — preview your clip" : items.length > 1 ? `Next — write your post with ${items.length} photos` : "Next — write your post"}>
+                {items.length > 1 ? `Next · ${items.length}` : "Next"}
               </button>
             ) : (
               <span className="w-11 flex-none" aria-hidden="true" />
             )}
           </div>
+          {/* Picker feedback lives IN the picker (owner's
+              report, Nov 21 2026): every pick error — the
+              4-photo cap, the video-posts-alone rule, a photo
+              that could not load — used to be set on state that
+              only rendered after the picker closed, so a tap
+              looked like it did nothing and multi-select read
+              as broken. It shows here, right under the header,
+              while the picker is open. */}
+          {error && (
+            <p className="mt-3 rounded-xl px-3 py-2.5 text-center text-[13px] font-semibold leading-snug text-[var(--amber)]" style={{ background: "rgba(255,176,0,0.10)" }} role="alert">{error}</p>
+          )}
           {/* Add to story boxes (owner's direction): Add Yours and
               Collage only. Music is not in ViceSunshine — there is
               no music library — so it is not shown. */}
@@ -17211,95 +18239,178 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
           {/* New post hero (owner's direction, Nov 21 2026):
               Instagram's New post screen — the most recent
               photo large at the top, the Recents grid below it.
-              Only the post picker: the story picker (and the
-              clip picker) keep their plain grid look. */}
-          {picker === "post" && postHero && (
-            <div className="mt-4 overflow-hidden rounded-2xl" style={{ background: "#1c1c26" }} role="img" aria-label={postHero.kind === "video" ? "Most recent video, shown large" : "Most recent photo, shown large"}>
+              The picture keeps its OWN aspect ratio and stays
+              slim — height capped at about half the screen, so
+              it is never stretched or cropped into a fixed
+              frame — and with several picks it carries the
+              arrows and the "2 / 3" counter to look through
+              them. The story picker keeps its plain grid. */}
+          {(picker === "post" || picker === "clip") && postHero && (
+            <div className="relative mx-auto mt-3 flex w-fit max-w-full items-center justify-center overflow-hidden rounded-[20px]" style={{ background: "#101018", minHeight: 140 }}>
               {postHero.kind === "video"
-                ? <video src={postHero.url} className="block w-full object-cover" style={{ aspectRatio: "4 / 3" }} muted playsInline autoPlay loop aria-hidden="true" />
-                : <img decoding="async" src={postHero.url} alt="" className="block w-full object-cover" style={{ aspectRatio: "4 / 3" }} />}
+                ? <video src={postHero.url} className="block max-h-[52dvh] w-auto max-w-full" muted playsInline autoPlay loop aria-label="Your selected video, shown large in its own shape" />
+                : <img decoding="async" src={postHero.url} alt="Your selected photo, shown large in its own shape" className="block max-h-[52dvh] w-auto max-w-full" />}
+              {items.length > 1 && (
+                <>
+                  <button type="button" className="absolute left-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.55)", minHeight: 40 }} onClick={() => setSel((sel - 1 + items.length) % items.length)} aria-label="Show the previous picked photo large">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5 8 12l6.5 7" /></svg>
+                  </button>
+                  <button type="button" className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.55)", minHeight: 40 }} onClick={() => setSel((sel + 1) % items.length)} aria-label="Show the next picked photo large">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 5 16 12l-6.5 7" /></svg>
+                  </button>
+                  <span className="absolute bottom-2 right-2 rounded-full px-2.5 py-1 text-[12px] font-extrabold text-white" style={{ background: "rgba(0,0,0,0.6)" }} aria-hidden="true">{sel + 1} / {items.length}</span>
+                </>
+              )}
             </div>
           )}
           {/* Recents + Select, then the grid. A website cannot list
               your device's photos by itself — the grid shows the
-              camera tile, anything you have picked this time, and
-              a tile that opens your own library picker. The grid
+              camera tile (which opens the Your library / Take a
+              picture options sheet) and anything you have picked
+              this time. The grid
               also always shows the player's whole album — every
               photo and video from their posts, clips, stories and
               album additions — filtered to this session's kind:
               pictures only in a Photos session, videos only in a
               Clips session. Album access is automatic: no panel,
               no button, no toggle anywhere. */}
-          <div className="mt-5 flex items-center justify-between">
-            <span className="text-[19px] font-extrabold text-white">Recents</span>
-            <button type="button" className="flex items-center gap-2 rounded-full px-4 py-2 text-[14px] font-extrabold text-white" style={{ background: "var(--surface2)", minHeight: 44 }} onClick={() => document.getElementById("picker-library-pick")?.click()} aria-label={uploadKind === "photos" ? "Select photos from your library — photos and Live Photos only" : uploadKind === "clips" ? "Select a short clip or video from your library — videos only, up to 60 seconds" : "Select photos or videos from your library"}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" /><rect x="8" y="8" width="8" height="8" rx="2" /></svg>
-              Select
-            </button>
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <span className="text-[17px] font-extrabold tracking-tight text-white">Recents</span>
+            <span className="flex items-center gap-3">
+              {picker === "post" && items.length > 0 && (
+                <span className="text-[13px] font-bold" style={{ color: "var(--accent2)" }} role="status">{items.length} of 4 picked</span>
+              )}
+              {/* Select (owner's direction, Nov 21 2026): in
+                  every picker this opens your device library —
+                  the phone's own picker, where you can choose
+                  one or several at once and they are added to
+                  this post. Picking several no longer needs a
+                  mode switch: in the New post grid itself, taps
+                  simply add up (see the pick model above). */}
+              <button type="button" className="flex items-center gap-2 rounded-full px-4 py-2 text-[14px] font-extrabold text-white" style={{ background: "var(--surface2)", minHeight: 44 }} onClick={() => { document.getElementById("picker-library-pick")?.click(); }} aria-label={uploadKind === "photos" ? "Select photos from your library — photos and Live Photos only, you can pick several at once" : uploadKind === "clips" ? "Select a short clip or video from your library — videos only, up to 60 seconds" : picker === "post" ? "Select photos or videos from your library — you can pick several photos at once and they are added to this post" : "Select photos or videos from your library"}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" /><rect x="8" y="8" width="8" height="8" rx="2" /></svg>
+                Select
+              </button>
+            </span>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-[3px]">
-            <button type="button" className="relative flex aspect-square items-center justify-center" style={{ background: "#1c1c26" }} onClick={() => { setPicker(null); setCamSeq((n) => n + 1); }} aria-label="Camera — back to the live camera">
+          <div className="mt-3 grid grid-cols-3 gap-[2px]">
+            <button type="button" className="relative flex aspect-square items-center justify-center" style={{ background: "#1c1c26" }} onClick={() => setCamMenuOpen(true)} aria-haspopup="dialog" aria-expanded={camMenuOpen} aria-label="Camera — opens options: Your library or Take a picture">
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="14" r="3.5" /></svg>
             </button>
-            {items.map((it, j) => (
-              <button key={it.url} type="button" className="relative aspect-square overflow-hidden" style={{ outline: j === sel ? "3px solid var(--accent)" : "none", outlineOffset: -3 }} onClick={() => { setSel(j); if (picker === "story") { setPicker(null); setStep("preview"); } }} aria-label={`${it.kind === "video" ? "Video" : "Photo"} ${j + 1} — ${picker === "story" ? "use it for your story" : picker === "clip" ? "select it for your clip" : "select it for your post"}`}>
+            {items.map((it, j) => {
+              // An album pick shows as its album tile (with its
+              // pick badge) in the post / clip pickers — not as
+              // a second tile here. Device picks and camera
+              // captures, which have no album tile of their own,
+              // show here.
+              if (picker !== "story" && albumUrlSet.has(it.url)) return null;
+              return (
+              <button key={it.url} type="button" className="relative aspect-square overflow-hidden" style={{ outline: j === sel ? "3px solid var(--accent)" : "none", outlineOffset: -3 }} onClick={() => {
+                if (picker === "story") { setSel(j); setPicker(null); setStep("preview"); return; }
+                if (singlePick) { if (items.length > 1) setItems([it]); setSel(0); return; }
+                // New post picker: a tap puts the photo on
+                // show; tapping the one already on show
+                // un-picks it.
+                if (j === sel) { removeItem(j); return; }
+                setSel(j);
+              }} aria-label={`${it.kind === "video" ? "Video" : "Photo"} ${j + 1} — ${picker === "story" ? "use it for your story" : singlePick ? "picked for your clip" : j === sel ? `picked number ${j + 1} for your post, on show — tap again to un-pick it` : `picked number ${j + 1} for your post — tap to show it large`}`}>
                 {it.kind === "video"
                   ? <video src={it.url} className="h-full w-full object-cover" muted playsInline aria-hidden="true" />
                   : <img decoding="async" src={it.url} alt="" className="h-full w-full object-cover" />}
-                {j === sel && (picker === "post" || picker === "clip") && <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }} aria-hidden="true">✓</span>}
+                {picker === "post" && <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }} aria-hidden="true">{j + 1}</span>}
+                {picker === "clip" && j === sel && <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }} aria-hidden="true">✓</span>}
               </button>
-            ))}
-            {/* The whole album: every picture / video in the
-                player's album, kind-filtered for this session.
-                Tapping one adds it to this post / clip / story
-                exactly like a fresh pick. */}
-            {albumGridItems.map((ai) => {
-              const addedIdx = items.findIndex((it) => it.url === ai.url);
-              return (
-                <button key={ai.url} type="button" className="relative aspect-square overflow-hidden" style={{ background: "#1c1c26", outline: addedIdx >= 0 ? "3px solid var(--accent)" : "none", outlineOffset: -3 }} onClick={() => { void addAlbumItem(ai); }} aria-label={ai.kind === "video" ? `Album video — ${picker === "story" ? "use it for your story" : picker === "clip" ? "add it to your clip" : "add it to your post"}` : `Album photo — ${picker === "story" ? "use it for your story" : picker === "clip" ? "add it to your clip" : "add it to your post"}`}>
-                  {ai.kind === "video"
-                    ? <video src={ai.url} className="h-full w-full object-cover" muted preload="metadata" playsInline aria-hidden="true" />
-                    : <img decoding="async" src={ai.url} alt="" className="h-full w-full object-cover" loading="lazy" />}
-                  {ai.kind === "video" && (
-                    <span className="absolute bottom-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white" aria-hidden="true">
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5-13-7.5z" /></svg>
-                    </span>
-                  )}
-                  {addedIdx >= 0 && <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }} aria-hidden="true">✓</span>}
-                  {albumBusyUrl === ai.url && <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[12px] font-extrabold text-white" aria-hidden="true">Adding…</span>}
-                </button>
               );
             })}
-            <label className="relative flex aspect-square cursor-pointer flex-col items-center justify-center gap-1.5" style={{ background: "var(--surface2)" }} aria-label={uploadKind === "photos" ? "Open your library — pick photos from your device, photos and Live Photos only" : uploadKind === "clips" ? "Open your library — pick a short clip or video from your device, videos only" : "Open your library — pick photos or videos from your device"}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" fill="currentColor" stroke="none" /><path d="M4 18l5-5 4 4 3-3 4 4" /></svg>
-              <span className="text-[12px] font-bold text-[var(--dim)]">Your library</span>
-              <input id="picker-library-pick" type="file" accept={pickAccept} multiple className="sr-only" aria-label={uploadKind === "photos" ? "Choose photos from your device — photos and Live Photos only, you can pick several" : uploadKind === "clips" ? "Choose a short clip or video from your device — videos only, up to 60 seconds" : "Choose photos or videos from your device — you can pick several"} onChange={(e) => { void onFiles(e.target.files); e.target.value = ""; }} />
-            </label>
+            {/* The whole album: every picture / video in the
+                player's album, kind-filtered for this session
+                (albumGridShown also hides a device pick's album
+                twin, so no photo ever shows twice). A picked
+                album photo STAYS here as this one tile, ringed,
+                with its pick number — in the New post picker a
+                tap picks it, a tap on the one on show un-picks
+                it; in the New clip picker a tap makes it the
+                one pick; in the story picker a tap takes it
+                straight to Preview (and a story pick is not
+                badged here — it leaves for Preview at once). */}
+            {albumGridShown.map((ai) => {
+              const pickedIdx = items.findIndex((it) => it.url === ai.url);
+              if (picker === "story" && pickedIdx >= 0) return null;
+              return (
+              <button key={ai.url} type="button" className="relative aspect-square overflow-hidden" style={{ background: "#1c1c26", outline: pickedIdx >= 0 ? "3px solid var(--accent)" : "none", outlineOffset: -3 }} onClick={() => { void addAlbumItem(ai); }} aria-label={ai.kind === "video" ? `Album video — ${picker === "story" ? "use it for your story" : picker === "clip" ? "pick it for your clip — just this one" : pickedIdx >= 0 ? (pickedIdx === sel ? `picked number ${pickedIdx + 1} for your post, on show — tap again to un-pick it` : `picked number ${pickedIdx + 1} for your post — tap to show it large`) : "add it to your post"}` : `Album photo — ${picker === "story" ? "use it for your story" : picker === "clip" ? "pick it for your clip — just this one" : pickedIdx >= 0 ? (pickedIdx === sel ? `picked number ${pickedIdx + 1} for your post, on show — tap again to un-pick it` : `picked number ${pickedIdx + 1} for your post — tap to show it large`) : "add it to your post"}`}>
+                {ai.kind === "video"
+                  ? <video src={ai.url} className="h-full w-full object-cover" muted preload="metadata" playsInline aria-hidden="true" />
+                  : <img decoding="async" src={ai.url} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                {pickedIdx >= 0 && picker === "post" && <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }} aria-hidden="true">{pickedIdx + 1}</span>}
+                {pickedIdx >= 0 && picker === "clip" && <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-[13px] font-extrabold" style={{ background: "var(--accent)", color: "#fff" }} aria-hidden="true">✓</span>}
+                {ai.kind === "video" && (
+                  <span className="absolute bottom-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white" aria-hidden="true">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5-13-7.5z" /></svg>
+                  </span>
+                )}
+                {albumBusyUrl === ai.url && <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[12px] font-extrabold text-white" aria-hidden="true">Adding…</span>}
+              </button>
+              );
+            })}
+            {/* No "Your library" tile in the grid anymore
+                (owner's direction, Nov 21 2026): the library
+                and the camera both live behind the camera
+                tile's options sheet. These two hidden inputs
+                are what the sheet's options trigger — the
+                library one keeps its id because the story
+                picker's Select button clicks it too. */}
+            <input id="picker-library-pick" type="file" accept={pickAccept} multiple className="sr-only" aria-label={uploadKind === "photos" ? "Choose photos from your device — photos and Live Photos only, you can pick several" : uploadKind === "clips" ? "Choose a short clip or video from your device — videos only, up to 60 seconds" : "Choose photos or videos from your device — you can pick several"} onChange={(e) => { void onFiles(e.target.files); e.target.value = ""; }} />
+            <input id="picker-camera-capture" type="file" accept={pickAccept} capture="environment" className="sr-only" aria-label={uploadKind === "clips" ? "Take a video with your camera — videos only, up to 60 seconds" : "Take a picture with your camera"} onChange={(e) => { void onFiles(e.target.files); e.target.value = ""; }} />
           </div>
           {albumQ.loading && (
             <p className="mt-3 text-center text-sm text-[var(--dim)]" role="status">Loading your album…</p>
           )}
-          {!albumQ.loading && albumGridItems.length > 0 && items.length === 0 && (
-            <p className="mt-3 text-center text-sm text-[var(--dim)]">{albumKind === "image" ? "That's your whole album — pictures only here. Tap one to add it, or pick more from Your library." : albumKind === "video" ? "That's your whole album — videos only here. Tap one to add it, or pick more from Your library." : "That's your whole album. Tap one to add it, or pick more from Your library."}</p>
+          {!albumQ.loading && albumGridItems.length > 0 && picker === "post" && (
+            <p className="mt-3 text-center text-sm leading-relaxed text-[var(--dim)]">{albumKind === "image" ? "That's your whole album — pictures only here. " : "That's your whole album. "}{items.length === 0 ? "Tap photos to pick them — pick up to 4 and they post together as one swipeable post." : items.length >= 4 ? "That's 4 — this post is full. Tap Next to post them, or tap the photo on show to un-pick it." : "Tap more photos to add them, or tap Next to post what you've picked."}</p>
+          )}
+          {!albumQ.loading && albumGridItems.length > 0 && picker !== "post" && items.length === 0 && (
+            <p className="mt-3 text-center text-sm text-[var(--dim)]">{albumKind === "image" ? "That's your whole album — pictures only here. " : albumKind === "video" ? "That's your whole album — videos only here. " : "That's your whole album. "}{singlePick ? "Tap one to pick it for your clip." : "Tap one to add it, or tap the camera tile to add more."}</p>
           )}
           {items.length === 0 && albumGridItems.length === 0 && (
             <p className="mt-3 text-center text-sm text-[var(--dim)]">{!albumQ.loading
-              ? (uploadKind === "photos" ? "Your album is empty here — pick a photo from Your library (Live Photos count too) and it lands in this grid and joins your album. Photos only here." : uploadKind === "clips" ? "Your album is empty here — pick a short clip or video (up to 60 seconds) from Your library and it lands in this grid and joins your album. Videos only here." : "Your album is empty here — pick a photo or video from Your library and it lands in this grid and joins your album.")
-              : (uploadKind === "photos" ? "Your library opens on your own phone or computer — pick a photo (Live Photos count too) and it lands in this grid. Photos only here." : uploadKind === "clips" ? "Your library opens on your own phone or computer — pick a short clip or video (up to 60 seconds) and it lands in this grid. Videos only here." : "Your library opens on your own phone or computer — pick a photo or video and it lands in this grid.")}</p>
+              ? (uploadKind === "photos" ? "Your album is empty here — tap the camera tile and choose Your library to pick a photo (Live Photos count too) and it lands in this grid and joins your album. Photos only here." : uploadKind === "clips" ? "Your album is empty here — tap the camera tile and choose Your library to pick a short clip or video (up to 60 seconds) and it lands in this grid and joins your album. Videos only here." : "Your album is empty here — tap the camera tile and choose Your library to pick a photo or video and it lands in this grid and joins your album.")
+              : (uploadKind === "photos" ? "Tap the camera tile and choose Your library — it opens on your own phone or computer; pick a photo (Live Photos count too) and it lands in this grid. Photos only here." : uploadKind === "clips" ? "Tap the camera tile and choose Your library — it opens on your own phone or computer; pick a short clip or video (up to 60 seconds) and it lands in this grid. Videos only here." : "Tap the camera tile and choose Your library — it opens on your own phone or computer; pick a photo or video and it lands in this grid.")}</p>
+          )}
+          {/* Camera options sheet (owner's direction, Nov 21
+              2026): tapping the camera tile in the grid opens
+              this — "Your library" opens the device file picker
+              (the hidden library input), "Take a picture" opens
+              the device camera (the hidden capture input, the
+              same capture="environment" pattern the story flow
+              and the profile picture changer already use).
+              Cancel just closes it, back to the picker. */}
+          {camMenuOpen && (
+            <div className="fixed inset-0 z-[97] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Camera options — Your library or Take a picture">
+              <button type="button" className="absolute inset-0 h-full w-full cursor-default bg-black/60" style={{ minHeight: 0 }} onClick={() => setCamMenuOpen(false)} aria-label="Cancel — back to the picker" />
+              <div className="relative w-full max-w-[560px] px-3 pb-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+                <div className="overflow-hidden rounded-3xl" style={{ background: "var(--surface2)" }}>
+                  <button type="button" className="flex w-full items-center gap-3 px-5 text-left text-[16px] font-extrabold text-white hover:bg-white/5" style={{ minHeight: 56 }} onClick={() => { setCamMenuOpen(false); document.getElementById("picker-library-pick")?.click(); }} aria-label={uploadKind === "photos" ? "Your library — pick photos from your device, photos and Live Photos only" : uploadKind === "clips" ? "Your library — pick a short clip or video from your device, videos only" : "Your library — pick photos or videos from your device"}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" fill="currentColor" stroke="none" /><path d="M4 18l5-5 4 4 3-3 4 4" /></svg>
+                    Your library
+                  </button>
+                  <div className="mx-5 h-px" style={{ background: "var(--border)" }} aria-hidden="true" />
+                  <button type="button" className="flex w-full items-center gap-3 px-5 text-left text-[16px] font-extrabold text-white hover:bg-white/5" style={{ minHeight: 56 }} onClick={() => { setCamMenuOpen(false); document.getElementById("picker-camera-capture")?.click(); }} aria-label={uploadKind === "clips" ? "Take a video with your camera" : "Take a picture with your camera"}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="14" r="3.5" /></svg>
+                    {uploadKind === "clips" ? "Take a video" : "Take a picture"}
+                  </button>
+                </div>
+                <button type="button" className="mt-2 w-full rounded-3xl text-[16px] font-extrabold text-white" style={{ background: "var(--surface2)", minHeight: 52 }} onClick={() => setCamMenuOpen(false)} aria-label="Cancel — back to the picker">
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
-      {/* Spacer under the picker: the Post / Story switcher
-          is pinned to the bottom of the screen (rendered at
-          the end of this section), so the picker's last grid
-          row needs this much room to scroll clear of it. */}
-      {step === "capture" && picker && picker !== "clip" && (
-        <div style={{ height: 88 }} aria-hidden="true" />
-      )}
       {/* Capture step: the stage fills the whole screen — the
           frame runs full to the very top — and carries its own
-          bottom bar (gallery / capture / flip and the Post /
-          Story mode bar) inside its bottom overlay. */}
+          bottom bar (gallery / capture / flip and the POST
+          mode bar) inside its bottom overlay. */}
       {step === "capture" && !picker && stage(false)}
 
       {step === "preview" && current && (
@@ -17310,10 +18421,14 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="btn-ghost flex-1" style={{ minHeight: 48 }} onClick={retakeAll} aria-label="Retake — clear everything and start the capture step again">Retake</button>
             <button type="button" className="btn-ghost flex-1" style={{ minHeight: 48 }} onClick={() => removeItem(sel)} aria-label="Remove this photo or video">Remove this one</button>
-            <button type="button" className="btn-ghost flex-1" style={{ minHeight: 48 }} onClick={() => setStep("capture")} aria-label="Add more photos or videos">Add more</button>
+            {dest !== "story" && items.some((it) => it.live) ? (
+              <span className="flex flex-1 items-center justify-center px-2 text-center text-xs font-semibold text-[var(--dim)]">Live capture — one per post</span>
+            ) : (
+              <button type="button" className="btn-ghost flex-1" style={{ minHeight: 48 }} onClick={() => setStep("capture")} aria-label="Add more photos or videos">Add more</button>
+            )}
           </div>
-          <button type="button" className="btn-primary mt-3 w-full" style={{ minHeight: 52 }} onClick={() => { setError(""); setStep("edit"); }} aria-label="Looks good — go to the edit step">
-            Looks good — Edit
+          <button type="button" className="btn-primary mt-3 w-full" style={{ minHeight: 52 }} onClick={() => { setError(""); setStep(dest === "post" ? "details" : "edit"); }} aria-label={dest === "post" ? "Looks good — go to the New post screen" : "Looks good — go to the edit step"}>
+            {dest === "post" ? "Looks good — Next" : "Looks good — Edit"}
           </button>
         </>
       )}
@@ -17346,7 +18461,68 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
         </>
       )}
 
-      {step === "details" && (
+      {/* The New post screen (owner's direction, Nov 21 2026 —
+          the original simple Share tab, restored from his
+          reference screenshots): back arrow + "New post", the
+          picked photo large and centred in its own shape,
+          "Add a caption…", an Add location row and an Add link
+          row (each expands in place to its input), and one big
+          blue Share button at the bottom. Nothing else — no
+          destination chooser, no category chips, no hashtag
+          chip row, no editing section. Hashtags are typed
+          right into the caption, like the original. */}
+      {step === "details" && dest === "post" && (
+        <>
+          <div className="sticky top-0 z-30 -mx-4 flex items-center gap-2 px-4 py-3" style={{ background: "rgba(0,0,0,0.94)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.09)" }}>
+            <button type="button" className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-white" style={{ background: "rgba(255,255,255,0.08)", minHeight: 44 }} onClick={() => { setError(""); if (items.length > 0) setPicker("post"); setStep("capture"); }} aria-label="Back to picking your photo or video">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5 8 12l6.5 7" /></svg>
+            </button>
+            <h3 className="flex-1 text-center text-[19px] font-extrabold tracking-tight text-white">New post</h3>
+            <span className="w-11 flex-none" aria-hidden="true" />
+          </div>
+          {current && (
+            <div className="relative mx-auto mt-4 flex w-fit max-w-full items-center justify-center overflow-hidden rounded-[20px]" style={{ background: "#101018", minHeight: 140 }}>
+              {current.kind === "video"
+                ? <video src={current.url} className="block max-h-[52dvh] w-auto max-w-full" muted playsInline autoPlay loop aria-label="Your video, shown large in its own shape" />
+                : <img decoding="async" src={current.url} alt="Your photo, shown large in its own shape" className="block max-h-[52dvh] w-auto max-w-full" />}
+              {items.length > 1 && (
+                <>
+                  <button type="button" className="absolute left-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.55)", minHeight: 40 }} onClick={() => setSel((sel - 1 + items.length) % items.length)} aria-label="Show the previous picked photo large">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5 8 12l6.5 7" /></svg>
+                  </button>
+                  <button type="button" className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.55)", minHeight: 40 }} onClick={() => setSel((sel + 1) % items.length)} aria-label="Show the next picked photo large">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 5 16 12l-6.5 7" /></svg>
+                  </button>
+                  <span className="absolute bottom-2 right-2 rounded-full px-2.5 py-1 text-[12px] font-extrabold text-white" style={{ background: "rgba(0,0,0,0.6)" }} aria-hidden="true">{sel + 1} / {items.length}</span>
+                </>
+              )}
+            </div>
+          )}
+          <label className="sr-only" htmlFor="creator-caption">Caption for your post</label>
+          <textarea id="creator-caption" rows={3} {...FIELDS.createFeedPost.body} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Add a caption…" aria-label="Caption for your post" className="mt-4 w-full resize-none bg-transparent text-[16px] leading-relaxed text-white outline-none placeholder:text-white/45" />
+          <button type="button" className="flex w-full items-center gap-3 py-2 text-left" style={{ minHeight: 52 }} onClick={() => setLocOpen((v) => !v)} aria-expanded={locOpen} aria-label={postLocation.trim() ? `Location: ${postLocation.trim()} — tap to change it` : "Add location"}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-white" aria-hidden="true"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11Z" /><circle cx="12" cy="10" r="2.6" /></svg>
+            <span className="flex-1 truncate text-[16px] font-semibold text-white">{postLocation.trim() || "Add location"}</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-white/60" aria-hidden="true"><path d="M9.5 5 16 12l-6.5 7" /></svg>
+          </button>
+          {locOpen && (
+            <input id="creator-location" className="field mb-2" {...FIELDS.createFeedPost.location} value={postLocation} onChange={(e) => setPostLocation(e.target.value)} placeholder="Where is this? e.g. Vice Beach" autoComplete="off" aria-label="Location for your post" />
+          )}
+          <button type="button" className="flex w-full items-center gap-3 py-2 text-left" style={{ minHeight: 52 }} onClick={() => setLinkOpen((v) => !v)} aria-expanded={linkOpen} aria-label={linkUrl.trim() ? `Link attached: ${linkUrl.trim()} — tap to change it` : "Add link"}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-white" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7.1 0l2.4-2.4a5 5 0 0 0-7.1-7.1L11 5.9" /><path d="M14 10a5 5 0 0 0-7.1 0L4.5 12.4a5 5 0 0 0 7.1 7.1L13 18.1" /></svg>
+            <span className="flex-1 truncate text-[16px] font-semibold text-white">{linkUrl.trim() ? (() => { try { return new URL(linkUrl.trim().startsWith("http") ? linkUrl.trim() : `https://${linkUrl.trim()}`).hostname.replace(/^www\./, ""); } catch { return linkUrl.trim(); } })() : "Add link"}</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-white/60" aria-hidden="true"><path d="M9.5 5 16 12l-6.5 7" /></svg>
+          </button>
+          {linkOpen && (
+            <input id="creator-link" className="field mb-2" {...FIELDS.createFeedPost.linkUrl} value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="Paste a link — your channel, the original clip, anything" inputMode="url" autoComplete="off" aria-label="Link attached to your post" />
+          )}
+          <button type="button" className="mt-5 w-full rounded-2xl text-[16px] font-extrabold text-white" style={{ background: "#2b5cff", minHeight: 52 }} disabled={publish.isPending} onClick={tryPublish} aria-label="Share now — your post lands on your Feed">
+            {publish.isPending ? "Sharing…" : "Share"}
+          </button>
+        </>
+      )}
+
+      {step === "details" && dest !== "post" && (
         <>
           {items.length > 0 && stage(true)}
           {thumbs}
@@ -17356,45 +18532,62 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
             {destBtn("clip", "Videos")}
           </div>
           <p className="mt-2 text-center text-xs text-[var(--dim)]">
-            {dest === "post" ? "Post — lands in the Feed for everyone, and on your profile." : dest === "story" ? "Story — sits in the Stories row at the top of the Feed for 24 hours, then it's gone." : "Videos — a vertical video in the Feed, and under Videos on your profile."}
+            {dest === "story" ? "Story — sits in the Stories row at the top of the Feed for 24 hours, then it's gone." : "Videos — a vertical video in the Feed, and under Videos on your profile."}
           </p>
-          {items.length > 1 && <p className="mt-2 text-center text-xs text-[var(--dim)]">Posting {items.length} {dest === "story" ? "story items" : "items"} — each goes up as its own {dest === "story" ? "story" : "post"} with this title and description.</p>}
+          {items.length > 1 && (
+            <p className="mt-2 text-center text-xs text-[var(--dim)]">
+              {dest === "story"
+                ? `Posting ${items.length} story items — each becomes its own story with this text.`
+                : items.some((it) => it.kind === "video")
+                  ? "Posting 1 video — a video always posts on its own."
+                  : `Posting ${items.length} photos in ONE post — people swipe through them in the Feed.`}
+            </p>
+          )}
+          {/* The Share screen (owner's direction, Nov 21 2026 —
+              the Instagram-style New post screen from his
+              screenshot): the picked media on top, then Add a
+              caption, hashtags, Add link, and Share. No separate
+              Title field any more — the caption IS the post's
+              text, exactly like the reference screen. */}
+          <label className="flabel" htmlFor="creator-caption">{dest === "story" ? "Text on your story" : "Caption"}</label>
+          <textarea id="creator-caption" className="field" rows={3} {...FIELDS.createFeedPost.body} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder={dest === "story" ? "Say something on your story… hashtags work here too" : "Add a caption… hashtags work too — try #GTAVI"} aria-label={dest === "story" ? "Text shown on your story" : "Caption for your post"} />
+          <span className="mb-2 mt-4 block text-[13px] font-extrabold" id="creator-hashtags-label">Hashtags</span>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="creator-hashtags-label">
+            {HASHTAG_CHIPS.map((tag) => {
+              const active = new RegExp(`#${tag}\\b`, "i").test(caption);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  className="chip-btn"
+                  style={active ? { background: "var(--accent)", borderColor: "var(--accent)", color: "#fff" } : undefined}
+                  aria-pressed={active}
+                  onClick={() => appendHashtag(tag)}
+                  aria-label={`Add the hashtag ${tag} to your ${dest === "story" ? "story" : "caption"}`}
+                >
+                  #{tag}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-xs text-[var(--dim)]">Tap to add, or type #tags right into the {dest === "story" ? "text" : "caption"} — people find posts by hashtag, and tapping one in the Feed searches it.</p>
           {dest !== "story" && (
             <>
-              <label className="flabel" htmlFor="creator-title">Title (optional)</label>
-              <input id="creator-title" className="field" {...FIELDS.createFeedPost.title} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Give it a headline…" aria-label="Title for your post" />
+              <label className="flabel mt-4" htmlFor="creator-link">
+                <span className="inline-flex items-center gap-1.5">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7.1 0l2.4-2.4a5 5 0 0 0-7.1-7.1L11 5.9" /><path d="M14 10a5 5 0 0 0-7.1 0L4.5 12.4a5 5 0 0 0 7.1 7.1L13 18.1" /></svg>
+                  Add link (optional)
+                </span>
+              </label>
+              <input id="creator-link" className="field" {...FIELDS.createFeedPost.linkUrl} value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="Paste a link — your channel, the original clip, anything" inputMode="url" autoComplete="off" aria-label="Link attached to your post" />
             </>
-          )}
-          <label className="flabel" htmlFor="creator-caption">{dest === "story" ? "Text on your story" : "Description"}</label>
-          <textarea id="creator-caption" className="field" rows={3} {...FIELDS.createFeedPost.body} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder={dest === "story" ? "Say something on your story…" : "Describe it — this is your post's bio text…"} aria-label={dest === "story" ? "Text shown on your story" : "Description for your post"} />
-          {dest === "post" && (
-            <div className="mt-5 border-t border-[var(--border)] pt-4">
-              <span className="mb-2 block text-[13px] font-extrabold" id="creator-category-label">Which category do you want to post to?</span>
-              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby="creator-category-label">
-                {(["Post", "Meme", "Funny", "Gameplay", "Car Meet", "Tutorial", "Discussion", "Screenshot"] as const).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={postCat === c}
-                    className="chip-btn"
-                    style={postCat === c ? { background: "var(--accent)", borderColor: "var(--accent)", color: "#fff" } : undefined}
-                    onClick={() => setPostCat(c)}
-                    aria-label={`Post to ${c === "Meme" ? "Memes" : c}`}
-                  >
-                    {c === "Meme" ? "Memes" : c}
-                  </button>
-                ))}
-              </div>
-              {postCat === "Meme" && <p className="mt-1.5 text-xs text-[var(--dim)]">Your meme lands in the Feed's Memes category, alongside the automatic GTA meme posts.</p>}
-            </div>
           )}
           {dest === "clip" && <p className="mt-5 border-t border-[var(--border)] pt-4 text-[13px] font-extrabold">Posting to: <span style={{ color: "var(--accent)" }}>Videos</span></p>}
           {dest === "story" && <p className="mt-5 border-t border-[var(--border)] pt-4 text-[13px] font-extrabold">Posting to: <span style={{ color: "var(--accent)" }}>Your story</span> — 24 hours</p>}
           <div className="mt-3 flex gap-2">
             <button type="button" className="btn-ghost flex-1" style={{ minHeight: 52 }} onClick={() => setStep(items.length > 0 ? "edit" : "capture")} aria-label="Back to the previous step">Back</button>
-            <button type="button" className="btn-primary flex-[2]" style={{ minHeight: 52 }} disabled={publish.isPending} onClick={tryPublish} aria-label={dest === "story" ? "Publish your story now" : dest === "clip" ? "Publish your video now" : "Publish your post now"}>
-              {publish.isPending ? "Publishing…" : dest === "story" ? "Post story — gone in 24 hours" : dest === "clip" ? "Publish video" : "Publish post"}
+            <button type="button" className="btn-primary flex-[2]" style={{ minHeight: 52 }} disabled={publish.isPending} onClick={tryPublish} aria-label={dest === "story" ? "Share your story now — it lands in the Stories row at the top of the Feed" : "Share now — it lands at the top of your Feed"}>
+              {publish.isPending ? "Sharing…" : dest === "story" ? "Share story" : "Share"}
             </button>
           </div>
         </>
@@ -17406,36 +18599,15 @@ function FeedCreator({ playerKey, gamertag, go, onClose, onPublished, initialPic
       {step !== "capture" && error && <p className="mt-3 text-sm font-semibold text-[var(--amber)]" role="alert">{error}</p>}
       {step !== "capture" && doneMsg && <p className="mt-3 text-sm font-semibold text-[var(--accent2)]" role="status">{doneMsg}</p>}
       </div>
-      {/* Post / Story switcher pinned to the bottom of the
-          picker tab (owner's direction, Nov 21 2026): while
-          the New post / Add to story tab is open, this bar is
-          FIXED to the bottom of the screen — it never scrolls
-          away with the picker grid, and it stays in place when
-          switching between the Post and Story tabs. Tapping
-          one swaps the picker (and the publish destination)
-          without closing anything. The clip picker is not
-          part of this switcher — it keeps its own header. */}
-      {step === "capture" && picker && picker !== "clip" && (
-        <div className="fixed inset-x-0 bottom-0 z-[90]" style={{ background: "rgba(8,8,14,0.97)", borderTop: "1px solid rgba(255,255,255,0.14)", paddingBottom: "env(safe-area-inset-bottom)" }} role="tablist" aria-label="Choose — Post or Story (fixed at the bottom)">
-          <div className="mx-auto flex w-full max-w-[680px] items-center justify-center gap-7 px-4">
-            {(["post", "story"] as const).map((id) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={picker === id}
-                onClick={() => { setDest(id); setError(""); setPicker(id); }}
-                className="relative text-[14px] font-extrabold uppercase tracking-[0.14em]"
-                style={{ color: picker === id ? "#fff" : "rgba(255,255,255,0.45)", minHeight: 52, paddingTop: 10, paddingBottom: 12 }}
-                aria-label={id === "post" ? "Post tab — pick for a new post" : "Story tab — pick for your story"}
-              >
-                {id === "post" ? "Post" : "Story"}
-                {picker === id && <span className="absolute inset-x-2 bottom-1.5 h-[3px] rounded-full" style={{ background: "var(--accent)" }} aria-hidden="true" />}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* No Post / Story row at the bottom of the picker
+          (owner's direction, Nov 21 2026): the fixed POST /
+          STORY switcher that used to sit under the New post /
+          Add to story picker is GONE — the picker screen now
+          ends with its grid. Which picker you are in is set by
+          how you arrived (Post on the camera opens New post;
+          the Your story entry opens Add to story), and the
+          publish destination can still be changed on the
+          Details step's own Post / Story / Videos chooser. */}
     </section>
   );
 }
@@ -17452,6 +18624,7 @@ function FeedView({
   onOpenMenu,
   avatarUrl,
   drawerOpen,
+  topBarHidden,
 }: {
   playerKey: string;
   gamertag: string;
@@ -17467,13 +18640,24 @@ function FeedView({
   onOpenMenu?: () => void;
   avatarUrl?: string;
   drawerOpen?: boolean;
+  /** The shell's hide-on-scroll state for the main column
+      (owner's direction, Nov 21 2026): TRUE while the reader is
+      scrolling down the Feed, FALSE on scroll up and at the top.
+      The Feed's own top bar — the icon row and the For you /
+      Following tabs — slides away and back with it, on phone
+      and laptop alike. */
+  topBarHidden?: boolean;
 }) {
   const qc = useQueryClient();
   // No category chooser on the Feed (owner's direction): the Feed
   // always shows every category together. The category is chosen
   // when POSTING (at the bottom of the creator), never as a filter
-  // the reader has to pick first.
-  const kind = "All";
+  // the reader has to pick first. The one reader filter added
+  // since (owner's direction, Nov 21 2026) is Videos only —
+  // videos are the Feed's priority, so they get a one-tap way to
+  // see nothing but posts carrying a real video.
+  const [videosOnly, setVideosOnly] = useState(false);
+  const kind = videosOnly ? "Videos" : "All";
   const [sourceFilter, setSourceFilter] = useState<"All" | "Automatic" | "Community">("All");
   const [sortMode, setSortMode] = useState<"Top" | "Latest">("Top");
   const [error] = useState("");
@@ -17579,7 +18763,7 @@ function FeedView({
     <div>
       {items.map((p, i) => (
         <div key={p.id}>
-          <FeedPostCard post={p} playerKey={playerKey} gamertag={gamertag} go={go} trackedStore={trackedStore} onOpenAuthorId={onOpenAuthorId} />
+          <FeedPostCard post={p} playerKey={playerKey} gamertag={gamertag} go={go} trackedStore={trackedStore} onOpenAuthorId={onOpenAuthorId} onHashtag={(tag) => { setFeedSearch(`#${tag}`); scrollPageToTopSoon(); }} />
           {/* AD SLOT — in-feed, one after every 4 posts. Placeholder
               only until an AdSense publisher ID is set; Premium
               members see nothing. */}
@@ -17591,7 +18775,7 @@ function FeedView({
     </div>
   );
   return (
-    <div className="mx-auto w-full max-w-[680px]">
+    <div className="feed-view mx-auto w-full max-w-[680px]">
       {/* Social top bar (owner's direction): the same bar as Clips
           — search, messages and notifications icons at the top of
           the Community Feed. On phone the shell's top bar is gone
@@ -17604,16 +18788,35 @@ function FeedView({
           button (owner's direction, Nov 21 2026): the Feed has no
           sidebar on phone, so the avatar ball lives here and opens
           the menu drawer, like the old phone top-bar avatar ball.
-          The whole row also STICKS to the top while scrolling
-          (stickyTop, owner's direction, Nov 21 2026): a small thin
-          layer pinned over the Feed so the controls — and the way
-          out — stay reachable from all the way down the Feed.
-          PHONE ONLY (owner's correction, Nov 21 2026): on PC the
-          row scrolls away with the page, and on phone the pinned
-          layer sits flush at the very top of the screen — no strip
-          of scrolled Feed above or beside it. */}
+          HIDE-ON-SCROLL (owner's direction, Nov 21 2026): the
+          whole top bar — this row AND the For you / Following
+          tabs under it, everything from For you up — is wrapped
+          in the sticky header below and follows the same concept
+          on phone AND laptop: scroll DOWN and the bar slides up
+          and disappears, scroll UP and it slides straight back,
+          and at the very top of the Feed it is always shown. The
+          wrapper is sticky so the bar can reappear over the
+          posts from anywhere in the Feed; it slides via a
+          transform driven by the shell's topBarHidden state
+          (onMainScroll on <main>), sits flush at the very top of
+          the screen with no strip of scrolled Feed above or
+          beside it, and turns visibility off once slid away so
+          its controls are never focusable while hidden. This
+          replaces the earlier phone-only always-pinned layer:
+          the bar now leaves on scroll down on every size. */}
+      <div
+        aria-hidden={topBarHidden}
+        className="feed-topbar-slide sticky top-0 z-30 -mx-5 px-5 pt-1.5 sm:-mx-6 sm:px-6 lg:-mx-2 lg:px-2"
+        style={{
+          background: "var(--bg)",
+          transform: topBarHidden ? "translateY(-100%)" : "translateY(0)",
+          visibility: topBarHidden ? "hidden" : "visible",
+          transition: topBarHidden
+            ? "transform 0.3s ease, visibility 0s linear 0.3s"
+            : "transform 0.3s ease, visibility 0s",
+        }}
+      >
       <SocialTopBar
-        stickyTop
         centerLogo
         onOpenMenu={onOpenMenu}
         avatarUrl={avatarUrl}
@@ -17635,7 +18838,10 @@ function FeedView({
           For you / Following are tabs now. There is NO Refresh
           button — pressing the tab you are already on again resets
           that tab: back to the top with the latest posts, every
-          time. */}
+          time. The tabs sit INSIDE the hide-on-scroll sticky
+          header above (owner's direction, Nov 21 2026): they
+          slide away on scroll down and back on scroll up together
+          with the icon row, on phone and laptop alike. */}
       <div className="mb-2 border-b border-[var(--border)]">
         <div className="flex" role="tablist" aria-label="Feed views — For you and Following. Press the tab you are on again to reset it and load the latest posts.">
           {([["foryou", "For you"], ["following", "Following"]] as const).map(([id, label]) => (
@@ -17655,6 +18861,7 @@ function FeedView({
           ))}
         </div>
       </div>
+      </div>
       {error && <p className="mb-4 text-sm font-semibold text-[var(--amber)]" role="alert">{error}</p>}
       {/* No story viewing while posting (owner's direction):
           the Stories row only shows on the reading tabs. On the
@@ -17673,7 +18880,22 @@ function FeedView({
           initialPicker={creatorInitialPicker}
           initialDest={creatorDest}
           onClose={() => { setFeedTab("foryou"); scrollPageToTopSoon(); }}
-          onPublished={(d) => { if (d !== "story") { setFeedTab("foryou"); scrollPageToTopSoon(); } }}
+          onPublished={(d) => {
+            if (d !== "story") {
+              // Share lands you right on your Feed WITH your
+              // post on it (owner's direction, Nov 21 2026):
+              // newest first and no filter that could hide it,
+              // so the photo / video you just shared is the
+              // first thing you see, looking like every other
+              // Feed post.
+              setSortMode("Latest");
+              setSourceFilter("All");
+              setVideosOnly(false);
+              setFeedSearch("");
+              setFeedTab("foryou");
+              scrollPageToTopSoon();
+            }
+          }}
         />
       ) : (
       <>
@@ -17696,16 +18918,19 @@ function FeedView({
             {s === "All" ? "All posts" : s === "Automatic" ? "Automatic only" : "Community only"}
           </button>
         ))}
+        <button type="button" className="chip teal" style={{ minHeight: 36, padding: "4px 12px", fontSize: 12 }} aria-pressed={videosOnly} onClick={() => setVideosOnly((v) => !v)} aria-label="Videos only — show only posts with a real video: streamer clips, funny videos, GTA jokes and memes">
+          Videos only
+        </button>
         <span className="ml-2 text-[11px] font-bold uppercase tracking-widest text-[var(--dim)]">Sort</span>
         {(["Top", "Latest"] as const).map((s) => (
-          <button key={s} type="button" className="chip" style={{ minHeight: 36, padding: "4px 12px", fontSize: 12 }} aria-pressed={sortMode === s} onClick={() => setSortMode(s)} aria-label={s === "Top" ? "Sort by most liked" : "Sort by newest first"}>
+          <button key={s} type="button" className="chip" style={{ minHeight: 36, padding: "4px 12px", fontSize: 12 }} aria-pressed={sortMode === s} onClick={() => setSortMode(s)} aria-label={s === "Top" ? "Sort Top — videos first, then most liked" : "Sort by newest first"}>
             {s === "Top" ? "Top" : "Latest"}
           </button>
         ))}
       </div>
       {sourceFilter !== "Community" && (
-        <p className="mb-3 text-xs leading-relaxed text-[var(--dim)]">
-          Official trailers, news videos, streamer clips, tutorials, gameplay, car meets and memes are found automatically every day and labelled <strong className="text-[var(--text)]">Auto</strong> — each one names its source and links to the original. Nothing is re-uploaded.
+        <p className="feed-explainer mb-3 text-xs leading-relaxed text-[var(--dim)]">
+          Videos lead this Feed. Two automatic AI accounts keep it fresh: <strong className="text-[var(--text)]">GTA NEWS</strong> posts GTA news and <strong className="text-[var(--text)]">GTA CLIPPER</strong> posts streamer clips, funny videos, GTA jokes and memes — both are labelled <strong className="text-[var(--text)]">AI</strong> next to their name. Every video is a real video from its original creator and links to the source — nothing is AI-generated and nothing is re-uploaded.
         </p>
       )}
       </>
@@ -17735,9 +18960,11 @@ function FeedView({
         <EmptyNote>
           {feedTab === "following"
             ? "Nothing here yet"
-            : sourceFilter === "Automatic"
-              ? "No automatic posts yet — the daily refresh adds new official and trending GTA VI videos here. Press the For you tab again any time to load the latest."
-              : "Nothing here yet — tap the + at the top left to be the first to post."}
+            : videosOnly
+              ? "No videos in this view yet — GTA CLIPPER adds real streamer clips, funny videos and GTA memes automatically through the day. Press the For you tab again any time to load the latest."
+              : sourceFilter === "Automatic"
+                ? "No automatic posts yet — the daily refresh adds new official and trending GTA VI videos here. Press the For you tab again any time to load the latest."
+                : "Nothing here yet — tap the + at the top left to be the first to post."}
         </EmptyNote>
       )}
       {renderCards(allItems)}
@@ -17750,8 +18977,12 @@ function FeedView({
 
 // Turns URLs inside post text into teal links (Muse-Feed style: key
 // phrases read as links, everything else stays calm body text).
-function linkifyText(text: string): ReactNode[] {
-  const parts = text.split(/(https?:\/\/[^\s<]+[^\s<.,;:!?)]|www\.[^\s<]+[^\s<.,;:!?)]|rockstargames\.com\/VI)/g);
+function linkifyText(text: string, onHashtag?: (tag: string) => void): ReactNode[] {
+  // Links AND hashtags (owner's direction, Nov 21 2026):
+  // a #tag in a caption or story renders as a tag — a real
+  // button that searches the Feed for that hashtag when a
+  // handler is passed, an accent-coloured span otherwise.
+  const parts = text.split(/(https?:\/\/[^\s<]+[^\s<.,;:!?)]|www\.[^\s<]+[^\s<.,;:!?)]|rockstargames\.com\/VI|#[A-Za-z0-9_]+)/g);
   return parts.map((part, i) => {
     if (/^(https?:\/\/|www\.|rockstargames\.com)/.test(part)) {
       const href = part.startsWith("http") ? part : part === "rockstargames.com/VI" ? OFFICIAL_GTA_VI_URL : `https://${part}`;
@@ -17760,6 +18991,17 @@ function linkifyText(text: string): ReactNode[] {
           {part}
         </a>
       );
+    }
+    if (/^#[A-Za-z0-9_]+$/.test(part)) {
+      const tag = part.slice(1).toLowerCase();
+      if (onHashtag) {
+        return (
+          <button key={i} type="button" className="font-bold text-[var(--accent)]" style={{ minHeight: 0, padding: 0 }} onClick={() => onHashtag(tag)} aria-label={`Search the Feed for ${part}`}>
+            {part}
+          </button>
+        );
+      }
+      return <span key={i} className="font-bold text-[var(--accent)]">{part}</span>;
     }
     return <span key={i}>{part}</span>;
   });
@@ -17875,9 +19117,34 @@ function YoutubePlayer({
   const baseEmbed = videoId
     ? `https://${hostAlt ? "www.youtube.com" : "www.youtube-nocookie.com"}/embed/${videoId}`
     : embedUrl;
+  // Story clip window (bot story clips, owner's direction):
+  // a link carrying &t=<start>s&len=<seconds> plays ONLY that
+  // 5–10 second window of the video — the embed gets matching
+  // start / end parameters. Ordinary links carry neither and
+  // play exactly as before.
+  const clipStart = (() => {
+    const m = `${watchUrl} ${embedUrl}`.match(/[?&](?:t|start)=(\d+)/);
+    return m?.[1] ? Number(m[1]) : -1;
+  })();
+  const clipLen = (() => {
+    const m = `${watchUrl} ${embedUrl}`.match(/[?&]len=(\d+)/);
+    return m?.[1] ? Number(m[1]) : -1;
+  })();
+  const clipParams = clipStart >= 0
+    ? `&start=${clipStart}${clipLen >= 5 && clipLen <= 60 ? `&end=${clipStart + clipLen}` : ""}`
+    : "";
+  // Story mode (vertical): the clip must FEEL like a story, not a
+  // video link parked in the frame (owner's direction, Nov 21
+  // 2026) — no YouTube controls or chrome, and a Short (a vertical
+  // video) loops like a TikTok until the story advances. A windowed
+  // clip keeps its start / end window instead of looping.
+  const isShort = /\/shorts\//.test(`${watchUrl} ${embedUrl}`);
+  const storyParams = vertical
+    ? `&controls=0&disablekb=1&fs=0&modestbranding=1&iv_load_policy=3${isShort && videoId ? `&loop=1&playlist=${videoId}` : ""}`
+    : "&controls=1";
   const sep = baseEmbed.includes("?") ? "&" : "?";
   const embedSrc = baseEmbed
-    ? `${baseEmbed}${sep}autoplay=1&mute=${soundOn ? 0 : 1}&playsinline=1&controls=1&rel=0`
+    ? `${baseEmbed}${sep}autoplay=1&mute=${soundOn ? 0 : 1}&playsinline=1&rel=0${storyParams}${clipParams}`
     : "";
   const thumbSrcs = videoId
     ? [
@@ -17890,6 +19157,36 @@ function YoutubePlayer({
 
   const wantPlay = started || (vertical ? active : inView);
   const mounted = wantPlay && !failed && Boolean(embedSrc);
+
+  // Story mode frame measurement: YouTube letterboxes its video
+  // inside whatever shape the iframe has, so a 16:9 video parked
+  // in a portrait iframe renders as a small strip with black
+  // around it — the "video link that doesn't fit the frame" the
+  // owner rejected. Instead the iframe itself is sized to the
+  // VIDEO's own aspect (16:9, or 9:16 for a Short) and scaled to
+  // COVER the story frame, centred, with the frame's overflow
+  // hidden: the video fills the whole story like a recording,
+  // cropped at the sides the way TikTok crops landscape clips.
+  const [frameSize, setFrameSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useEffect(() => {
+    if (!vertical) return;
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (r && r.width > 0 && r.height > 0) setFrameSize({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [vertical]);
+  const coverBox = (() => {
+    if (!vertical || frameSize.w <= 0 || frameSize.h <= 0) return null;
+    const ar = isShort ? 9 / 16 : 16 / 9;
+    // 3% overscan so no sliver of the player's own background or
+    // edge gradient can peek around the video.
+    const w = Math.max(frameSize.w, frameSize.h * ar) * 1.03;
+    return { w: Math.round(w), h: Math.round(w / ar) };
+  })();
 
   // Track viewport visibility (Feed mode). In Clips (vertical) the
   // parent slide decides what is active instead.
@@ -18005,8 +19302,10 @@ function YoutubePlayer({
               key={`${hostAlt ? "alt" : "main"}-${soundOn ? "snd" : "mut"}`}
               src={embedSrc}
               title={title}
-              className="absolute inset-0 h-full w-full"
-              style={{ border: 0 }}
+              className={coverBox ? "absolute" : "absolute inset-0 h-full w-full"}
+              style={coverBox
+                ? { border: 0, left: "50%", top: "50%", width: coverBox.w, height: coverBox.h, maxWidth: "none", transform: "translate(-50%, -50%)", pointerEvents: "none" }
+                : { border: 0 }}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
               allowFullScreen
               referrerPolicy="strict-origin-when-cross-origin"
@@ -18021,7 +19320,7 @@ function YoutubePlayer({
               <button
                 type="button"
                 className="absolute bottom-2.5 right-2.5 z-10 rounded-full bg-black/65 px-3.5 py-2 text-xs font-bold text-white"
-                style={{ minHeight: 36 }}
+                style={{ minHeight: 36, zIndex: vertical ? 30 : undefined }}
                 onClick={toggleSound}
                 aria-label={soundOn ? `Mute video: ${title}` : `Unmute video: ${title}`}
                 aria-pressed={soundOn}
@@ -18190,6 +19489,40 @@ function NativeClip({
   );
 }
 
+// One post, several photos (owner's direction, Nov 21 2026):
+// the photos ride in a single swipeable set inside the one
+// post — scroll-snap slides, a position counter and dots —
+// exactly how a multi-photo post reads in the Feed.
+function FeedPhotoCarousel({ urls, title, nested = false, bleed = false }: { urls: string[]; title: string; nested?: boolean; bleed?: boolean }) {
+  const [active, setActive] = useState(0);
+  const onScroll = (e: ReactUIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const idx = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
+    setActive(Math.max(0, Math.min(urls.length - 1, idx)));
+  };
+  return (
+    <div className={`${bleed ? "mt-3 sm:mt-5" : nested ? "mt-3" : "mt-5"} relative`}>
+      <div
+        className={`flex snap-x snap-mandatory overflow-x-auto bg-[var(--surface2)] ${bleed ? "rounded-none sm:rounded-2xl" : "rounded-2xl"}`}
+        style={{ scrollbarWidth: "none" }}
+        onScroll={onScroll}
+        role="group"
+        aria-label={`${title} — ${urls.length} photos, swipe to see them all`}
+      >
+        {urls.map((u, i) => (
+          <img key={u} decoding="async" src={u} alt={`${title} — photo ${i + 1} of ${urls.length}`} className={`${bleed ? "aspect-[4/5]" : "aspect-[4/3]"} w-full flex-none snap-center object-cover sm:aspect-[16/10]`} loading="lazy" />
+        ))}
+      </div>
+      <span className="absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-extrabold text-white" aria-hidden="true">{active + 1}/{urls.length}</span>
+      <div className="mt-2 flex justify-center gap-1.5" aria-hidden="true">
+        {urls.map((u, i) => (
+          <span key={u} className="h-1.5 w-1.5 rounded-full" style={{ background: i === active ? "var(--accent)" : "var(--surface3)" }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Large inline media for a Feed post: videos play in the card via the
 // embedded player above, uploaded clips play in a native player,
 // images render full width.
@@ -18200,6 +19533,8 @@ function FeedMediaBlock({
   videoId = "",
   title,
   nested = false,
+  mediaUrls,
+  bleed = false,
 }: {
   mediaUrl: string;
   mediaType: string;
@@ -18207,7 +19542,18 @@ function FeedMediaBlock({
   videoId?: string;
   title: string;
   nested?: boolean;
+  /** The post's full media list — several photos render as one swipeable set. */
+  mediaUrls?: string[];
+  /** Edge-to-edge media (the profile post viewer's Instagram
+      layout): square corners on phone, the photo at its own
+      aspect instead of a forced crop. The caller bleeds the
+      wrapper past its column padding. */
+  bleed?: boolean;
 }) {
+  const gallery = (mediaUrls ?? []).filter(Boolean);
+  if (gallery.length > 1) {
+    return <FeedPhotoCarousel urls={gallery} title={title} nested={nested} bleed={bleed} />;
+  }
   if (!mediaUrl) return null;
   const isImage = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(mediaUrl);
   const isVideo = /\.(mp4|webm)(\?|$)/i.test(mediaUrl);
@@ -18216,18 +19562,24 @@ function FeedMediaBlock({
   const ytId = videoId || youtubeIdFromUrl(mediaUrl);
   if ((mediaType === "youtube" || ytId) && (embedUrl || ytId)) {
     const embed = embedUrl || `https://www.youtube.com/embed/${ytId}`;
-    return <YoutubePlayer embedUrl={embed} videoId={ytId} title={title} watchUrl={mediaUrl} nested={nested} />;
+    return <YoutubePlayer embedUrl={embed} videoId={ytId} title={title} watchUrl={mediaUrl} nested={nested} flush={bleed} />;
   }
   if (mediaType === "video" || isVideo) {
-    return <NativeClip src={mediaUrl} title={title} />;
+    return <NativeClip src={mediaUrl} title={title} flush={bleed} />;
   }
   if (mediaType === "image" || isImage) {
     // One large picture per post, visual-first — full column width
     // and tall on a phone (4:3), a little wider on larger screens,
-    // softly rounded, never stretched.
+    // softly rounded, never stretched. In bleed mode the photo
+    // runs edge to edge at its OWN aspect (capped tall), the way
+    // the reference post view shows it.
     return (
-      <div className={`${nested ? "mt-3" : "mt-5"} w-full overflow-hidden rounded-2xl bg-[var(--surface2)]`}>
-        <img decoding="async" src={mediaUrl} alt={title} className="aspect-[4/3] w-full object-cover sm:aspect-[16/10]" loading="lazy" />
+      <div className={`${bleed ? "mt-3 sm:mt-5" : nested ? "mt-3" : "mt-5"} w-full overflow-hidden bg-[var(--surface2)] ${bleed ? "rounded-none sm:rounded-2xl" : "rounded-2xl"}`}>
+        {bleed ? (
+          <img decoding="async" src={mediaUrl} alt={title} className="h-auto max-h-[82vh] w-full object-cover sm:aspect-[16/10]" loading="lazy" />
+        ) : (
+          <img decoding="async" src={mediaUrl} alt={title} className="aspect-[4/3] w-full object-cover sm:aspect-[16/10]" loading="lazy" />
+        )}
       </div>
     );
   }
@@ -18690,6 +20042,12 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
     refetchInterval: 30000,
   });
   const [viewer, setViewer] = useState<{ groups: StoryGroup[]; groupIndex: number } | null>(null);
+  // Create-a-highlight straight from your own story's black
+  // bar (owner's direction, Nov 21 2026): the viewer's
+  // Highlight button with no highlights yet closes the viewer
+  // and opens the New highlight screen here, with the story
+  // already picked.
+  const [hlCreate, setHlCreate] = useState<{ picked: number[] } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState("");
   const [addedKeys, setAddedKeys] = useState<ReadonlySet<string>>(new Set());
@@ -18697,9 +20055,10 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
   // The row scrolls sideways (owner's direction): the people
   // the server returns are in the row — EVERY person you follow
   // first, as a priority block right after "Your story", then at
-  // most 5 recommendations — and the row slides left to right to
-  // reach them all. The balls stay big and spaced out; the row
-  // scrolls, it never wraps or squeezes.
+  // most 3 recommendations — and the row slides left to right to
+  // reach them all. The balls are a little bigger than before
+  // with more space between them (owner's direction, Nov 21
+  // 2026); the row scrolls, it never wraps or squeezes.
   const people = storiesQ.data?.people ?? [];
   const myGroup = groups.find((g) => g.mine) ?? null;
   const others = groups.filter((g) => !g.mine);
@@ -18753,7 +20112,7 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
   // it holds just the "Your story" ball (owner's correction,
   // Nov 21 2026). No early return here.
   return (
-    <section className="mb-4" aria-label={followingOnly ? "Stories — your story, then only people you follow" : "Stories — your story first, then people in one row of circles that scrolls sideways"}>
+    <section className="stories-row mb-3 sm:mb-4" aria-label={followingOnly ? "Stories — your story, then only people you follow" : "Stories — your story first, then people in one row of circles that scrolls sideways"}>
       {/* Reference style (owner's pictures): big balls with a
           solid purple ring, a purple pill with a + person icon
           overlapping the bottom of the ball for anyone who is not
@@ -18774,8 +20133,8 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
           withholds it) — its ball carries a lock, and pressing it
           opens the profile, which shows as private / locked
           instead of their posts. */}
-      <div className="flex snap-x gap-6 overflow-x-auto px-1 pb-2 pt-1" style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }} aria-label="Story circles — scroll sideways for more people">
-        <div className="flex w-[92px] flex-none snap-start flex-col items-center">
+      <div className="flex snap-x gap-6 overflow-x-auto px-2 pb-2 pt-1 sm:gap-9" style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }} aria-label="Story circles — scroll sideways for more people">
+        <div className="flex w-[86px] flex-none snap-start flex-col items-center sm:w-[106px]">
           <div className="relative">
             <button
               type="button"
@@ -18786,7 +20145,7 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
             >
               <span className="inline-flex rounded-full p-[4px]" style={{ background: myGroup ? "#9333ea" : "transparent" }}>
                 <span className="inline-flex rounded-full border-[3px] border-[var(--bg)]">
-                  <CosmeticAvatar name={gamertag || "You"} size={72} avatarUrl={myGroup?.avatarUrl ?? ""} />
+                  <CosmeticAvatar name={gamertag || "You"} size={80} avatarUrl={myGroup?.avatarUrl ?? ""} />
                 </span>
               </span>
             </button>
@@ -18800,8 +20159,8 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
               +
             </button>
           </div>
-          <span className="mt-2.5 w-full truncate text-center text-[14px] font-bold text-white">Your story</span>
-          {gamertag ? <span className="w-full truncate text-center text-[12.5px] text-[var(--dim)]">@{gamertag.replace(/\s+/g, "")}</span> : <span className="w-full truncate text-center text-[12.5px] text-[var(--dim)]">Add a story</span>}
+          <span className="mt-2 w-full truncate text-center text-[12px] font-bold text-white sm:mt-2.5 sm:text-[14px]">Your story</span>
+          {gamertag ? <span className="w-full truncate text-center text-[11px] text-[var(--dim)] sm:text-[12.5px]">@{gamertag.replace(/\s+/g, "")}</span> : <span className="w-full truncate text-center text-[11px] text-[var(--dim)] sm:text-[12.5px]">Add a story</span>}
         </div>
         {visiblePeople.map((person) => {
           const g = groups.find((x) => x.authorKey === person.playerKey) ?? null;
@@ -18813,7 +20172,7 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
           const isPrivateLocked = person.isPrivate && !isFriend;
           const handle = `@${(person.gamertag || person.name).replace(/\s+/g, "")}`;
           return (
-            <div key={person.playerKey} className="flex w-[92px] flex-none snap-start flex-col items-center">
+            <div key={person.playerKey} className="flex w-[86px] flex-none snap-start flex-col items-center sm:w-[106px]">
               <div className="relative">
                 <button
                   type="button"
@@ -18823,11 +20182,11 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
                   aria-label={g ? `Watch ${person.name}'s story — ${g.stories.length} ${g.stories.length === 1 ? "story" : "stories"}${g.hasUnseen ? ", unwatched" : ", watched"}${isFriend ? " — your friend" : " — not your friend yet, use the Add pill under the ball to fast-add them"}` : `Open ${person.name}'s profile${isPrivateLocked ? " — private account, their profile shows as locked until they accept your follow" : isFriend ? " — your friend" : " — not your friend yet, use the Add pill under the ball to fast-add them"}`}
                 >
                   {g ? (
-                    <StoryRing group={g} size={72} />
+                    <StoryRing group={g} size={80} />
                   ) : (
                     <span className="inline-flex flex-none items-center justify-center rounded-full p-[4px]" style={{ background: "transparent" }} aria-hidden="true">
                       <span className="inline-flex rounded-full border-[3px] border-[var(--bg)]">
-                        <CosmeticAvatar name={person.name} size={72} avatarUrl={person.avatarUrl} />
+                        <CosmeticAvatar name={person.name} size={80} avatarUrl={person.avatarUrl} />
                       </span>
                     </span>
                   )}
@@ -18856,8 +20215,8 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
                   </span>
                 )}
               </div>
-              <span className="mt-4 w-full truncate text-center text-[14px] font-bold text-white">{person.name}</span>
-              <span className="w-full truncate text-center text-[12.5px] text-[var(--dim)]">{handle}</span>
+              <span className="mt-3 w-full truncate text-center text-[12px] font-bold text-white sm:mt-4 sm:text-[14px]">{person.name}</span>
+              <span className="w-full truncate text-center text-[11px] text-[var(--dim)] sm:text-[12.5px]">{handle}</span>
               {isPrivateLocked && <span className="w-full truncate text-center text-[11.5px] font-semibold text-[var(--dim)]">Private account</span>}
             </div>
           );
@@ -18865,7 +20224,7 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
         {visiblePeople.length === 0 && visibleOthers.map((g) => {
           const isFriend = g.followedByMe || addedKeys.has(g.authorKey);
           return (
-            <div key={g.authorKey} className="flex w-[92px] flex-none snap-start flex-col items-center">
+            <div key={g.authorKey} className="flex w-[86px] flex-none snap-start flex-col items-center sm:w-[106px]">
               <div className="relative">
                 <button
                   type="button"
@@ -18874,7 +20233,7 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
                   onClick={() => openGroup(g)}
                   aria-label={`Watch ${g.author}'s story — ${g.stories.length} ${g.stories.length === 1 ? "story" : "stories"}${g.hasUnseen ? ", unwatched" : ", watched"}`}
                 >
-                  <StoryRing group={g} size={72} />
+                  <StoryRing group={g} size={80} />
                 </button>
                 {!isFriend && gamertag && (
                   <button
@@ -18890,8 +20249,8 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
                   </button>
                 )}
               </div>
-              <span className="mt-4 w-full truncate text-center text-[14px] font-bold text-white">{g.author}</span>
-              <span className="w-full truncate text-center text-[12.5px] text-[var(--dim)]">@{g.author.replace(/\s+/g, "")}</span>
+              <span className="mt-3 w-full truncate text-center text-[12px] font-bold text-white sm:mt-4 sm:text-[14px]">{g.author}</span>
+              <span className="w-full truncate text-center text-[11px] text-[var(--dim)] sm:text-[12.5px]">@{g.author.replace(/\s+/g, "")}</span>
             </div>
           );
         })}
@@ -18918,7 +20277,18 @@ function StoriesRow({ playerKey, gamertag, onOpenProfile, followingOnly = false 
           playerKey={playerKey}
           gamertag={gamertag}
           onOpenProfile={onOpenProfile}
+          onCreateHighlight={(storyId) => setHlCreate({ picked: [storyId] })}
           onClose={() => { setViewer(null); qc.invalidateQueries({ queryKey: ["stories"] }); }}
+        />
+      )}
+      {hlCreate && (
+        <HighlightEditorSheet
+          playerKey={playerKey}
+          gamertag={gamertag}
+          existing={null}
+          initialPicked={hlCreate.picked}
+          onClose={() => setHlCreate(null)}
+          onSaved={() => { setHlCreate(null); qc.invalidateQueries({ queryKey: ["highlights"] }); qc.invalidateQueries({ queryKey: ["story-archive"] }); }}
         />
       )}
     </section>
@@ -19246,6 +20616,25 @@ function StoryAddFlow({ playerKey, gamertag, avatarUrl = "", onClose, onPosted }
   );
 }
 
+/* A story ALWAYS fills the whole 9:16 frame as a picture
+   (owner's direction, Nov 21 2026: "make them full screen…
+   play like an actual clip with sounds on — if that's too
+   hard post a pic of a meme or just gta pictures as story").
+   A YouTube embed can never do that honestly: phones block
+   sound-on autoplay and the YouTube player letterboxes its
+   video into a small strip with its own play button, which
+   is exactly the "video link on the story that doesn't even
+   fit the frame" the owner rejected twice. So a story whose
+   media is a video LINK is shown as its full-frame picture —
+   the video's own thumbnail, cover-cropped to the frame like
+   any story photo — and holds for the same 5 seconds as a
+   photo. No iframe, no play button, no letterbox in stories,
+   ever. (The Feed and profile Videos keep their real players;
+   only the story frame is pictures-only.) */
+function storyEmbedDurationMs(_mediaUrl: string): number {
+  return 5000;
+}
+
 function StoryViewer({
   groups,
   startGroupIndex,
@@ -19254,6 +20643,7 @@ function StoryViewer({
   onClose,
   onOpenProfile,
   highlight,
+  onCreateHighlight,
 }: {
   groups: StoryGroup[];
   startGroupIndex: number;
@@ -19261,13 +20651,23 @@ function StoryViewer({
   gamertag: string;
   onClose: () => void;
   onOpenProfile?: (key: string) => void;
+  // Own-story black bar → Highlight button with NO highlights
+  // yet (owner's direction, Nov 21 2026): the viewer closes and
+  // the parent opens the create-a-highlight screen with this
+  // story already picked — the editor is portalled at z-[90],
+  // below this viewer's z-[100], so it can only be opened by
+  // the parent once the viewer is gone (the same reason Edit
+  // highlight goes through the highlight prop's onEdit).
+  onCreateHighlight?: (storyId: number) => void;
   // Set only when the viewer was opened from one of the player's
   // OWN highlight balls: the viewer keeps the identical story
-  // design, but its bottom bar carries Send and More instead of
-  // the reply / like row (owner's direction, Nov 21 2026). More
-  // opens Edit highlight / Remove highlight; Edit highlight goes
-  // to the Edit highlight screen via onEdit, and a successful
-  // removal calls onRemoved so the profile can close + refresh.
+  // design, but its bottom is the highlight black bar instead of
+  // the reply / like row (owner's screenshots, Nov 21 2026):
+  // Activity on the left, Browse, Send and More on the right.
+  // More opens Edit highlight / Remove from highlight (NO
+  // Archive option); Edit highlight goes to the Edit highlight
+  // screen via onEdit, and a successful removal calls onRemoved
+  // so the profile can close + refresh.
   highlight?: { id: number; title: string; onEdit: () => void; onRemoved: () => void } | null;
 }) {
   const qc = useQueryClient();
@@ -19279,15 +20679,25 @@ function StoryViewer({
   const [viewCounts, setViewCounts] = useState<Record<number, number>>({});
   const [likeState, setLikeState] = useState<Record<number, { liked: boolean; likes: number }>>({});
   // Highlight mode state: the More options card, its remove
-  // confirm step, and the Send sheet.
+  // confirm step, the Send sheet, and the Browse grid (the
+  // highlight bar's Browse button — a grid of this highlight's
+  // stories to jump between them).
   const [hlMenu, setHlMenu] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
   // Own-story delete (the viewer's top-right trash can): the
   // confirm card's open state.
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [sendSearch, setSendSearch] = useState("");
   const [sentTo, setSentTo] = useState<Record<string, boolean>>({});
+  // Own-story black bar (owner's direction, Nov 21 2026): the
+  // bar's Highlight button opens the highlight picker sheet;
+  // addedPairs remembers which highlights this session already
+  // added each story to, on top of what the highlights query
+  // itself reports.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [addedPairs, setAddedPairs] = useState<Record<string, boolean>>({});
   const touchRef = useRef<{ x: number; y: number } | null>(null);
   const group = groups[gi];
   const story: StoryItem | undefined = group?.stories[si];
@@ -19315,8 +20725,10 @@ function StoryViewer({
   };
   // The delete confirm belongs to one story only — moving to
   // another story closes it, so a stray tap can never delete the
-  // wrong one.
-  useEffect(() => { setConfirmDelete(false); }, [story?.id]);
+  // wrong one. The highlight picker closes on a story change
+  // for the same reason: it adds the story on screen, never the
+  // previous one.
+  useEffect(() => { setConfirmDelete(false); setPickerOpen(false); setBrowseOpen(false); }, [story?.id]);
   // Record the view (once per player per story, server-side) and
   // keep the shown count fresh.
   useEffect(() => {
@@ -19328,17 +20740,18 @@ function StoryViewer({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id, playerKey]);
-  // Auto-advance: photos and text stories hold for about 5
-  // seconds each (Instagram timing), embeds for 15 — native
-  // videos advance on their own end event.
+  // Auto-advance: photos, text stories and picture-shown
+  // video-link stories all hold for about 5 seconds each
+  // (Instagram timing). Native uploaded videos advance on
+  // their own end event.
   useEffect(() => {
-    if (!story || showInsights || hlMenu || sendOpen || confirmDelete) return;
+    if (!story || showInsights || hlMenu || sendOpen || confirmDelete || pickerOpen || browseOpen) return;
     if (story.mediaType === "video") return;
-    const ms = story.mediaType === "embed" ? 15000 : 5000;
+    const ms = story.mediaType === "embed" ? storyEmbedDurationMs(story.mediaUrl) : 5000;
     const t = window.setTimeout(goNext, ms);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [story?.id, gi, si, showInsights, hlMenu, sendOpen, confirmDelete]);
+  }, [story?.id, gi, si, showInsights, hlMenu, sendOpen, confirmDelete, pickerOpen, browseOpen]);
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -19393,10 +20806,18 @@ function StoryViewer({
     onSuccess: (_res, p) => { setSentTo((prev) => ({ ...prev, [p.key]: true })); setNotice(`Highlight sent to ${p.name}.`); },
     onError: (e) => setNotice(e.message),
   });
-  const removeHlMut = useMutation({
-    mutationFn: async () => {
-      if (!highlight) throw new Error("No highlight to remove.");
-      return await api.deleteHighlight({ playerKey, highlightId: highlight.id });
+  // More → Remove from highlight (owner's menu, Nov 21 2026:
+  // Edit highlight and Remove from highlight ONLY — no
+  // Archive): removes the story on screen from this highlight
+  // via removeStoryFromHighlight. The story itself stays in
+  // the story history; if it was the highlight's last story
+  // the server deletes the highlight too. Either way the
+  // viewer closes through onRemoved so the profile re-renders
+  // the highlight as it now is.
+  const removeFromHlMut = useMutation({
+    mutationFn: async (storyId: number) => {
+      if (!highlight) throw new Error("No highlight to remove from.");
+      return await api.removeStoryFromHighlight({ playerKey, highlightId: highlight.id, storyId });
     },
     onSuccess: () => { setHlMenu(false); setConfirmRemove(false); highlight?.onRemoved(); },
     onError: (e) => { setNotice(e.message); setConfirmRemove(false); },
@@ -19405,6 +20826,28 @@ function StoryViewer({
     queryKey: ["story-insights", story?.id, playerKey],
     queryFn: () => api.getStoryInsights({ playerKey, storyId: story?.id ?? 0 }),
     enabled: Boolean(story?.mine && showInsights),
+  });
+  // The own-story black bar's highlight picker reads the
+  // player's OWN highlights — the same query key ProfileHighlights
+  // uses for the profile row, so both share one cache entry and
+  // one invalidation. Only fetched when one of the groups on
+  // screen is the player's own (never in highlight mode: a
+  // highlight's own viewer keeps its Send / More bar).
+  const ownHighlightsQ = useQuery({
+    queryKey: ["highlights", playerKey],
+    queryFn: () => api.listHighlights({ playerKey, targetKey: playerKey }),
+    enabled: Boolean(playerKey) && !highlight && groups.some((g) => g.mine),
+  });
+  const addToHlMut = useMutation({
+    mutationFn: async (v: { highlightId: number; title: string; storyId: number }) =>
+      await api.addStoryToHighlight({ playerKey, highlightId: v.highlightId, storyId: v.storyId }),
+    onSuccess: (res, v) => {
+      setAddedPairs((prev) => ({ ...prev, [`${v.storyId}:${v.highlightId}`]: true }));
+      qc.invalidateQueries({ queryKey: ["highlights"] });
+      setPickerOpen(false);
+      setNotice(res.added ? `Added to your "${v.title}" highlight.` : `This story is already in "${v.title}".`);
+    },
+    onError: (e) => setNotice(e.message),
   });
   if (!group || !story) {
     return createPortal((
@@ -19416,6 +20859,22 @@ function StoryViewer({
   const liked = likeState[story.id]?.liked ?? story.likedByMe;
   const likes = likeState[story.id]?.likes ?? story.likes;
   const views = viewCounts[story.id] ?? story.views;
+  // The black bar's Highlight button (owner's direction):
+  // with at least one highlight it opens the picker sheet —
+  // pick one and this story goes into it. With NO highlights
+  // it skips the sheet and goes straight to the
+  // create-a-highlight screen via the parent (see the
+  // onCreateHighlight prop). If the highlights are still
+  // loading, the sheet opens and shows its loading state.
+  const openHighlightPicker = () => {
+    const items = ownHighlightsQ.data?.items ?? [];
+    if (ownHighlightsQ.isSuccess && items.length === 0 && onCreateHighlight) {
+      onClose();
+      onCreateHighlight(story.id);
+      return;
+    }
+    setPickerOpen(true);
+  };
   // The 48-hour stats window (owner's direction): on your own
   // story you can see who viewed and liked it for 48 hours after
   // posting; after that the viewer list and view count are gone,
@@ -19423,7 +20882,7 @@ function StoryViewer({
   // in getStoryInsights / viewStory / listStoryArchive — this
   // only picks which label the stats button carries.
   const storyStatsOpen = Date.now() - new Date(story.createdAt).getTime() <= 48 * 60 * 60 * 1000;
-  const durationMs = story.mediaType === "embed" ? 15000 : 5000;
+  const durationMs = story.mediaType === "embed" ? storyEmbedDurationMs(story.mediaUrl) : 5000;
   return createPortal((
     <div
       className="fixed inset-0 z-[100] bg-black"
@@ -19444,7 +20903,7 @@ function StoryViewer({
       }}
     >
       <div className="relative mx-auto flex h-full w-full max-w-[520px] flex-col overflow-hidden bg-black sm:py-4">
-        <div className="relative flex-1 overflow-hidden sm:rounded-[20px]" style={{ background: "linear-gradient(165deg, #2a1030 0%, #160a24 48%, #062a2a 100%)" }}>
+        <div className={`story-stage relative flex-1 overflow-hidden sm:rounded-[20px]${showInsights && story.mine ? " story-stage-shrunk" : ""}`} style={{ background: "linear-gradient(165deg, #2a1030 0%, #160a24 48%, #062a2a 100%)" }}>
           {story.mediaType === "image" && story.mediaUrl && (
             <img decoding="async" src={story.mediaUrl} alt={`Story by ${group.author}`} className="absolute inset-0 h-full w-full object-cover" />
           )}
@@ -19452,9 +20911,17 @@ function StoryViewer({
             <video src={story.mediaUrl} className="absolute inset-0 h-full w-full object-cover" autoPlay muted playsInline onEnded={goNext} aria-label={`Story video by ${group.author}`} />
           )}
           {story.mediaType === "embed" && story.mediaUrl && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <FeedMediaBlock mediaUrl={story.mediaUrl} mediaType="" embedUrl="" videoId="" title={`Story by ${group.author}`} />
-            </div>
+            youtubeIdFromUrl(story.mediaUrl) ? (
+              // A video-LINK story shows as a full-frame
+              // picture (see storyEmbedDurationMs above): the
+              // video's own thumbnail, cover-cropped so it
+              // fills the whole 9:16 story frame edge to edge
+              // — a GTA picture as the story, never a small
+              // letterboxed player box with a play button.
+              <img decoding="async" src={`https://i.ytimg.com/vi/${youtubeIdFromUrl(story.mediaUrl)}/hqdefault.jpg`} alt={`Story by ${group.author}`} className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <img decoding="async" src={story.mediaUrl} alt={`Story by ${group.author}`} className="absolute inset-0 h-full w-full object-cover" />
+            )
           )}
           {/* Progress bars — one segment per story in this group. */}
           <div className="absolute inset-x-3 top-3 z-20 flex gap-1.5" aria-hidden="true">
@@ -19467,17 +20934,22 @@ function StoryViewer({
               </span>
             ))}
           </div>
-          {/* Creator header (Instagram model): the ViceSunshine
-              logo sits in the LEFT corner, then the creator —
-              their picture, username and how long ago the story
-              was posted. Tapping the header is the ONLY route to
+          {/* Soft scrim behind the progress bars + creator
+              header, so both read cleanly over any photo — part
+              of the viewer's quality pass (owner's direction,
+              Nov 21 2026). */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-black/60 via-black/25 to-transparent" aria-hidden="true" />
+          {/* Creator header (Instagram model): the creator's
+              picture, username and how long ago the story was
+              posted — NO logo in the top-left corner (owner's
+              direction, Nov 21 2026: the VS mark that sat there
+              is removed). Tapping the header is the ONLY route to
               a profile from inside a story: it closes the viewer
               and opens that person's profile. On YOUR OWN story a
               trash can sits on the RIGHT, before the close
               button: it deletes the story for everyone (with a
               confirm). */}
           <div className="absolute inset-x-0 top-0 z-20 flex items-center gap-2.5 px-4 pt-7 text-white">
-            <img decoding="async" src={vsLogoUrl} alt="ViceSunshine" className="h-7 w-auto flex-none object-contain" style={{ aspectRatio: "1135 / 747" }} />
             <button
               type="button"
               className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full text-left"
@@ -19529,7 +21001,10 @@ function StoryViewer({
           {story.sticker && <span className="absolute left-4 top-24 z-10 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-white">{story.sticker}</span>}
           {story.text && (
             <p className="absolute inset-x-5 bottom-28 z-10 text-center text-[19px] font-extrabold leading-snug text-white" style={{ textShadow: "0 2px 14px rgba(0,0,0,0.9)" }}>
-              {story.text}
+              {/* Hashtags work on stories too (owner's
+                  direction): a #tag in the story text renders
+                  as a tag, like it does in a Feed caption. */}
+              {linkifyText(story.text)}
             </p>
           )}
           {/* Tap zones */}
@@ -19537,10 +21012,14 @@ function StoryViewer({
           <button type="button" className="absolute bottom-0 right-0 top-20 z-10 w-[68%]" style={{ minHeight: 0 }} onClick={goNext} aria-label="Next story" />
           {/* Highlight More card + Send sheet — highlight mode
               only. More opens the options card from the owner's
-              screenshots: Edit highlight goes to the Edit
-              highlight screen; Remove highlight deletes the
-              highlight after a confirm step (the stories stay in
-              the story history — only the highlight goes). */}
+              screenshots: Edit highlight and Remove from
+              highlight ONLY (owner's direction — NO Archive
+              highlight option). Edit highlight goes to the Edit
+              highlight screen; Remove from highlight takes the
+              story on screen out of this highlight after a
+              confirm step (the story itself stays in the story
+              history — only its place in the highlight goes;
+              removing the last story removes the highlight). */}
           {highlight && hlMenu && (
             <>
               <button type="button" className="absolute inset-0 z-30 cursor-default" style={{ minHeight: 0 }} onClick={() => { setHlMenu(false); setConfirmRemove(false); }} aria-label="Close highlight options" />
@@ -19551,19 +21030,19 @@ function StoryViewer({
                       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
                       Edit highlight
                     </button>
-                    <button type="button" role="menuitem" className="flex w-full items-center gap-3 rounded-2xl px-3.5 text-left font-semibold hover:bg-[var(--surface2)]" style={{ minHeight: 52, color: "#ff5c5c" }} onClick={() => setConfirmRemove(true)} aria-label={`Remove highlight ${highlight.title}`}>
+                    <button type="button" role="menuitem" className="flex w-full items-center gap-3 rounded-2xl px-3.5 text-left font-semibold hover:bg-[var(--surface2)]" style={{ minHeight: 52, color: "#ff5c5c" }} onClick={() => setConfirmRemove(true)} aria-label={`Remove this story from highlight ${highlight.title}`}>
                       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
-                      Remove highlight
+                      Remove from highlight
                     </button>
                   </>
                 ) : (
                   <div className="px-3.5 py-2.5">
-                    <p className="text-sm font-semibold leading-relaxed">Remove this highlight? Your stories stay in your story history — only the highlight goes.</p>
+                    <p className="text-sm font-semibold leading-relaxed">Remove this story from &ldquo;{highlight.title}&rdquo;? The story stays in your story history — only its place in this highlight goes.{group.stories.length <= 1 ? " It is the last story in this highlight, so the highlight will be removed too." : ""}</p>
                     <div className="mt-2.5 flex gap-2">
-                      <button type="button" className="btn-ghost flex-1" style={{ minHeight: 42, color: "#ff5c5c" }} disabled={removeHlMut.isPending} onClick={() => removeHlMut.mutate()} aria-label="Confirm — remove this highlight">
-                        {removeHlMut.isPending ? "Removing…" : "Remove"}
+                      <button type="button" className="btn-ghost flex-1" style={{ minHeight: 42, color: "#ff5c5c" }} disabled={removeFromHlMut.isPending} onClick={() => removeFromHlMut.mutate(story.id)} aria-label="Confirm — remove this story from the highlight">
+                        {removeFromHlMut.isPending ? "Removing…" : "Remove"}
                       </button>
-                      <button type="button" className="btn-ghost flex-1" style={{ minHeight: 42 }} onClick={() => setConfirmRemove(false)} aria-label="Keep this highlight">
+                      <button type="button" className="btn-ghost flex-1" style={{ minHeight: 42 }} onClick={() => setConfirmRemove(false)} aria-label="Keep this story in the highlight">
                         Keep it
                       </button>
                     </div>
@@ -19608,153 +21087,458 @@ function StoryViewer({
               </div>
             </div>
           )}
+          {/* Browse sheet — highlight mode only, opened by the
+              highlight bar's Browse button: every story in this
+              highlight as a tile grid; tapping one jumps the
+              viewer straight to it. The story on screen now
+              carries a white ring. */}
+          {highlight && browseOpen && (
+            <div className="absolute inset-0 z-40 flex flex-col bg-black/[0.97] text-white" role="dialog" aria-modal="true" aria-label={`Browse your highlight ${highlight.title} — jump to a story in it`}>
+              <div className="flex items-center gap-2 px-4 pt-5">
+                <h4 className="flex-1 text-base font-extrabold tracking-tight">Browse</h4>
+                <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none text-white hover:bg-white/15" style={{ minHeight: 40 }} onClick={() => setBrowseOpen(false)} aria-label="Close — stop browsing this highlight">
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <p className="px-4 pt-1 text-[13px] text-white/60">&ldquo;{highlight.title}&rdquo; — {group.stories.length} {group.stories.length === 1 ? "story" : "stories"}. Tap one to jump to it.</p>
+              <div className="mt-3 grid flex-1 grid-cols-3 content-start gap-[2px] overflow-y-auto pb-6" role="list" aria-label={`Stories in your highlight ${highlight.title}, in order`}>
+                {group.stories.map((s, idx) => {
+                  const current = idx === si;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      role="listitem"
+                      className="relative aspect-[3/4] overflow-hidden bg-white/10 text-left"
+                      style={{ minHeight: 0, outline: current ? "2.5px solid #fff" : undefined, outlineOffset: current ? -2.5 : undefined }}
+                      onClick={() => { setBrowseOpen(false); setSi(idx); }}
+                      aria-label={`${current ? "Now showing: " : "Jump to "}story ${idx + 1} of ${group.stories.length} in this highlight, posted ${timeAgo(s.createdAt)}${s.text ? `: ${s.text}` : ""}`}
+                      aria-current={current || undefined}
+                    >
+                      {s.mediaType === "image" && s.mediaUrl ? (
+                        <img decoding="async" src={s.mediaUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                      ) : s.mediaType === "video" && s.mediaUrl ? (
+                        <video src={s.mediaUrl} className="absolute inset-0 h-full w-full object-cover" preload="metadata" muted playsInline aria-hidden="true" />
+                      ) : s.mediaType === "embed" && s.mediaUrl && youtubeIdFromUrl(s.mediaUrl) ? (
+                        <img decoding="async" src={`https://i.ytimg.com/vi/${youtubeIdFromUrl(s.mediaUrl)}/hqdefault.jpg`} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                      ) : (
+                        <span className="absolute inset-0 flex items-center justify-center p-2.5 text-center text-[12px] font-bold leading-snug text-white/90">{s.text || s.sticker || "Story"}</span>
+                      )}
+                      <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-white" aria-hidden="true">{timeAgo(s.createdAt)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {/* Highlight picker sheet — own stories only, opened
+              by the black bar's Highlight button (owner's
+              direction, Nov 21 2026): every highlight the player
+              has is listed with its cover and story count; tapping
+              one puts THIS story in it (addStoryToHighlight) and
+              the sheet closes with a notice. A story already in a
+              highlight shows Added and can't be added twice. The
+              New highlight row starts a fresh highlight with this
+              story already picked, through the parent's
+              create-a-highlight screen. With no highlights at
+              all, the bar's button skips this sheet entirely and
+              goes straight to that screen. */}
+          {!highlight && story.mine && pickerOpen && (
+            <>
+              <button type="button" className="absolute inset-0 z-30 cursor-default" style={{ minHeight: 0 }} onClick={() => setPickerOpen(false)} aria-label="Close — don't add this story to a highlight" />
+              <div className="absolute inset-x-0 bottom-0 z-40 max-h-[72%] overflow-y-auto rounded-t-[24px] bg-[var(--surface)] px-4 pb-5 pb-safe pt-4 text-[var(--text)] shadow-2xl" role="dialog" aria-modal="true" aria-label="Add this story to one of your highlights">
+                <h4 className="text-base font-extrabold tracking-tight">Add to highlight</h4>
+                <p className="pt-0.5 text-[13px] leading-relaxed text-[var(--dim)]">Pick one of your highlights — this story goes into it and stays on your profile after its 24 hours are up.</p>
+                <div className="mt-2 grid">
+                  {onCreateHighlight && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left hover:bg-[var(--surface2)]"
+                      style={{ minHeight: 60 }}
+                      onClick={() => { setPickerOpen(false); onClose(); onCreateHighlight(story.id); }}
+                      aria-label="New highlight — create a new highlight with this story in it"
+                    >
+                      <span className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-[var(--border)]" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold">New highlight</span>
+                        <span className="block truncate text-xs text-[var(--dim)]">Start a new one with this story</span>
+                      </span>
+                    </button>
+                  )}
+                  {ownHighlightsQ.isPending && <p className="px-2 py-3 text-sm text-[var(--dim)]">Loading your highlights…</p>}
+                  {ownHighlightsQ.isSuccess && (ownHighlightsQ.data?.items ?? []).length === 0 && (
+                    <p className="px-2 py-3 text-sm leading-relaxed text-[var(--dim)]">You don&apos;t have any highlights yet — create your first one and this story goes straight in.</p>
+                  )}
+                  {(ownHighlightsQ.data?.items ?? []).map((h) => {
+                    const already = h.stories.some((s) => s.id === story.id) || Boolean(addedPairs[`${story.id}:${h.id}`]);
+                    return (
+                      <button
+                        key={h.id}
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left hover:bg-[var(--surface2)]"
+                        style={{ minHeight: 60 }}
+                        disabled={already || addToHlMut.isPending}
+                        onClick={() => addToHlMut.mutate({ highlightId: h.id, title: h.title, storyId: story.id })}
+                        aria-label={already ? `This story is already in your highlight ${h.title}` : `Add this story to your highlight ${h.title} — ${h.storyCount} ${h.storyCount === 1 ? "story" : "stories"} in it now`}
+                      >
+                        <span className="highlight-circle flex-none" style={{ width: 44, height: 44 }}>
+                          {h.coverMediaType === "image" && h.coverUrl
+                            ? <img decoding="async" src={h.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                            : <CosmeticAvatar name={gamertag} size={38} avatarUrl={group.avatarUrl} />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-bold">{h.title}</span>
+                          <span className="block truncate text-xs text-[var(--dim)]">{h.storyCount} {h.storyCount === 1 ? "story" : "stories"}</span>
+                        </span>
+                        {already && (
+                          <span className="flex flex-none items-center gap-1 text-[13px] font-extrabold" style={{ color: "var(--accent2)" }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 12.5 10 18 19.5 6.5" /></svg>
+                            Added
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
           {/* Views + footer */}
-          <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-4 pb-safe">
+          <div className="story-footer absolute inset-x-0 bottom-0 z-20 px-4">
             {/* Your own story's stats are private to you alone
                 (owner's direction, Instagram-style): only the
                 person who posted the story ever sees who viewed
                 or liked it — and there is NO like button or reply
                 box on your own story (those live only on other
                 people's stories, in the bottom row below). The
-                button is just the flat outline eye icon (Instagram-style)
-                with the count
-                (owner's direction): inside 48 hours the count is
-                the view count; after 48 hours viewers and view
-                counts are gone and only the people who liked the
-                story remain in the list, so the count is theirs. */}
-            {!highlight && story.mine && (
-              <button
-                type="button"
-                className="mb-2.5 flex items-center gap-1.5 text-sm font-semibold text-white"
-                style={{ minHeight: 36 }}
-                onClick={() => setShowInsights((v) => !v)}
-                aria-expanded={showInsights}
-                aria-label={storyStatsOpen
-                  ? `Seen by ${views} ${views === 1 ? "person" : "people"} — ${showInsights ? "hide" : "show"} who saw your story. Only you can see this.`
-                  : `${insights.data?.likes ?? likes} ${(insights.data?.likes ?? likes) === 1 ? "person" : "people"} liked your story — ${showInsights ? "hide" : "show"} the list. Viewer lists and view counts aren't available after 48 hours. Only you can see this.`}
-              >
-                <EyeIcon size={20} />
-                {fmtCount(storyStatsOpen ? views : (insights.data?.likes ?? likes))}
-              </button>
-            )}
-            {!highlight && showInsights && story.mine && (
-              <div className="mb-3 max-h-[42dvh] overflow-y-auto rounded-2xl bg-[var(--surface)] p-4 text-[var(--text)]">
-                {insights.isPending && <p className="text-sm text-[var(--dim)]">Loading your story stats…</p>}
-                {insights.data && (() => {
-                  // One combined list (owner's direction): NO Likes /
-                  // Viewers categories — everyone who saw the story in
-                  // a single list under just the flat outline eye icon with the
-                  // count. People who liked it come first, with a
-                  // little heart badge next to their profile; people
-                  // who only viewed stay below. After 48 hours the
-                  // server returns only the likers, so the list is
-                  // just them and the count is their number.
-                  const likerNames = new Set(insights.data.likers.map((l) => l.gamertag));
-                  const people = [
-                    ...insights.data.likers.map((l) => ({ gamertag: l.gamertag, avatarUrl: l.avatarUrl, at: l.likedAt, liked: true })),
-                    ...insights.data.viewers
-                      .filter((v) => !v.liked && !likerNames.has(v.gamertag))
-                      .map((v) => ({ gamertag: v.gamertag, avatarUrl: v.avatarUrl, at: v.viewedAt, liked: false })),
-                  ];
-                  const seenCount = insights.data.statsOpen ? insights.data.views : people.length;
-                  return (
-                    <>
-                      <p className="flex items-center gap-1.5" aria-label={`Seen by ${seenCount} ${seenCount === 1 ? "person" : "people"}`}>
-                        <EyeIcon size={20} />
-                        <span className="text-sm font-extrabold">{fmtCount(seenCount)}</span>
-                      </p>
-                      {people.length === 0 && <p className="mt-2 text-sm text-[var(--dim)]">Nobody has seen this story yet.</p>}
-                      <ul className="mt-2 grid gap-2.5">
-                        {people.map((p, idx) => (
-                          <li key={`person-${p.gamertag}-${idx}`} className="flex items-center gap-2.5 text-sm">
-                            <span className="relative flex-none">
-                              <CosmeticAvatar name={p.gamertag} size={36} avatarUrl={p.avatarUrl} />
-                              {p.liked && (
-                                <span className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#ff3040] ring-2 ring-[var(--surface)]" aria-hidden="true">
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 1 1 12 6.1a5 5 0 1 1 7.5 6.5z" /></svg>
-                                </span>
-                              )}
-                            </span>
-                            <strong className="flex-1 truncate">{p.gamertag}</strong>
-                            <span className="text-xs text-[var(--dim)]">{timeAgo(p.at)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {!insights.data.statsOpen && (
-                        <p className="mt-4 border-t border-[var(--border)] pt-3 text-[13px] leading-relaxed text-[var(--dim)]">Viewer lists and view counts aren&apos;t available after 48 hours.</p>
-                      )}
-                      <p className="mt-3 text-[13px] text-[var(--dim)]">Replies to your story land in your Messages.</p>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
+                eye in the black bar below opens the activity
+                panel, which pops up over the bottom of the
+                viewer as its own sheet after the stage (below) —
+                one list, Likes first, then Views; after 48 hours
+                the viewers and view counts are gone and only the
+                Likes stay. */}
             {notice && <p className="mb-2 text-sm font-semibold text-[var(--accent2)]" role="status">{notice}</p>}
             {highlight ? (
-              /* Highlight mode bottom bar: Send and More only —
-                 the two features the owner asked for on the
-                 highlight viewer. Send opens the send sheet,
-                 More opens the Edit / Remove options card. */
-              <div className="flex items-end justify-end gap-4">
-                <button type="button" className="flex flex-col items-center gap-1 text-white" style={{ minHeight: 52, minWidth: 52 }} onClick={() => setSendOpen(true)} aria-label={`Send — share your highlight ${highlight.title} with another player`}>
-                  <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4Z" /></svg>
+              /* Highlight mode BLACK BAR (owner's screenshots,
+                 Nov 21 2026 — the same layout, exact): a solid
+                 black bar across the bottom, finished to the
+                 viewer's quality pass — rounded top corners, a
+                 hairline along the top, soft round buttons with
+                 even spacing. The eye on the LEFT (with the view
+                 count, NO word next to it — owner's direction)
+                 opens this story's private activity panel, the
+                 same panel as the plain own-story bar. On the
+                 RIGHT: Browse (the grid of this highlight's
+                 stories, to jump between them), Send (the send
+                 sheet) and More (the Edit highlight / Remove
+                 from highlight card — no Archive option). */
+              <div className="story-bar -mx-4 flex items-end gap-1.5 rounded-t-[20px] border-t border-white/10 bg-black px-4 pb-4 pt-2.5" role="group" aria-label={`Your highlight ${highlight.title} — activity, browse, send and more options`}>
+                <button
+                  type="button"
+                  className="flex flex-col items-center gap-1 text-white transition-opacity active:opacity-70"
+                  style={{ minHeight: 52, minWidth: 60 }}
+                  onClick={() => setShowInsights((v) => !v)}
+                  aria-expanded={showInsights}
+                  aria-label={storyStatsOpen
+                    ? `Activity — seen by ${views} ${views === 1 ? "person" : "people"}, liked by ${likes} ${likes === 1 ? "person" : "people"}. ${showInsights ? "Hide" : "Show"} who saw this story. Only you can see this.`
+                    : `Activity — liked by ${insights.data?.likes ?? likes} ${(insights.data?.likes ?? likes) === 1 ? "person" : "people"}. ${showInsights ? "Hide" : "Show"} the list. Viewer lists and view counts aren't available after 48 hours. Only you can see this.`}
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08]">
+                    <EyeIcon size={22} />
+                  </span>
+                  {storyStatsOpen
+                    ? <span className="text-[11px] font-bold leading-none">{fmtCount(views)}</span>
+                    : <span className="text-[11px] font-bold leading-none">{fmtCount(insights.data?.likes ?? likes)} {(insights.data?.likes ?? likes) === 1 ? "like" : "likes"}</span>}
+                </button>
+                <span className="flex-1" />
+                <button type="button" className="flex flex-col items-center gap-1 text-white transition-opacity active:opacity-70" style={{ minHeight: 52, minWidth: 60 }} onClick={() => setBrowseOpen(true)} aria-haspopup="dialog" aria-label={`Browse — see all ${group.stories.length} ${group.stories.length === 1 ? "story" : "stories"} in your highlight ${highlight.title} and jump to one`}>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08]">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="7.5" y="3" width="9" height="18" rx="2" /><path d="M4 8.5v7M20 8.5v7" /></svg>
+                  </span>
+                  <span className="text-[11px] font-semibold leading-none">Browse</span>
+                </button>
+                <button type="button" className="flex flex-col items-center gap-1 text-white transition-opacity active:opacity-70" style={{ minHeight: 52, minWidth: 60 }} onClick={() => setSendOpen(true)} aria-label={`Send — share your highlight ${highlight.title} with another player`}>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08]">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4Z" /></svg>
+                  </span>
                   <span className="text-[11px] font-semibold leading-none">Send</span>
                 </button>
-                <button type="button" className="flex flex-col items-center gap-1 text-white" style={{ minHeight: 52, minWidth: 52 }} onClick={() => { setConfirmRemove(false); setHlMenu(true); }} aria-haspopup="menu" aria-expanded={hlMenu} aria-label={`More — options for your highlight ${highlight.title}: edit highlight or remove highlight`}>
-                  <svg width="25" height="25" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+                <button type="button" className="flex flex-col items-center gap-1 text-white transition-opacity active:opacity-70" style={{ minHeight: 52, minWidth: 60 }} onClick={() => { setConfirmRemove(false); setHlMenu(true); }} aria-haspopup="menu" aria-expanded={hlMenu} aria-label={`More — options for your highlight ${highlight.title}: edit highlight or remove this story from the highlight`}>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08]">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+                  </span>
                   <span className="text-[11px] font-semibold leading-none">More</span>
                 </button>
               </div>
-            ) : story.mine ? null : (
-            /* Other people's stories ONLY: the reply box and the
-               like (heart) button live here — they never render
-               on your own story (owner's direction). A reply is
-               delivered to the author's Messages as a DM. */
-            <div className="flex items-center gap-2.5">
+            ) : story.mine ? (
+            /* Own-story BLACK BAR (owner's direction, Nov 21
+               2026): a solid black bar across the very bottom of
+               your own story, finished to the viewer's quality
+               pass — rounded top corners, a hairline along the
+               top, soft round buttons. On the left, the eye with
+               your view count and NO word next to it (owner's
+               direction: the "Activity" word that sat beside the
+               eye is removed — the button's name still says what
+               it is for screen readers). Inside 48 hours the eye
+               carries the view count; after 48 hours it carries
+               the like count, because the Likes list is what
+               stays. Tapping the eye pops the activity panel up
+               over the viewer — one list, Likes first, then
+               Views — while the picture shrinks behind it. On
+               the FAR RIGHT, the Highlight button: it opens the
+               picker of your highlights (pick one and this story
+               goes into it), or, when you have no highlights
+               yet, goes straight to the create-a-highlight
+               screen. There is NO like button or reply box on
+               your own story — those live only on other people's
+               stories, in the row below. */
+            <div className="story-bar -mx-4 flex items-end gap-3 rounded-t-[20px] border-t border-white/10 bg-black px-4 pb-2.5 pt-2" role="group" aria-label="Your story's activity and highlight options — only you can see this">
+              <button
+                type="button"
+                className="flex flex-col items-center gap-1 text-white transition-opacity active:opacity-70"
+                style={{ minHeight: 52, minWidth: 60 }}
+                onClick={() => setShowInsights((v) => !v)}
+                aria-expanded={showInsights}
+                aria-label={storyStatsOpen
+                  ? `Activity — seen by ${views} ${views === 1 ? "person" : "people"}, liked by ${likes} ${likes === 1 ? "person" : "people"}. ${showInsights ? "Hide" : "Show"} who saw your story. Only you can see this.`
+                  : `Activity — liked by ${insights.data?.likes ?? likes} ${(insights.data?.likes ?? likes) === 1 ? "person" : "people"}. ${showInsights ? "Hide" : "Show"} the list. Viewer lists and view counts aren't available after 48 hours. Only you can see this.`}
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08]">
+                  <EyeIcon size={22} />
+                </span>
+                {storyStatsOpen
+                  ? <span className="text-[11px] font-bold leading-none">{fmtCount(views)}</span>
+                  : <span className="text-[11px] font-bold leading-none">{fmtCount(insights.data?.likes ?? likes)} {(insights.data?.likes ?? likes) === 1 ? "like" : "likes"}</span>}
+              </button>
+              <span className="flex-1" />
+              <button
+                type="button"
+                className="flex flex-col items-center gap-1 text-white transition-opacity active:opacity-70"
+                style={{ minHeight: 52, minWidth: 60 }}
+                onClick={openHighlightPicker}
+                aria-haspopup="dialog"
+                aria-label="Highlight — add this story to one of your highlights, or create a new highlight with it"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08]">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8.2l1.15 2.33 2.57.37-1.86 1.81.44 2.56L12 14.06l-2.3 1.21.44-2.56-1.86-1.81 2.57-.37z" /></svg>
+                </span>
+                <span className="text-[11px] font-semibold leading-none">Highlight</span>
+              </button>
+            </div>
+            ) : (
+            /* Other people's stories ONLY (owner's direction,
+               Nov 21 2026 — the layout of his screenshot): a
+               black strip across the bottom with the "Send
+               message..." reply box on the left and three icons
+               to its right — the heart (like), the comment
+               bubble (jumps into the message box) and the paper
+               plane (sends the reply). They never render on your
+               own story. A reply is delivered to the author's
+               Messages as a DM. */
+            <div className="story-bar -mx-4 flex items-center gap-3.5 rounded-t-[20px] border-t border-white/10 bg-black px-4 pb-4 pt-3">
               {gamertag ? (
                 <form
-                  className="flex flex-1 items-center gap-2"
+                  className="flex min-w-0 flex-1 items-center"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (!reply.trim()) { setNotice("Write a reply first."); return; }
                     replyMut.mutate(story);
                   }}
                 >
-                  <label htmlFor="story-reply" className="sr-only">Reply to {group.author}&apos;s story</label>
+                  <label htmlFor="story-reply" className="sr-only">Send a message to {group.author} about their story</label>
                   <input
                     id="story-reply"
-                    className="flex-1 rounded-full border border-white/50 bg-black/40 px-4 text-sm text-white placeholder:text-white/60"
-                    style={{ minHeight: 46 }}
+                    className="min-w-0 flex-1 rounded-full border border-white/35 bg-white/[0.06] px-4 text-[15px] text-white placeholder:text-white/70"
+                    style={{ minHeight: 48 }}
                     {...FIELDS.replyToStory.body}
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
-                    placeholder={`Reply to ${group.author}…`}
+                    placeholder="Send message..."
+                    autoComplete="off"
                   />
-                  {reply.trim() && (
-                    <button type="submit" className="flex-none text-sm font-extrabold text-white" style={{ minHeight: 44, padding: "0 4px" }} disabled={replyMut.isPending} aria-label={`Send reply to ${group.author}`}>
-                      Send
-                    </button>
-                  )}
                 </form>
               ) : (
                 <span className="flex-1" />
               )}
               <button
                 type="button"
-                className="flex flex-none flex-col items-center gap-0.5 text-white"
-                style={{ minHeight: 46, color: liked ? "var(--accent)" : undefined }}
+                className="flex flex-none items-center justify-center text-white"
+                style={{ minHeight: 48, minWidth: 40, color: liked ? "var(--accent)" : undefined }}
                 disabled={!gamertag || likeMut.isPending}
                 onClick={() => likeMut.mutate(story)}
                 aria-pressed={liked}
-                aria-label={`${liked ? "Unlike" : "Like"} ${group.author}'s story — ${likes} likes`}
+                aria-label={`${liked ? "Unlike" : "Like"} ${group.author}'s story — ${likes} ${likes === 1 ? "like" : "likes"}`}
               >
-                <svg width="26" height="26" viewBox="0 0 24 24" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 1 1 12 6.1a5 5 0 1 1 7.5 6.5z" /></svg>
-                {likes > 0 && <span className="text-[11px] font-bold">{likes}</span>}
+                <svg width="27" height="27" viewBox="0 0 24 24" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 1 1 12 6.1a5 5 0 1 1 7.5 6.5z" /></svg>
               </button>
+              {gamertag && (
+                <button
+                  type="button"
+                  className="flex flex-none items-center justify-center text-white"
+                  style={{ minHeight: 48, minWidth: 40 }}
+                  onClick={() => document.getElementById("story-reply")?.focus()}
+                  aria-label={`Reply to ${group.author}'s story — jump into the message box and write your reply`}
+                >
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
+                </button>
+              )}
+              {gamertag && (
+                <button
+                  type="button"
+                  className="flex flex-none items-center justify-center text-white"
+                  style={{ minHeight: 48, minWidth: 40 }}
+                  disabled={replyMut.isPending}
+                  onClick={() => {
+                    if (!reply.trim()) { setNotice("Write a reply first."); return; }
+                    replyMut.mutate(story);
+                  }}
+                  aria-label={`Send your reply to ${group.author} — it lands in their Messages`}
+                >
+                  <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4Z" /></svg>
+                </button>
+              )}
             </div>
             )}
           </div>
         </div>
+        {/* Activity panel backdrop (own stories only): while
+            the panel is up, the story picture sits shrunk behind
+            it (the stage's story-stage-shrunk class) — tapping
+            the picture puts the panel away again. */}
+        {showInsights && story.mine && (
+          <button type="button" className="absolute inset-0 z-40 cursor-default" style={{ minHeight: 0 }} onClick={() => setShowInsights(false)} aria-label="Close story activity" />
+        )}
+        {/* Activity panel (owner's direction, Nov 21 2026 —
+            modelled on his Instagram screenshots): tapping the
+            eye in the black bar pops this panel up from the
+            bottom of the viewer while the story picture shrinks
+            smaller behind it. ONE list in ONE panel: the Likes
+            section FIRST, then the Views section. People who
+            liked the story stay in the Likes list for good —
+            on a highlight you can always still see them — but
+            the viewer list and the view count disappear after
+            48 hours (the server stops returning them), and the
+            note pinned to the panel's bottom says so, exactly
+            like the reference. The header row carries the
+            people mark on the left and, on the right, the same
+            two actions the reference shows: the highlight star
+            (the highlight picker on a plain story, Edit
+            highlight inside a highlight) and the trash can
+            (delete this story, with its confirm). Only the
+            story's own author ever sees this panel. */}
+        {showInsights && story.mine && (
+          <div className="story-activity-sheet absolute inset-x-0 bottom-0 z-50 flex h-[62%] max-h-[640px] flex-col overflow-hidden rounded-t-[26px] border-t border-white/10 bg-[#101014] text-white shadow-2xl" role="dialog" aria-modal="true" aria-label="Story activity — who liked and who viewed this story. Only you can see this.">
+            <div className="flex justify-center pt-2.5" aria-hidden="true">
+              <span className="h-1 w-10 rounded-full bg-white/25" />
+            </div>
+            <div className="flex items-center gap-2 px-5 pb-1 pt-2">
+              <span className="flex items-center border-b-2 border-[#0095f6] pb-1.5" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="8" r="3.4" /><path d="M4 19.6c.7-3 3.1-4.6 6-4.6s5.3 1.6 6 4.6" /><path d="M18.6 5.4v4.8M16.2 7.8h4.8" /></svg>
+              </span>
+              <span className="flex-1" />
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white transition-opacity hover:bg-white/10 active:opacity-70"
+                style={{ minHeight: 40 }}
+                onClick={() => { setShowInsights(false); if (highlight) { highlight.onEdit(); } else { openHighlightPicker(); } }}
+                aria-label={highlight ? `Edit highlight ${highlight.title}` : "Highlight — add this story to one of your highlights, or create a new highlight with it"}
+              >
+                <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 2.7 14.4 4l1.3 2.4L18.4 7 18 9.9l1.9 2.1-1.9 2.1.4 2.9-2.7.7L14.4 20 12 21.3 9.6 20 8.3 17.7 5.6 17 6 14.1 4.1 12 6 9.9 5.6 7l2.7-.7L9.6 4z" /><path d="M12 8.6l.95 1.93 2.13.31-1.54 1.5.36 2.12L12 13.46l-1.9 1-.36-2.12-1.54-1.5 2.13-.31z" /></svg>
+              </button>
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white transition-opacity hover:bg-white/10 active:opacity-70"
+                style={{ minHeight: 40 }}
+                onClick={() => { setShowInsights(false); setConfirmDelete(true); }}
+                aria-label="Delete this story"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6M14 11v6" /></svg>
+              </button>
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none text-white transition-opacity hover:bg-white/10 active:opacity-70"
+                style={{ minHeight: 40 }}
+                onClick={() => setShowInsights(false)}
+                aria-label="Close story activity"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+              {insights.isPending && <p className="py-4 text-sm text-white/55" role="status">Loading your story activity…</p>}
+              {insights.isError && (
+                <p className="py-4 text-sm text-white/70" role="alert">
+                  Couldn&apos;t load your story activity.{" "}
+                  <button type="button" className="font-bold text-white underline underline-offset-2" style={{ minHeight: 32 }} onClick={() => void insights.refetch()} aria-label="Try loading your story activity again">Try again</button>
+                </p>
+              )}
+              {insights.data && (() => {
+                const d = insights.data;
+                const personRow = (p: { gamertag: string; avatarUrl: string; at: string; liked: boolean }, keyPrefix: string, idx: number) => (
+                  <li key={`${keyPrefix}-${p.gamertag}-${idx}`} className="flex items-center gap-3 py-2">
+                    <span className="relative flex-none">
+                      <CosmeticAvatar name={p.gamertag} size={44} avatarUrl={p.avatarUrl} />
+                      {p.liked && (
+                        <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#ff3040] ring-2 ring-[#101014]" aria-hidden="true">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 1 1 12 6.1a5 5 0 1 1 7.5 6.5z" /></svg>
+                        </span>
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-[15px] font-bold">{p.gamertag}</strong>
+                      <span className="block text-xs text-white/50">{timeAgo(p.at)}</span>
+                    </span>
+                  </li>
+                );
+                return (
+                  <>
+                    {/* Likes — the FIRST section. This list never
+                        expires: people who liked the story stay
+                        here for good, highlights included. */}
+                    <h5 className="flex items-baseline gap-2 pt-2 text-[17px] font-extrabold tracking-tight" aria-label={`Likes — liked by ${d.likes} ${d.likes === 1 ? "person" : "people"}`}>
+                      Likes
+                      <span className="text-sm font-bold text-white/50">{fmtCount(d.likes)}</span>
+                    </h5>
+                    {d.likers.length > 0 ? (
+                      <ul className="mt-1 grid">
+                        {d.likers.map((l, idx) => personRow({ gamertag: l.gamertag, avatarUrl: l.avatarUrl, at: l.likedAt, liked: true }, "liker", idx))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1.5 text-sm text-white/50">No likes yet.</p>
+                    )}
+                    {/* Views — the SECOND section, in the same
+                        list. Only inside the 48-hour window: the
+                        server returns no viewers and no view
+                        count after that, so the section is gone
+                        and the pinned note below explains why. */}
+                    {d.statsOpen && (
+                      <>
+                        <h5 className="mt-5 flex items-baseline gap-2 border-t border-white/10 pt-4 text-[17px] font-extrabold tracking-tight" aria-label={`Views — seen by ${d.views} ${d.views === 1 ? "person" : "people"}`}>
+                          Views
+                          <span className="text-sm font-bold text-white/50">{fmtCount(d.views)}</span>
+                        </h5>
+                        {d.viewers.length > 0 ? (
+                          <ul className="mt-1 grid">
+                            {d.viewers.map((v, idx) => personRow({ gamertag: v.gamertag, avatarUrl: v.avatarUrl, at: v.viewedAt, liked: v.liked }, "viewer", idx))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1.5 text-sm text-white/50">No views yet.</p>
+                        )}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            {insights.data && (insights.data.statsOpen ? (
+              <p className="flex-none border-t border-white/10 px-5 py-3 text-center text-[12.5px] text-white/40">Replies to your story land in your Messages.</p>
+            ) : (
+              <p className="flex-none border-t border-white/10 px-5 py-3.5 text-center text-[13px] text-white/55">Viewer lists and view counts aren&apos;t available after 48 hours.</p>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   ), document.body);
@@ -19767,6 +21551,7 @@ function FeedPostCard({
   go,
   trackedStore,
   onOpenAuthorId,
+  onHashtag,
 }: {
   post: FeedPost;
   playerKey: string;
@@ -19775,6 +21560,8 @@ function FeedPostCard({
   trackedStore?: ReturnType<typeof useTrackedGoals>;
   /** Open the author by public profile ID. */
   onOpenAuthorId?: (id: string) => void;
+  /** A hashtag in the caption was tapped — search the Feed for it. */
+  onHashtag?: (tag: string) => void;
 }) {
   const qc = useQueryClient();
   const [showComments, setShowComments] = useState(false);
@@ -19785,6 +21572,7 @@ function FeedPostCard({
   const [error, setError] = useState("");
   const [needAccount, setNeedAccount] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
   const [savedFeed, setSavedFeed] = useState<number[]>(() => {
     try { return JSON.parse(localStorage.getItem("viceverse-saved-feed-v1") ?? "[]") as number[]; } catch { return []; }
   });
@@ -19872,12 +21660,32 @@ function FeedPostCard({
     onSuccess: () => invalidate(),
     onError: (e) => setError(e.message),
   });
+  // Interested / Not interested from the post menu's bottom
+  // sheet: Interested is recorded (same-kind posts rank higher
+  // in Top); Not interested is recorded AND hides the post for
+  // this player server-side, so it leaves the Feed at once.
+  const preference = useMutation({
+    mutationFn: async (interested: boolean) => await api.setFeedPreference({ playerKey, postId: post.id, interested }),
+    onSuccess: (_res, interested) => {
+      setShowMenu(false);
+      setShowWhy(false);
+      if (interested) setNotice("Got it — posts like this will rank higher for you in Top.");
+      invalidate();
+    },
+    onError: (e) => setError(e.message),
+  });
   const remove = useMutation({
     mutationFn: () => api.deleteFeedPost({ playerKey, postId: post.id }),
     onSuccess: () => invalidate(),
     onError: (e) => setError(e.message),
   });
-  const menuItem = "flex w-full items-center gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold hover:bg-[var(--surface2)]";
+  // Post menu (owner's Instagram-style layout, Nov 21 2026):
+  // the header's two-line button opens a plain dark bottom
+  // sheet — neutral black and white only, no theme colour.
+  const sheetItem = "flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] font-semibold text-white hover:bg-white/5";
+  // The sheet's Audio row exists only when the post really
+  // carries sound: a video (uploaded or YouTube).
+  const hasAudio = post.mediaType === "youtube" || post.mediaType === "video" || Boolean(post.embedUrl);
   // Visiting the author (owner's bug report, Nov 21 2026: pressing
   // a bot / another player never opened their profile — and the
   // gamertag fix after it landed on the viewer's OWN profile
@@ -19898,7 +21706,9 @@ function FeedPostCard({
   return (
     <article ref={articleRef} className="border-b border-[var(--border)] pb-12 pt-9 first:pt-3">
       {/* Muse-Feed header: small avatar left, bold title, time ago
-          and a … menu on the right. */}
+          and the two-line post-menu button on the right (owner's
+          Instagram-style layout — it opens the dark bottom sheet
+          rendered at the end of this card). */}
       <div className="flex items-start gap-3.5">
         {authorLinkable ? (
           <button type="button" className="flex-none rounded-full" style={{ minHeight: 0 }} onClick={openAuthor} aria-label={`Open ${post.author}'s profile`}>
@@ -19913,54 +21723,19 @@ function FeedPostCard({
               {post.title || `${post.author} — ${post.kind}`}
             </h3>
             <span className="flex-none pt-0.5 text-[13px] text-[var(--dim)]">{timeAgo(post.createdAt)}</span>
-            <div className="relative flex-none">
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-lg leading-none text-[var(--dim)] hover:bg-[var(--surface2)]"
-                style={{ minHeight: 36 }}
-                aria-haspopup="menu"
-                aria-expanded={showMenu}
-                aria-label={`More actions for post by ${post.author}`}
-                onClick={() => setShowMenu((v) => !v)}
-              >
-                <span aria-hidden="true">···</span>
-              </button>
-              {showMenu && (
-                <>
-                  <button type="button" className="fixed inset-0 z-10 cursor-default" style={{ minHeight: 0 }} aria-hidden="true" tabIndex={-1} onClick={() => setShowMenu(false)} />
-                  <div className="absolute right-0 top-10 z-20 w-60 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-2xl" role="menu" aria-label={`Actions for post by ${post.author}`}>
-                    <button type="button" className={menuItem} role="menuitem" onClick={() => { setShowMenu(false); toggleSaveFeed(); }}>
-                      {isSavedFeed ? "Saved — tap to remove" : "Save post"}
-                    </button>
-                    <button type="button" className={menuItem} role="menuitem" disabled={share.isPending} onClick={() => { setShowMenu(false); share.mutate(); }}>
-                      Share{post.shares > 0 ? ` · ${post.shares}` : ""}
-                    </button>
-                    {post.auto && trackedStore && (
-                      <button
-                        type="button"
-                        className={menuItem}
-                        role="menuitem"
-                        aria-pressed={trackedStore.has("feed", post.id)}
-                        onClick={() => { setShowMenu(false); trackedStore.toggle({ kind: "feed", refId: post.id, title: post.title || "Automatic GTA VI video", date: post.createdAt.slice(0, 10), url: post.sourceUrl || post.mediaUrl }); }}
-                      >
-                        {trackedStore.has("feed", post.id) ? "Tracked in Goals" : "Track as a Goal"}
-                      </button>
-                    )}
-                    <button type="button" className={menuItem} role="menuitem" onClick={() => { setShowMenu(false); setShowReport((v) => !v); }}>
-                      Report post
-                    </button>
-                    <button type="button" className={menuItem} role="menuitem" disabled={hide.isPending} onClick={() => { setShowMenu(false); hide.mutate(); }}>
-                      Hide post
-                    </button>
-                    {(post.mine || post.flagged) && (
-                      <button type="button" className={menuItem} role="menuitem" disabled={remove.isPending} onClick={() => { setShowMenu(false); remove.mutate(); }}>
-                        Delete post
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              type="button"
+              className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[var(--dim)] hover:bg-[var(--surface2)]"
+              style={{ minHeight: 36 }}
+              aria-haspopup="dialog"
+              aria-expanded={showMenu}
+              aria-label={`Post menu for post by ${post.author}`}
+              onClick={() => setShowMenu(true)}
+            >
+              {/* Two-line icon, like the reference layout: a long
+                  line over a shorter one. */}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M3 9h18" /><path d="M8 15h13" /></svg>
+            </button>
           </div>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--dim)]">
             {authorLinkable ? (
@@ -19968,10 +21743,21 @@ function FeedPostCard({
             ) : (
               <strong className="max-w-full text-[var(--text)] [overflow-wrap:anywhere]">{post.author}</strong>
             )}
+            {/* AI label (owner's direction, Nov 21 2026): a bot /
+                AI automatic account — GTA NEWS, GTA CLIPPER —
+                says "AI" right next to its name. The content it
+                posts is real (real news, real creators' videos);
+                the label marks the automatic poster, and it
+                replaces the generic Auto chip for these accounts. */}
+            {post.isAi && (
+              <span className="rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ background: "var(--accent)", color: "#ffffff" }} aria-label="AI automatic account">
+                AI
+              </span>
+            )}
             <span aria-hidden="true">·</span>
             <span>{post.kind}</span>
             {post.authorBadge && <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] font-bold">{post.authorBadge}</span>}
-            {post.auto && (
+            {post.auto && !post.isAi && (
               <span className="rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ background: "var(--accent2)", color: "#04211d" }}>
                 Auto
               </span>
@@ -19997,11 +21783,11 @@ function FeedPostCard({
       {/* Visual-first (owner's direction): the picture / video
           comes FIRST, right under the header, and the post's text
           runs underneath it as the caption. */}
-      <FeedMediaBlock mediaUrl={post.mediaUrl} mediaType={post.mediaType} embedUrl={post.embedUrl} videoId={post.videoId} title={post.title || `Post by ${post.author}`} />
+      <FeedMediaBlock mediaUrl={post.mediaUrl} mediaType={post.mediaType} embedUrl={post.embedUrl} videoId={post.videoId} title={post.title || `Post by ${post.author}`} mediaUrls={post.mediaUrls} />
       {post.auto && post.mediaType !== "youtube" && (
         <p className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-[var(--dim)]">
           <span>
-            Automatic post · Source: <strong className="text-[var(--text)]">{post.sourceName || "YouTube"}</strong>
+            {post.isAi ? <>Posted automatically by <strong className="text-[var(--text)]">{post.author}</strong> (AI) · </> : "Automatic post · "}Source: <strong className="text-[var(--text)]">{post.sourceName || "YouTube"}</strong>
           </span>
           {post.sourceUrl && (
             <a className="font-semibold text-[var(--accent2)]" href={post.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Open the original post on ${post.sourceName || "the source"} (external link)`}>
@@ -20029,7 +21815,31 @@ function FeedPostCard({
           video (visual-first). A text-only post has no media block,
           so its text simply lands here under the header as before. */}
       {post.body && (
-        <p className="mt-3.5 whitespace-pre-line text-[15px] leading-[1.75] text-[var(--text)]">{linkifyText(post.body)}</p>
+        <p className="mt-3.5 whitespace-pre-line text-[15px] leading-[1.75] text-[var(--text)]">{linkifyText(post.body, onHashtag)}</p>
+      )}
+      {/* The post's attached link (the creator's Add link):
+          a chip under the caption that opens the real address. */}
+      {post.linkUrl && (
+        <a
+          className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface2)] px-3.5 py-2 text-[13px] font-bold text-[var(--accent2)]"
+          style={{ minHeight: 40 }}
+          href={post.linkUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open the link attached to this post: ${post.linkUrl}`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7.1 0l2.4-2.4a5 5 0 0 0-7.1-7.1L11 5.9" /><path d="M14 10a5 5 0 0 0-7.1 0L4.5 12.4a5 5 0 0 0 7.1 7.1L13 18.1" /></svg>
+          <span className="truncate">{(() => { try { return new URL(post.linkUrl).hostname.replace(/^www\./, ""); } catch { return post.linkUrl; } })()}</span>
+          <span aria-hidden="true">↗</span>
+        </a>
+      )}
+      {/* The post's location (the creator's Add location),
+          shown under the caption when the poster set one. */}
+      {post.location && (
+        <p className="mt-2.5 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--dim)]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11Z" /><circle cx="12" cy="10" r="2.6" /></svg>
+          {post.location}
+        </p>
       )}
       {post.kind === "Tutorial" && (
         <button type="button" className="mt-3 text-[13px] font-semibold text-[var(--accent2)]" onClick={() => go("guides")}>Step-by-step guides live in Guides — open Guides</button>
@@ -20040,7 +21850,9 @@ function FeedPostCard({
       {/* Actions — Like leads; Discuss (comments) stays present but
           smaller and quieter (owner's direction: visuals first,
           comments secondary — they open in their sheet and never
-          take over the post). Then views, Save. */}
+          take over the post). Then views, Share (paper plane),
+          and Save pinned to the far right like the reference
+          layout's bookmark. No repost — ever. */}
       <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-1">
         <button
           type="button"
@@ -20069,9 +21881,24 @@ function FeedPostCard({
           <EyeIcon size={17} />
           {fmtCount(viewsShown)} {viewsShown === 1 ? "view" : "views"}
         </span>
+        {/* Send (share) — the paper-plane from the reference
+            layout, wired to the same share action as the menu.
+            There is deliberately NO repost button here or
+            anywhere (owner's direction). */}
         <button
           type="button"
-          className="flex items-center gap-2 text-sm font-semibold"
+          className="flex items-center gap-2 text-sm font-semibold text-[var(--dim)]"
+          style={{ minHeight: 44 }}
+          disabled={share.isPending}
+          onClick={() => { if (!gamertag) { setNeedAccount(true); return; } share.mutate(); }}
+          aria-label={`Share post by ${post.author} — ${post.shares} shares`}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4z" /></svg>
+          {post.shares > 0 ? post.shares : "Share"}
+        </button>
+        <button
+          type="button"
+          className="ml-auto flex items-center gap-2 text-sm font-semibold"
           style={{ color: isSavedFeed ? "var(--accent2)" : "var(--dim)", minHeight: 44 }}
           aria-pressed={isSavedFeed}
           onClick={toggleSaveFeed}
@@ -20131,6 +21958,96 @@ function FeedPostCard({
           </button>
         </form>
       )}
+      {showMenu && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={`Post menu for post by ${post.author}`}>
+          <button type="button" className="absolute inset-0 h-full w-full cursor-default" style={{ minHeight: 0, background: "rgba(0,0,0,0.62)" }} aria-label="Close post menu" onClick={() => { setShowMenu(false); setShowWhy(false); }} />
+          <div className="relative max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl px-3 pt-2.5" style={{ background: "#141519", color: "#ffffff", paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />
+            {hasAudio && (
+              <div className="mb-2.5 flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: "#232429" }}>
+                <span className="flex h-11 w-11 flex-none items-center justify-center rounded-lg bg-white/10" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-bold">{post.title || `Video by ${post.author}`}</span>
+                  <span className="block text-[13px] text-white/60">Audio</span>
+                </span>
+              </div>
+            )}
+            <div className="overflow-hidden rounded-2xl" style={{ background: "#232429" }} role="menu" aria-label="About this post">
+              <button type="button" className={sheetItem} role="menuitem" aria-expanded={showWhy} onClick={() => setShowWhy((v) => !v)}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2" /><path d="M12 11v5" /><path d="M12 7.8v.2" /></svg>
+                Why you&apos;re seeing this post
+              </button>
+              {showWhy && (
+                <p className="px-4 pb-3.5 pl-[52px] text-[13.5px] leading-relaxed text-white/70">
+                  {post.mine
+                    ? "This is your own post — it shows in the Community Feed like everyone else's public posts. "
+                    : post.auto
+                      ? `This is an automatic post gathered from ${post.sourceName || "the web"} — real GTA VI news and creators' videos collected into the Community Feed. `
+                      : `This is a public post by ${post.author} in the Community Feed — every player's public posts show here. `}
+                  Posts are ordered newest first, or by Top when you pick that sort. Marking a post Interested lifts posts of its kind in Top; Not interested hides it for you.
+                </p>
+              )}
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" disabled={preference.isPending} onClick={() => { if (!gamertag) { setShowMenu(false); setNeedAccount(true); return; } preference.mutate(true); }}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2" /><path d="m8.4 12.4 2.4 2.4 4.8-5.2" /></svg>
+                Interested
+              </button>
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" disabled={preference.isPending} onClick={() => { if (!gamertag) { setShowMenu(false); setNeedAccount(true); return; } preference.mutate(false); }}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2" /><path d="m9 9 6 6" /><path d="m15 9-6 6" /></svg>
+                Not interested
+              </button>
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" style={{ color: "#ff6473" }} onClick={() => { setShowMenu(false); setShowWhy(false); setShowReport(true); }}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+                Report
+              </button>
+            </div>
+            <div className="mt-2.5 overflow-hidden rounded-2xl" style={{ background: "#232429" }} role="menu" aria-label="Post actions">
+              <button type="button" className={sheetItem} role="menuitem" onClick={() => { setShowMenu(false); toggleSaveFeed(); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill={isSavedFeed ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" /></svg>
+                {isSavedFeed ? "Saved — tap to remove" : "Save post"}
+              </button>
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" disabled={share.isPending} onClick={() => { setShowMenu(false); share.mutate(); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4z" /></svg>
+                Share{post.shares > 0 ? ` · ${post.shares}` : ""}
+              </button>
+              {post.auto && trackedStore && (
+                <>
+                  <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={sheetItem}
+                    role="menuitem"
+                    aria-pressed={trackedStore.has("feed", post.id)}
+                    onClick={() => { setShowMenu(false); trackedStore.toggle({ kind: "feed", refId: post.id, title: post.title || "Automatic GTA VI video", date: post.createdAt.slice(0, 10), url: post.sourceUrl || post.mediaUrl }); }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></svg>
+                    {trackedStore.has("feed", post.id) ? "Tracked in Goals" : "Track as a Goal"}
+                  </button>
+                </>
+              )}
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" disabled={hide.isPending} onClick={() => { setShowMenu(false); hide.mutate(); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7c2 0 3.7.6 5.2 1.5" /><path d="M22 12s-3.5 7-10 7c-2 0-3.7-.6-5.2-1.5" /><path d="m3 3 18 18" /></svg>
+                Hide post
+              </button>
+              {(post.mine || post.flagged) && (
+                <>
+                  <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+                  <button type="button" className={sheetItem} role="menuitem" style={{ color: "#ff6473" }} disabled={remove.isPending} onClick={() => { setShowMenu(false); remove.mutate(); }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+                    Delete post
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {showComments && (
         <CommentsSheet
           postId={post.id}
@@ -20160,8 +22077,11 @@ function FeedPostCard({
 // customisation, owner-only (the Leader): Crew Badges, Crew
 // Calling Cards / Banner (the old personal + crew calling-card
 // lists merged into ONE catalogue, duplicates kept once), Crew
-// Themes, Crew Emblems and Crew Colours — every section exactly
-// 5 free items and 3 Premium items. Premium items need the crew
+// Themes, Crew Emblems, Crew Emblem Effects and Crew Colours —
+// every section exactly 5 free items and 3 Premium items,
+// except Crew Colours: all 8 named colours free, with the
+// Premium Custom colour tool (any colour + Chrome finishes)
+// under the grid. Premium items need the crew
 // OWNER to have Premium; if the owner's Premium ends they
 // unequip back to free defaults automatically. Challenge and
 // Season calling cards unlock for the owner personally and are
@@ -20567,8 +22487,12 @@ function CallingCard({ designKey, name, mini = false }: { designKey: string; nam
   );
 }
 
-function CosmeticVisual({ item, crewName, clanTag = "VV", clanColor = "#FF2E88" }: { item: CrewCosmeticItem; crewName: string; clanTag?: string; clanColor?: string }) {
-  if (item.kind === "emblem") return <ClanEmblem tag={clanTag} color={clanColor} size={112} emblem={item.value} />;
+function CosmeticVisual({ item, crewName, clanTag = "VV", clanColor = "#FF2E88", clanEmblem = "", clanEffect = "" }: { item: CrewCosmeticItem; crewName: string; clanTag?: string; clanColor?: string; clanEmblem?: string; clanEffect?: string }) {
+  if (item.kind === "emblem") return <ClanEmblem tag={clanTag} color={clanColor} size={112} emblem={item.value} effect={clanEffect} />;
+  // An effect card previews the effect PLAYING on the crew's own
+  // emblem — the same ClanEmblem + animation the crew card, crew
+  // page and crew chat will show once it is equipped.
+  if (item.kind === "effect") return <ClanEmblem tag={clanTag} color={clanColor} size={112} emblem={clanEmblem} effect={item.value} />;
   if (item.kind === "callingCard") {
     return (
       <span className="block w-full max-w-[232px]">
@@ -20600,20 +22524,25 @@ const KIND_LABEL: Record<string, string> = {
   callingCard: "Crew Calling Card / Banner",
   theme: "Crew Theme",
   emblem: "Crew Emblem",
+  effect: "Emblem Effect",
   color: "Crew Colour",
 };
 
 // Crew customisation is organised BY TYPE: one section per item
 // type, each with its own heading and its own grid — Badges with
 // Badges, Crew Emblems with Crew Emblems, and so on. Owner's rule:
-// EVERY section holds exactly 5 free items and exactly 3 Premium
-// items (8 total) — the server catalogue is trimmed to match.
+// every section holds exactly 5 free items and exactly 3 Premium
+// items (8 total) — the server catalogue is trimmed to match —
+// EXCEPT Crew Colours (Nov 22 2026): all 8 named colours are free
+// and the section's Premium perk is the Custom colour tool card
+// under the grid instead of 3 Premium swatches.
 const CREW_CUSTOMISE_SECTIONS: { id: string; title: string; blurb: string; kind: string }[] = [
   { id: "badges", title: "Badges", blurb: "Your crew's badge, shown next to its name on the crew card and crew page — 5 free, plus 3 Premium exclusives (Premium badges need the crew's owner to have Premium).", kind: "badge" },
   { id: "calling-cards", title: "Calling Cards / Banner", blurb: "Your crew's calling card IS its banner — one merged catalogue (the old personal and crew lists combined, duplicates kept once). It fills the top of the crew page with your crew's name on it. 5 free (static), plus 3 Premium exclusives (animated — moving smoke, leaves and flame). Below them sit the Challenge and Season cards: earned by the crew owner, never for sale.", kind: "callingCard" },
   { id: "themes", title: "Themes", blurb: "Your crew page's accent theme — 5 free, plus 3 Premium exclusives.", kind: "theme" },
-  { id: "crew-emblems", title: "Crew Emblems", blurb: "Your crew's emblem on its card, page and chat — 5 free, plus 3 Premium exclusives (the gold Vice Crest among them).", kind: "emblem" },
-  { id: "crew-colours", title: "Crew Colours", blurb: "Your crew colour, applied to your crew card and home — it also drives the automatic crew-card header theme when no calling card is equipped. 5 free, plus 3 Premium exclusives.", kind: "color" },
+  { id: "crew-emblems", title: "Crew Emblems", blurb: "Your crew's emblem on its card, page and chat — every emblem is a full AI-designed artwork, so each one is a completely different design. 5 free, plus 3 Premium exclusives (the gold Vice Crest among them).", kind: "emblem" },
+  { id: "emblem-effects", title: "Emblem Effects", blurb: "An animated effect that plays on your crew's emblem everywhere it shows — crew card, crew page, rankings and crew chat. The preview on each card is the effect playing live on your emblem, not a picture of it. 5 free, plus 3 Premium exclusives (Fire, Lightning and Champion Gold).", kind: "effect" },
+  { id: "crew-colours", title: "Crew Colours", blurb: "Your crew colour, applied to your crew card and home — it also drives the automatic crew-card header theme when no calling card is equipped. All 8 named colours are free — and below them sits the Custom colour tool, the Premium colour perk: any colour at all, plus Chrome, Gold Chrome, Rose Gold and Iridescent finishes.", kind: "color" },
 ];
 
 // ---- Season Challenges ----
@@ -20770,12 +22699,162 @@ function ChallengesView({ playerKey, gamertag, go }: { playerKey: string; gamert
   );
 }
 
-function CrewCustomisationPanel({ clanId, playerKey, clanName, clanColor, clanTag, goPremium }: {
+/* A custom colour control: a native colour-picker swatch plus a
+   hex text field, both driving the same #RRGGBB value. The picker
+   always yields a valid colour; the text field commits on blur /
+   Enter only when it holds a real hex code (3 or 6 digits, with or
+   without the #) and otherwise shows a short correction — an
+   invalid colour can never be sent from here, and the server
+   normalises whatever arrives to #RRGGBB before storing it, so
+   every colour renders on every surface. */
+function CustomColorControl({ id, value, onChange, fieldProps, disabled = false }: {
+  id: string;
+  value: string;
+  onChange: (hex: string) => void;
+  fieldProps?: Record<string, unknown>;
+  disabled?: boolean;
+}) {
+  const [hexText, setHexText] = useState(value);
+  const [hexError, setHexError] = useState("");
+  useEffect(() => { setHexText(value); }, [value]);
+  const commitHex = () => {
+    const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hexText.trim());
+    if (!m?.[1]) { setHexError("Type a hex colour like #FF2E88 (3 or 6 digits)."); return; }
+    const raw = m[1];
+    const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+    setHexError("");
+    onChange(`#${full.toUpperCase()}`);
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          id={id}
+          type="color"
+          className="swatch"
+          style={{ padding: 0, opacity: disabled ? 0.45 : 1 }}
+          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : "#ff2e88"}
+          onChange={(e) => { setHexError(""); onChange(e.target.value.toUpperCase()); }}
+          disabled={disabled}
+          aria-label="Custom colour picker — choose any colour"
+        />
+        <input
+          type="text"
+          className="field"
+          style={{ width: 124, opacity: disabled ? 0.45 : 1 }}
+          value={hexText}
+          onChange={(e) => setHexText(e.target.value)}
+          onBlur={commitHex}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitHex(); } }}
+          placeholder="#FF2E88"
+          disabled={disabled}
+          aria-label="Custom colour hex code"
+          {...fieldProps}
+        />
+        <span className="h-10 w-10 flex-none rounded-full border-2 border-[var(--border-strong)]" style={{ background: value }} role="img" aria-label={`Selected colour ${value}`} />
+      </div>
+      {hexError && <p className="mt-1.5 text-[13px] font-semibold text-[#ff6b81]" role="alert">{hexError}</p>}
+    </div>
+  );
+}
+
+/* The Custom colour card at the foot of the Crew Colours section
+   — the Premium colour tool (owner's direction, Nov 22 2026: the
+   named colours are all free; THIS tool is the Premium perk).
+   ANY colour, picked with the colour picker or typed as a hex
+   code, or a finish — Chrome, Gold Chrome, Rose Gold, Iridescent
+   — applied through setCrewColor: one stored crew colour (plus
+   the finish key) that drives the emblem, the member tags, the
+   card header and the page accent at once. Without the owner's
+   Premium the card shows exactly what Premium unlocks, with the
+   controls locked and a clear way in — never a dead tap. */
+function CrewCustomColorCard({ clanId, playerKey, clanName, currentColor, currentFinish, premiumActive, goPremium, onApplied }: {
+  clanId: number;
+  playerKey: string;
+  clanName: string;
+  currentColor: string;
+  currentFinish: string;
+  premiumActive: boolean;
+  goPremium?: () => void;
+  onApplied: (msg: string) => void;
+}) {
+  const [customColor, setCustomColor] = useState(currentColor);
+  const [finish, setFinish] = useState<CrewColorFinishId>(() => (CREW_COLOR_FINISHES.some((f) => f.id === currentFinish) ? (currentFinish as CrewColorFinishId) : ""));
+  const [error, setError] = useState("");
+  useEffect(() => { setCustomColor(currentColor); }, [currentColor]);
+  useEffect(() => { setFinish(CREW_COLOR_FINISHES.some((f) => f.id === currentFinish) ? (currentFinish as CrewColorFinishId) : ""); }, [currentFinish]);
+  const finishDef = CREW_COLOR_FINISHES.find((f) => f.id === finish);
+  const applyColor = finishDef ? finishDef.hex : customColor;
+  const apply = useMutation({
+    mutationFn: async () => await api.setCrewColor({ playerKey, clanId, color: applyColor, finish }),
+    onSuccess: () => {
+      setError("");
+      onApplied(finishDef
+        ? `${finishDef.name} finish applied — live on ${clanName}'s emblem, card header, tags and page now.`
+        : `Custom colour ${customColor} applied — live on ${clanName}'s emblem, tags, card and page now.`);
+    },
+    onError: (e) => setError(e.message),
+  });
+  const isCurrent = finish === currentFinish && (finishDef ? true : customColor.toLowerCase() === currentColor.toLowerCase());
+  const previewBackground = finishDef ? finishDef.gradient : customColor;
+  return (
+    <article className="card customise-card customise-enter">
+      <div className="customise-stage">
+        <div className="customise-stage-visual">
+          <span className="flex flex-col items-center gap-2">
+            <span className="block h-24 w-24 rounded-full border-2 border-[var(--border-strong)]" style={{ background: previewBackground }} role="img" aria-label={finishDef ? `${finishDef.name} finish preview` : `Custom colour preview ${customColor}`} />
+            <span className="text-[13px] font-extrabold" style={{ color: applyColor }}>{finishDef ? `${finishDef.name} · ${finishDef.hex}` : customColor}</span>
+          </span>
+        </div>
+      </div>
+      <div className="customise-card-body">
+        <div className="flex items-start gap-2">
+          <h4 className="min-w-0 flex-1 text-[15px] font-bold leading-snug">Custom colour</h4>
+          <span className="flex-none rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ border: "1px solid var(--amber)", color: "var(--amber)" }}>Premium</span>
+        </div>
+        <p className="customise-desc mt-1 text-[13px] leading-relaxed text-[var(--dim)]">Any colour you like — pick it with the picker or type its hex code — or give your crew colour a finish: Chrome, Gold Chrome, Rose Gold or Iridescent, shining over the emblem and the crew-card header. The named colours above stay free for everyone.</p>
+        <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-[var(--dim2)]">Crew Colour</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Crew colour finish">
+          <button type="button" className="swatch" style={{ background: customColor, opacity: premiumActive ? 1 : 0.45, outline: finish === "" ? "2px solid var(--text)" : "none", outlineOffset: 2 }} aria-pressed={finish === ""} disabled={!premiumActive} onClick={() => setFinish("")} aria-label="Finish: Solid — no finish, just the colour" />
+          {CREW_COLOR_FINISHES.map((f) => (
+            <button key={f.id} type="button" className="swatch" style={{ background: f.gradient, opacity: premiumActive ? 1 : 0.45, outline: finish === f.id ? "2px solid var(--text)" : "none", outlineOffset: 2 }} aria-pressed={finish === f.id} disabled={!premiumActive} onClick={() => setFinish(f.id)} aria-label={`Finish: ${f.name} — Premium`} />
+          ))}
+          <span className="text-[13px] font-bold">{finishDef ? finishDef.name : "Solid"}</span>
+        </div>
+        <div className="mt-3">
+          <CustomColorControl id={`crew-custom-color-${clanId}`} value={customColor} onChange={(hex) => { setCustomColor(hex); setFinish(""); }} fieldProps={FIELDS.setCrewColor.color} disabled={!premiumActive} />
+        </div>
+        {error && <p className="mt-2 text-[13px] font-semibold text-[#ff6b81]" role="alert">{error}</p>}
+        <div className="mt-auto pt-3">
+          {!premiumActive ? (
+            <div>
+              <button type="button" className="btn-ghost w-full" style={{ minHeight: 44, fontSize: 14 }} onClick={() => goPremium?.()} aria-label="Custom colour and finishes — included with Premium: the crew owner needs Premium to use them">
+                Included with Premium
+              </button>
+              <p className="mt-2 text-xs text-[var(--dim)]">Custom colours and finishes apply only while the crew&apos;s owner has Premium — if Premium ends, the crew colour falls back to Vice Pink. The named colours above are always free.</p>
+            </div>
+          ) : isCurrent ? (
+            <span className="rounded-full px-3 py-1.5 text-[13px] font-extrabold" style={{ background: "var(--accent2-soft)", color: "var(--accent2)", border: "1px solid var(--accent2)" }}>This is your crew colour now</span>
+          ) : (
+            <button type="button" className="btn-primary btn-accent w-full" style={{ minHeight: 44, fontSize: 14 }} disabled={apply.isPending} onClick={() => apply.mutate()} aria-label={finishDef ? `Apply the ${finishDef.name} finish to ${clanName}` : `Apply the custom colour ${customColor} to ${clanName}`}>
+              {finishDef ? `Apply ${finishDef.name} finish — with Premium` : "Apply custom colour — with Premium"}
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function CrewCustomisationPanel({ clanId, playerKey, clanName, clanColor, clanFinish = "", clanTag, clanEmblem = "", clanEffect = "", goPremium }: {
   clanId: number;
   playerKey: string;
   clanName: string;
   clanColor: string;
+  clanFinish?: string;
   clanTag: string;
+  clanEmblem?: string;
+  clanEffect?: string;
   goPremium?: () => void;
 }) {
   const qc = useQueryClient();
@@ -20825,7 +22904,7 @@ function CrewCustomisationPanel({ clanId, playerKey, clanName, clanColor, clanTa
       <article key={item.id} className="card customise-card customise-enter">
         <div className="customise-stage">
           <div className="customise-stage-visual">
-            <CosmeticVisual item={item} crewName={clanName} clanTag={clanTag} clanColor={clanColor} />
+            <CosmeticVisual item={item} crewName={clanName} clanTag={clanTag} clanColor={clanColor} clanEmblem={clanEmblem} clanEffect={clanEffect} />
           </div>
         </div>
         <div className="customise-card-body">
@@ -20885,7 +22964,7 @@ function CrewCustomisationPanel({ clanId, playerKey, clanName, clanColor, clanTa
   return (
     <div className="mt-3">
       <p className="max-w-[620px] text-sm leading-relaxed text-[var(--dim)]">
-        {clanName}&apos;s look — badge, banner, theme, emblem and colour. Every section holds exactly 5 free items and 3 Premium items.
+        {clanName}&apos;s look — badge, banner, theme, emblem, emblem effect and colour. Every section holds exactly 5 free items and 3 Premium items — except Crew Colours, where all 8 named colours are free and the Premium perk is the Custom colour tool with its Chrome finishes.
         Premium items equip only while you, the crew owner, have Premium; if your Premium ends they unequip back to free defaults.
         Tap Equip and it applies instantly, everywhere the crew appears. No Shop, no prices, no credits.
       </p>
@@ -20914,6 +22993,11 @@ function CrewCustomisationPanel({ clanId, playerKey, clanName, clanColor, clanTa
             <div className="mt-4 grid items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {mainList.map(renderCard)}
             </div>
+            {s.id === "crew-colours" && (
+              <div className="mt-5 grid items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                <CrewCustomColorCard clanId={clanId} playerKey={playerKey} clanName={clanName} currentColor={clanColor} currentFinish={clanFinish} premiumActive={d.ownerPremiumActive} goPremium={goPremium} onApplied={(m) => { setMsg(m); invalidate(); }} />
+              </div>
+            )}
             {challengeList.length > 0 && (
               <div className="mt-7">
                 <h5 className="text-[15px] font-extrabold tracking-tight">Challenge cards — earned, never for sale</h5>
@@ -21497,6 +23581,10 @@ function AuthGatePage({ playerKey, onClose, onSignedIn }: {
     try {
       window.localStorage.setItem("leonida-trust-device", rememberMe ? "1" : "0");
       window.localStorage.setItem("leonida-player-key", rememberMe ? accountKey : SIGNED_OUT_MARKER);
+      // Keep the recovery backup in step: a remembered account
+      // key is mirrored, a not-remembered sign-in leaves the
+      // marker so the key-recovery path can't bring it back.
+      window.localStorage.setItem("leonida-player-key-backup", rememberMe ? accountKey : SIGNED_OUT_MARKER);
     } catch { /* storage blocked — the in-place adoption still signs in for this session */ }
     onSignedIn(accountKey);
   };
@@ -21951,12 +24039,13 @@ type ProfilePostItem = ApiResponse<typeof api, "listProfilePosts">["items"][numb
 
 function ProfileGridTile({ item, onOpen }: { item: ProfilePostItem; onOpen: (p: ProfilePostItem) => void }) {
   const isVideo = item.mediaType === "youtube" || item.mediaType === "video";
+  const isCarousel = item.mediaType === "image" && item.mediaUrls.length > 1;
   const label = item.title || `${item.author} — ${item.kind}`;
   return (
     <button
       type="button"
-      className="relative aspect-square w-full overflow-hidden text-left"
-      style={{ minHeight: 0, borderRadius: 10, background: "linear-gradient(160deg, #1c1030, #0d0d20 70%)" }}
+      className="relative aspect-[4/5] w-full overflow-hidden text-left"
+      style={{ minHeight: 0, borderRadius: 0, background: "#15151f" }}
       onClick={() => onOpen(item)}
       aria-label={`Open post: ${label}`}
     >
@@ -21976,31 +24065,93 @@ function ProfileGridTile({ item, onOpen }: { item: ProfilePostItem; onOpen: (p: 
           {item.body && <span className="line-clamp-3 text-[10.5px] leading-snug text-white/60">{item.body}</span>}
         </span>
       )}
-      {isVideo && item.mediaType === "image" ? null : isVideo ? (
-        <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/55" aria-hidden="true">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>
+      {/* Corner badges, like the reference profile grid: a video
+          carries the play badge (a white rounded square with the
+          play triangle) and a multi-photo post carries the
+          stacked-squares badge — both top right, nothing else on
+          the tile. */}
+      {isVideo ? (
+        <span className="absolute right-2 top-2 flex h-[22px] w-[22px] items-center justify-center rounded-[6px] bg-white shadow" aria-hidden="true">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="#111" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>
+        </span>
+      ) : isCarousel ? (
+        <span className="absolute right-2 top-2 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.65)]" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.5 3.5h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-1v-13a2 2 0 0 0-2-2h-8z" opacity="0.55" /><rect x="2.5" y="6.5" width="14" height="14" rx="2.5" /></svg>
         </span>
       ) : null}
-      {(item.likes > 0 || item.commentCount > 0 || item.views > 0) && (
-        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-2 pb-1.5 pt-5 text-[10px] font-bold text-white/95">
-          {item.likes} likes · {item.commentCount} comments · {item.views} views
-        </span>
-      )}
     </button>
   );
 }
 
-function ProfilePostGrid({ items, onOpen, emptyText, pending }: { items: ProfilePostItem[]; onOpen: (p: ProfilePostItem) => void; emptyText: string; pending?: boolean }) {
-  if (pending) return <p className="py-6 text-center text-sm text-[var(--dim)]">Loading…</p>;
-  if (items.length === 0) return <p className="px-2 py-6 text-center text-sm leading-relaxed text-[var(--dim)]">{emptyText}</p>;
+/* The permanent add box (owner's direction, Nov 21 2026):
+   on your own profile, uploading is never an "Upload" word
+   button — it is a square box that always stays as the first
+   box (top-left corner) of the Photos / Videos grid, even
+   when the grid is otherwise empty: there is no centred
+   "Share Photos" / "Share Videos" text block on your own
+   profile any more, just the grid with its box. Tapping it
+   opens the creator's select-post tab — the same tab for
+   both, different function: the Photos box opens the New post
+   picker (pictures only), the Videos box opens the New clip
+   picker (videos only), where the post is selected. Clean
+   like Instagram's grid boxes: one flat square, one centred
+   mark, no border, no label text. The mark is NOT a plain +
+   (owner's direction, Nov 21 2026): the Photos box carries
+   the camera mark the photo side had before the +, and the
+   Videos box carries the same play logo as the Videos tab. */
+function ProfileAddTile({ onClick, label, mark }: { onClick: () => void; label: string; mark: "camera" | "play" }) {
   return (
-    <div className="grid grid-cols-3 gap-1.5 sm:gap-2" role="list" aria-label="Posts grid">
+    <button
+      type="button"
+      className="relative aspect-[4/5] w-full text-[var(--text)]"
+      style={{ minHeight: 0, borderRadius: 0, background: "var(--surface2)" }}
+      onClick={onClick}
+      aria-label={label}
+    >
+      <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+        {mark === "camera" ? <IgCameraIcon size={40} /> : <IgPlayIcon size={40} />}
+      </span>
+    </button>
+  );
+}
+
+function ProfilePostGrid({ items, onOpen, emptyText, pending, onAdd, addLabel, addMark }: { items: ProfilePostItem[]; onOpen: (p: ProfilePostItem) => void; emptyText: string; pending?: boolean; onAdd?: () => void; addLabel?: string; addMark?: "camera" | "play" }) {
+  if (pending) return <p className="py-6 text-center text-sm text-[var(--dim)]">Loading…</p>;
+  if (items.length === 0 && !onAdd) return <p className="px-2 py-6 text-center text-sm leading-relaxed text-[var(--dim)]">{emptyText}</p>;
+  return (
+    <div className="grid grid-cols-3 gap-[2px]" role="list" aria-label="Posts grid">
+      {onAdd && <ProfileAddTile onClick={onAdd} label={addLabel ?? "Add a post — open the picker to select a post"} mark={addMark ?? "camera"} />}
       {items.map((item) => <ProfileGridTile key={item.id} item={item} onOpen={onOpen} />)}
     </div>
   );
 }
 
-function ProfilePostSheet({ post, playerKey, gamertag, go, onClose, onOpenAuthorKey, onOpenAuthorId }: { post: ProfilePostItem; playerKey: string; gamertag: string; go: (t: Tab, search?: string) => void; onClose: () => void; onOpenAuthorKey?: (key: string) => void; onOpenAuthorId?: (id: string) => void }) {
+/* One full post inside the profile post viewer — the layout
+   from the owner's reference: the author's profile pic and
+   name at the top left, right above the picture (owner's
+   direction, Nov 21 2026), with the two-line menu button at
+   the right of that row; the media EDGE TO EDGE at its own
+   aspect (owner's side-by-side, Nov 21 2026: the reference
+   photo runs full width with square corners, ours sat inset
+   and rounded), then a clean ICONS-ONLY action row (heart
+   and comment bubble carrying just their counts, the paper
+   plane on its own, Save bookmark pinned right — no word
+   labels), the "Liked by … and N others" line, the caption
+   text on its own (the author's name already sits above the
+   picture), a comments entry and the date with its time.
+   Views live in the comments view's header. Every control
+   is the real Feed action underneath — the same like / share
+   / save / report / delete / preference calls the Feed cards
+   use. No repost anywhere. */
+function ProfilePostFullCard({ post, playerKey, gamertag, onHashtag, onOpenAuthorKey, onOpenAuthorId, onNeedAccount }: {
+  post: ProfilePostItem;
+  playerKey: string;
+  gamertag: string;
+  onHashtag: (tag: string) => void;
+  onOpenAuthorKey?: (key: string) => void;
+  onOpenAuthorId?: (id: string) => void;
+  onNeedAccount: () => void;
+}) {
   // The post's author is opened by the identifier the post
   // carries (authorKey: their public profile ID, or the viewer's
   // own key on their own posts) — never by the display name,
@@ -22009,81 +24160,503 @@ function ProfilePostSheet({ post, playerKey, gamertag, go, onClose, onOpenAuthor
   const authorPressable = Boolean(onOpenAuthorKey) && Boolean(post.authorKey) && !post.mine;
   const qc = useQueryClient();
   const [showComments, setShowComments] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState("Spam");
+  const [reason, setReason] = useState("");
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
   const [liked, setLiked] = useState(post.likedByMe);
   const [likeCount, setLikeCount] = useState(post.likes);
-  const [error, setError] = useState("");
+  const [savedFeed, setSavedFeed] = useState<number[]>(() => {
+    try { return JSON.parse(localStorage.getItem("viceverse-saved-feed-v1") ?? "[]") as number[]; } catch { return []; }
+  });
+  const isSavedFeed = savedFeed.includes(post.id);
+  const toggleSaveFeed = () => {
+    if (!gamertag) { onNeedAccount(); return; }
+    setSavedFeed((prev) => {
+      const next = prev.includes(post.id) ? prev.filter((x) => x !== post.id) : [...prev, post.id];
+      try { localStorage.setItem("viceverse-saved-feed-v1", JSON.stringify(next)); } catch { /* storage unavailable */ }
+      return next;
+    });
+    recordFeedSave(playerKey, post.id, !isSavedFeed);
+  };
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["profile-posts"] });
+    qc.invalidateQueries({ queryKey: ["feed"] });
+    qc.invalidateQueries({ queryKey: ["social-profile"] });
+  };
   const like = useMutation({
     mutationFn: async () => await api.toggleFeedLike({ playerKey, postId: post.id }),
     onSuccess: (res) => {
       setLiked(res.liked);
       setLikeCount((prev) => Math.max(0, prev + (res.liked ? 1 : -1)));
-      qc.invalidateQueries({ queryKey: ["profile-posts"] });
-      qc.invalidateQueries({ queryKey: ["feed"] });
+      invalidate();
     },
     onError: (e) => setError(e.message),
   });
+  // Views: counted once per player per post, only when the post
+  // is actually on screen in the viewer — the same rule (and the
+  // same server count) as the Feed cards.
+  const articleRef = useRef<HTMLElement | null>(null);
+  const viewRecordedRef = useRef(false);
+  const [recordedViews, setRecordedViews] = useState<number | null>(null);
+  useEffect(() => {
+    const el = articleRef.current;
+    if (!el || !playerKey) return;
+    const ob = new IntersectionObserver(
+      (entries) => {
+        if (!viewRecordedRef.current && entries.some((e) => e.isIntersecting)) {
+          viewRecordedRef.current = true;
+          api.recordFeedViews({ playerKey, postIds: [post.id] })
+            .then((res) => {
+              const item = res.items.find((i) => i.postId === post.id);
+              if (item) setRecordedViews(item.views);
+            })
+            .catch(() => {});
+          ob.disconnect();
+        }
+      },
+      { threshold: 0.35 },
+    );
+    ob.observe(el);
+    return () => ob.disconnect();
+  }, [playerKey, post.id]);
+  const viewsShown = Math.max(post.views, recordedViews ?? 0);
+  const share = useMutation({
+    mutationFn: () => api.shareFeedPost({ postId: post.id, playerKey }),
+    onSuccess: async () => {
+      try {
+        await navigator.clipboard.writeText(`${post.author} on ViceSunshine: ${post.body || post.title}`);
+        setNotice("Post text copied — share it anywhere. Share counted.");
+      } catch {
+        setNotice("Share counted.");
+      }
+      invalidate();
+    },
+    onError: (e) => setError(e.message),
+  });
+  const report = useMutation({
+    mutationFn: async () => await api.reportFeedPost({ playerKey, postId: post.id, reason: reason.trim() ? `${reportReason} — ${reason.trim()}` : reportReason }),
+    onSuccess: (res) => {
+      setShowReport(false);
+      setNotice(
+        res.flagged
+          ? "Reported — this post now has 3+ reports, so it is flagged and hidden from the Feed while it is reviewed."
+          : "Reported. Thanks — moderators review reported posts.",
+      );
+      invalidate();
+    },
+    onError: (e) => setError(e.message),
+  });
+  const preference = useMutation({
+    mutationFn: async (interested: boolean) => await api.setFeedPreference({ playerKey, postId: post.id, interested }),
+    onSuccess: (_res, interested) => {
+      setShowMenu(false);
+      setShowWhy(false);
+      if (interested) setNotice("Got it — posts like this will rank higher for you in Top.");
+      invalidate();
+    },
+    onError: (e) => setError(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.deleteFeedPost({ playerKey, postId: post.id }),
+    onSuccess: () => invalidate(),
+    onError: (e) => setError(e.message),
+  });
+  // Auto-generated bodies the composer/server stamp on a
+  // caption-less media post are not a caption (owner's
+  // side-by-side, Nov 21 2026: the reference post view has no
+  // "Shared a photo with the community." filler under it) —
+  // in this view they render as no caption at all. A body the
+  // player actually typed always shows.
+  const AUTO_BODIES = new Set([
+    "Shared a photo with the community.",
+    "Shared a clip — it plays right here in ViceSunshine, above.",
+    "Shared a video — it plays right here in ViceSunshine, above.",
+  ]);
+  const captionBody = AUTO_BODIES.has(post.body.trim()) ? "" : post.body;
+  const sheetItem = "flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] font-semibold text-white hover:bg-white/5";
+  // The menu sheet's Audio row exists only when the post really
+  // carries sound: a video (uploaded or YouTube).
+  const hasAudio = post.mediaType === "youtube" || post.mediaType === "video" || Boolean(post.embedUrl);
+  // The reference post view stamps the date with its time,
+  // uppercased: "OCT 12, 2024 • 2:13 AM".
+  const dateLabel = (() => {
+    const d = new Date(post.createdAt);
+    if (Number.isNaN(d.getTime())) return "";
+    const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
+    const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return `${date} • ${time}`;
+  })();
+  // The likes line in the reference's shape: "Liked by <name>
+  // and N others" whenever the server could name a real liker,
+  // "Liked by you …" when the viewer is the only liker who can
+  // be named, and a plain count when nobody can be named.
+  const likesLine = likeCount <= 0 ? "" : post.firstLiker
+    ? likeCount === 1
+      ? `Liked by ${post.firstLiker}`
+      : `Liked by ${post.firstLiker} and ${fmtCount(likeCount - 1)} ${likeCount - 1 === 1 ? "other" : "others"}`
+    : liked
+      ? likeCount === 1
+        ? "Liked by you"
+        : `Liked by you and ${fmtCount(likeCount - 1)} ${likeCount - 1 === 1 ? "other" : "others"}`
+      : `${fmtCount(likeCount)} ${likeCount === 1 ? "like" : "likes"}`;
+  return (
+    <article ref={articleRef} className="profile-post-card border-b border-[var(--border)] pb-8 pt-5 first:pt-1" aria-label={`Post by ${post.author}`}>
+      <div className="flex items-center gap-3">
+        {authorPressable ? (
+          <button type="button" className="flex-none rounded-full" style={{ minHeight: 0 }} onClick={() => onOpenAuthorKey?.(post.authorKey)} aria-label={`Open ${post.author}'s profile`}>
+            <CosmeticAvatar name={post.author} size={38} avatarUrl={post.authorAvatarUrl} />
+          </button>
+        ) : (
+          <CosmeticAvatar name={post.author} size={38} avatarUrl={post.authorAvatarUrl} />
+        )}
+        <div className="min-w-0 flex-1">
+          {authorPressable ? (
+            <button type="button" className="block max-w-full truncate text-left text-[15px] font-bold" style={{ minHeight: 0, padding: 0 }} onClick={() => onOpenAuthorKey?.(post.authorKey)} aria-label={`Open ${post.author}'s profile`}>{post.author}</button>
+          ) : (
+            <p className="flex items-center gap-2 text-[15px] font-bold">
+              <span className="truncate">{post.author}</span>
+              {post.isAi && (
+                <span className="flex-none rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ background: "var(--accent)", color: "#ffffff" }} aria-label="AI automatic account">
+                  AI
+                </span>
+              )}
+            </p>
+          )}
+          <p className="text-xs text-[var(--dim)]">{post.kind} · {timeAgo(post.createdAt)}</p>
+        </div>
+        <button
+          type="button"
+          className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[var(--dim)] hover:bg-[var(--surface2)]"
+          style={{ minHeight: 36 }}
+          aria-haspopup="dialog"
+          aria-expanded={showMenu}
+          aria-label={`Post menu for post by ${post.author}`}
+          onClick={() => setShowMenu(true)}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M3 9h18" /><path d="M8 15h13" /></svg>
+        </button>
+      </div>
+      {(post.mediaUrl || post.mediaUrls.length > 1) && (
+        <div className="-mx-3 sm:mx-0">
+          <FeedMediaBlock mediaUrl={post.mediaUrl} mediaType={post.mediaType} embedUrl={post.embedUrl} videoId={post.videoId} title={post.title || `Post by ${post.author}`} mediaUrls={post.mediaUrls} bleed />
+        </div>
+      )}
+      {post.sourceName && post.sourceUrl && (
+        <p className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-[var(--dim)]">
+          <span>
+            Shared from <strong className="text-[var(--text)]">{post.sourceName}</strong> by {post.author} — the original stays with its creator.
+          </span>
+          <a className="font-semibold text-[var(--accent2)]" href={post.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Open the original source for this post (external link)`}>
+            Original post ↗
+          </a>
+        </p>
+      )}
+      {/* Icons-only action row (owner's side-by-side with the
+          reference post view, Nov 21 2026): heart and comment
+          bubble carrying just their counts, the paper plane on
+          its own like the reference, the Save bookmark pinned
+          right — no "Like / Discuss / Share / Save" word labels,
+          simple and clean. The words (and the share count) live
+          on in the aria-labels, and the view count shows in the
+          comments view's header. */}
+      <div className="mt-2.5 flex items-center gap-5">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[15px] font-semibold"
+          style={{ color: liked ? "var(--accent)" : "var(--text)", minHeight: 44 }}
+          aria-pressed={liked}
+          disabled={like.isPending}
+          onClick={() => { if (!gamertag) { onNeedAccount(); return; } like.mutate(); }}
+          aria-label={`${liked ? "Unlike" : "Like"} post by ${post.author} — ${likeCount} likes`}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 1 1 12 6.1a5 5 0 1 1 7.5 6.5z" /></svg>
+          {likeCount > 0 ? fmtCount(likeCount) : null}
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[15px] font-semibold"
+          style={{ minHeight: 44 }}
+          aria-expanded={showComments}
+          onClick={() => setShowComments(true)}
+          aria-label={`Open comments on post by ${post.author} — ${post.commentCount} comments, ${viewsShown} views`}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1 1 21 11.5z" /></svg>
+          {post.commentCount > 0 ? fmtCount(post.commentCount) : null}
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[15px] font-semibold"
+          style={{ minHeight: 44 }}
+          disabled={share.isPending}
+          onClick={() => { if (!gamertag) { onNeedAccount(); return; } share.mutate(); }}
+          aria-label={`Share post by ${post.author} — ${post.shares} shares`}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4z" /></svg>
+        </button>
+        <button
+          type="button"
+          className="ml-auto flex items-center"
+          style={{ color: isSavedFeed ? "var(--accent2)" : "var(--text)", minHeight: 44 }}
+          aria-pressed={isSavedFeed}
+          onClick={toggleSaveFeed}
+          aria-label={`${isSavedFeed ? "Remove from Saved:" : "Save:"} ${post.title || `post by ${post.author}`}`}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill={isSavedFeed ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.9" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" /></svg>
+        </button>
+      </div>
+      {likesLine && <p className="ppc-likes mt-1 text-sm font-bold">{likesLine}</p>}
+      {post.title && <p className="ppc-title mt-1.5 text-[15px] font-semibold leading-relaxed">{post.title}</p>}
+      {captionBody && (
+        <p className="ppc-body mt-1 whitespace-pre-line text-[15px] leading-relaxed">
+          {linkifyText(captionBody, onHashtag)}
+        </p>
+      )}
+      {post.linkUrl && (
+        <a
+          className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface2)] px-3.5 py-2 text-[13px] font-bold text-[var(--accent2)]"
+          style={{ minHeight: 40 }}
+          href={post.linkUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open the link attached to this post: ${post.linkUrl}`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7.1 0l2.4-2.4a5 5 0 0 0-7.1-7.1L11 5.9" /><path d="M14 10a5 5 0 0 0-7.1 0L4.5 12.4a5 5 0 0 0 7.1 7.1L13 18.1" /></svg>
+          <span className="truncate">{(() => { try { return new URL(post.linkUrl).hostname.replace(/^www\./, ""); } catch { return post.linkUrl; } })()}</span>
+          <span aria-hidden="true">↗</span>
+        </a>
+      )}
+      {/* The post's location (the creator's Add location),
+          shown under the caption when the poster set one. */}
+      {post.location && (
+        <p className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--dim)]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11Z" /><circle cx="12" cy="10" r="2.6" /></svg>
+          {post.location}
+        </p>
+      )}
+      <button
+        type="button"
+        className="ppc-comments mt-2 block text-left text-sm text-[var(--dim)]"
+        style={{ minHeight: 36 }}
+        onClick={() => setShowComments(true)}
+        aria-label={post.commentCount > 0 ? `View all ${post.commentCount} comments on post by ${post.author}` : `Add a comment on post by ${post.author}`}
+      >
+        {post.commentCount > 0 ? `View all ${post.commentCount} comments` : "Add a comment"}
+      </button>
+      {dateLabel && <p className="ppc-date mt-0.5 text-[13px] text-[var(--dim)]">{dateLabel}</p>}
+      {notice && <p className="mt-2 text-sm font-semibold text-[var(--accent2)]" role="status">{notice}</p>}
+      {error && <p className="mt-2 text-sm font-semibold text-[var(--amber)]" role="alert">{error}</p>}
+      {!gamertag && (
+        <button type="button" className="mt-2 text-[13px] font-bold text-[var(--accent)]" style={{ minHeight: 36 }} onClick={onNeedAccount} aria-label="Create an account or log in to like and comment">
+          Create an account or log in to like and comment.
+        </button>
+      )}
+      {showReport && (
+        <form
+          className="mt-3 rounded-2xl border border-[var(--border)] p-4"
+          onSubmit={(e) => { e.preventDefault(); report.mutate(); }}
+          aria-label={`Report post by ${post.author}`}
+        >
+          <span className="flabel" style={{ marginTop: 0 }} id={`profile-report-why-${post.id}`}>Why are you reporting this post?</span>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`profile-report-why-${post.id}`}>
+            {["Spam", "Harassment", "Hate speech", "Illegal content", "False information", "Something else"].map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="radio"
+                aria-checked={reportReason === r}
+                className="chip-btn"
+                style={reportReason === r ? { background: "var(--accent)", borderColor: "var(--accent)", color: "#fff" } : undefined}
+                onClick={() => setReportReason(r)}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <label className="flabel" htmlFor={`profile-report-${post.id}`}>
+            Add a detail (optional)
+          </label>
+          <input
+            id={`profile-report-${post.id}`}
+            className="field"
+            {...FIELDS.reportFeedPost.reason}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Anything moderators should know…"
+          />
+          <button type="submit" className="btn-primary mt-2" disabled={report.isPending}>
+            {report.isPending ? "Sending…" : "Report"}
+          </button>
+        </form>
+      )}
+      {showMenu && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={`Post menu for post by ${post.author}`}>
+          <button type="button" className="absolute inset-0 h-full w-full cursor-default" style={{ minHeight: 0, background: "rgba(0,0,0,0.62)" }} aria-label="Close post menu" onClick={() => { setShowMenu(false); setShowWhy(false); }} />
+          <div className="relative max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl px-3 pt-2.5" style={{ background: "#141519", color: "#ffffff", paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />
+            {hasAudio && (
+              <div className="mb-2.5 flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: "#232429" }}>
+                <span className="flex h-11 w-11 flex-none items-center justify-center rounded-lg bg-white/10" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-bold">{post.title || `Video by ${post.author}`}</span>
+                  <span className="block text-[13px] text-white/60">Audio</span>
+                </span>
+              </div>
+            )}
+            <div className="overflow-hidden rounded-2xl" style={{ background: "#232429" }} role="menu" aria-label="About this post">
+              <button type="button" className={sheetItem} role="menuitem" aria-expanded={showWhy} onClick={() => setShowWhy((v) => !v)}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2" /><path d="M12 11v5" /><path d="M12 7.8v.2" /></svg>
+                Why you&apos;re seeing this post
+              </button>
+              {showWhy && (
+                <p className="px-4 pb-3.5 pl-[52px] text-[13.5px] leading-relaxed text-white/70">
+                  {post.mine
+                    ? "This is your own post, opened from your profile — your Posts and Videos tabs show your own posts, newest first."
+                    : `This is a public post by ${post.author}, opened from their profile — their Posts and Videos tabs show their own posts, newest first. `}
+                  Marking a post Interested lifts posts of its kind in the Feed&apos;s Top sort; Not interested hides it for you in the Feed.
+                </p>
+              )}
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" disabled={preference.isPending} onClick={() => { if (!gamertag) { setShowMenu(false); onNeedAccount(); return; } preference.mutate(true); }}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2" /><path d="m8.4 12.4 2.4 2.4 4.8-5.2" /></svg>
+                Interested
+              </button>
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" disabled={preference.isPending} onClick={() => { if (!gamertag) { setShowMenu(false); onNeedAccount(); return; } preference.mutate(false); }}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2" /><path d="m9 9 6 6" /><path d="m15 9-6 6" /></svg>
+                Not interested
+              </button>
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" style={{ color: "#ff6473" }} onClick={() => { setShowMenu(false); setShowWhy(false); setShowReport(true); }}>
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+                Report
+              </button>
+            </div>
+            <div className="mt-2.5 overflow-hidden rounded-2xl" style={{ background: "#232429" }} role="menu" aria-label="Post actions">
+              <button type="button" className={sheetItem} role="menuitem" onClick={() => { setShowMenu(false); toggleSaveFeed(); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill={isSavedFeed ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" /></svg>
+                {isSavedFeed ? "Saved — tap to remove" : "Save post"}
+              </button>
+              <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+              <button type="button" className={sheetItem} role="menuitem" disabled={share.isPending} onClick={() => { setShowMenu(false); if (!gamertag) { onNeedAccount(); return; } share.mutate(); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4z" /></svg>
+                Share{post.shares > 0 ? ` · ${post.shares}` : ""}
+              </button>
+              {post.mine && (
+                <>
+                  <div className="mx-4 border-t border-white/10" aria-hidden="true" />
+                  <button type="button" className={sheetItem} role="menuitem" style={{ color: "#ff6473" }} disabled={remove.isPending} onClick={() => { setShowMenu(false); remove.mutate(); }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+                    Delete post
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {showComments && (
+        <CommentsSheet postId={post.id} postLabel={post.title || `post by ${post.author}`} views={viewsShown} commentCount={post.commentCount} playerKey={playerKey} gamertag={gamertag} onClose={() => setShowComments(false)} onNeedAccount={onNeedAccount} onOpenAuthorId={onOpenAuthorId} />
+      )}
+    </article>
+  );
+}
+
+/* The profile post viewer (owner's reference layout, Nov 21
+   2026): tapping any tile in a profile's Posts or Videos grid
+   opens this full-screen view — no title bar, just a back
+   arrow in the top-left corner, then the profile's posts as
+   full post cards in one column that scrolls up and down,
+   starting at the post that was tapped; each card carries
+   its author's profile pic and name at its top left, right
+   above the picture. The Photos and Videos sections use this
+   exact same viewer and layout; only the list differs. There
+   is no repost tab and no repost view anywhere. The view is
+   portalled to <body> so the site's own top bar never sits
+   over it (owner's direction, Nov 21 2026), and its back arrow
+   returns to the profile the post was opened from — the
+   poster's page, not the viewer's own. */
+function ProfilePostsViewer({ items, startId, title, profileName, playerKey, gamertag, go, onClose, onOpenAuthorKey, onOpenAuthorId }: {
+  items: ProfilePostItem[];
+  startId: number;
+  title: string;
+  profileName: string;
+  playerKey: string;
+  gamertag: string;
+  go: (t: Tab, search?: string) => void;
+  onClose: () => void;
+  onOpenAuthorKey?: (key: string) => void;
+  onOpenAuthorId?: (id: string) => void;
+}) {
+  const startRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    startRef.current?.scrollIntoView({ block: "start" });
+    // Mount only: land on the tapped post once; the player
+    // scrolls freely from there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-[85]" role="dialog" aria-modal="true" aria-label={`Post by ${post.author}: ${post.title || post.kind}`}>
-      <button type="button" className="sheet-backdrop absolute inset-0 h-full w-full cursor-default bg-black/60" style={{ minHeight: 0 }} aria-label="Close post" onClick={onClose} />
-      <div className="comments-sheet absolute inset-0 m-auto flex h-fit max-h-[88dvh] w-[calc(100%-2rem)] max-w-[680px] flex-col overflow-y-auto rounded-[28px] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-2xl">
-        <div className="flex items-center gap-3">
-          {authorPressable ? (
-            <button type="button" className="flex-none rounded-full" style={{ minHeight: 0 }} onClick={() => { onClose(); onOpenAuthorKey?.(post.authorKey); }} aria-label={`Open ${post.author}'s profile`}>
-              <CosmeticAvatar name={post.author} size={40} avatarUrl={post.authorAvatarUrl} />
-            </button>
-          ) : (
-            <CosmeticAvatar name={post.author} size={40} avatarUrl={post.authorAvatarUrl} />
-          )}
-          <div className="min-w-0 flex-1">
-            {authorPressable ? (
-              <button type="button" className="block max-w-full truncate text-left font-bold" style={{ minHeight: 0, padding: 0 }} onClick={() => { onClose(); onOpenAuthorKey?.(post.authorKey); }} aria-label={`Open ${post.author}'s profile`}>{post.author}</button>
-            ) : (
-              <p className="truncate font-bold">{post.author}</p>
-            )}
-            <p className="text-xs text-[var(--dim)]">{post.kind} · {timeAgo(post.createdAt)}</p>
-          </div>
-          <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl text-[var(--dim)] hover:bg-[var(--surface2)]" style={{ minHeight: 40 }} onClick={onClose} aria-label="Close post">×</button>
-        </div>
-        {post.mediaUrl && (
-          <FeedMediaBlock mediaUrl={post.mediaUrl} mediaType={post.mediaType} embedUrl={post.embedUrl} videoId={post.videoId} title={post.title || `Post by ${post.author}`} />
-        )}
-        {post.title && <h3 className="mt-4 text-[19px] font-extrabold leading-snug tracking-tight">{post.title}</h3>}
-        {post.body && <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[var(--dim)]">{post.body}</p>}
-        {post.sourceUrl && (
-          <p className="mt-3 text-[13px] text-[var(--dim)]">
-            Source: {post.sourceName || "original post"} ·{" "}
-            <a className="font-bold underline" href={post.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Open the original source for this post (external link)`}>Open original ↗</a>
-          </p>
-        )}
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-4">
-          <button type="button" className="btn-ghost" style={{ minHeight: 44, color: liked ? "var(--accent)" : undefined }} disabled={like.isPending} onClick={() => { if (!gamertag) { setError("Create an account or log in to like and comment."); return; } like.mutate(); }} aria-pressed={liked} aria-label={`${liked ? "Unlike" : "Like"} this post — ${likeCount} likes`}>
-            {liked ? "Liked" : "Like"} · {likeCount}
-          </button>
-          <button type="button" className="btn-ghost" style={{ minHeight: 44 }} onClick={() => setShowComments(true)} aria-label={`Open comments — ${post.commentCount} comments, ${post.views} views`}>
-            Comments · {post.commentCount}
-          </button>
-          <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--dim)]"><EyeIcon size={15} /> {post.views} views</span>
-          <button type="button" className="btn-primary ml-auto" style={{ minHeight: 44, padding: "8px 18px", fontSize: 14 }} onClick={() => { onClose(); go("feed", post.title || post.author); }} aria-label="Open this post in the Community Feed">
-            Open in Feed
-          </button>
-        </div>
-        {!gamertag && (
-          <button type="button" className="mt-2 text-[13px] font-bold text-[var(--accent)]" style={{ minHeight: 36 }} onClick={() => { onClose(); go("signup"); }} aria-label="Create an account or log in to like and comment">
-            Create an account or log in to like and comment.
-          </button>
-        )}
-        {error && <p className="mt-2 text-sm font-semibold text-[var(--amber)]" role="alert">{error}</p>}
+  // PORTALLED to <body> (owner's direction, Nov 21 2026 —
+  // "when viewing someone post remove the top bar"): rendered
+  // inline inside the page-enter wrapper, this fixed layer is
+  // trapped in the wrapper's stacking context and the shell's
+  // phone top bar (avatar / VS / search, z-40 at root level)
+  // paints OVER the viewer's own header. As a body child the
+  // z-[85] competes at root level, so the post view covers the
+  // site's top bar completely and only its own back arrow shows
+  // at the top. The back arrow calls onClose, which returns to
+  // the profile the post was opened from: the POSTER's page,
+  // never the viewer's own.
+  return createPortal((
+    <div className="fixed inset-0 z-[85] flex flex-col bg-[var(--bg)]" role="dialog" aria-modal="true" aria-label={`${title} by ${profileName} — scroll up and down through the posts`}>
+      {/* No title bar (owner's reference post view, Nov 21
+          2026): the top of the view is just the back arrow in
+          the top-left corner — no section name, no centred
+          profile name, no border. The author's profile pic and
+          name sit at the top left of each post card, right
+          above its picture. */}
+      <div className="flex flex-none items-center px-2 py-2">
+        <button
+          type="button"
+          className="flex h-10 w-10 flex-none items-center justify-center rounded-full hover:bg-[var(--surface2)]"
+          style={{ minHeight: 40, color: "var(--accent)" }}
+          onClick={onClose}
+          aria-label={`Back to ${profileName}'s profile`}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14.5 5.5-6 6.5 6 6.5" /></svg>
+        </button>
       </div>
-      {showComments && (
-        <CommentsSheet postId={post.id} postLabel={post.title || `post by ${post.author}`} views={post.views} commentCount={post.commentCount} playerKey={playerKey} gamertag={gamertag} onClose={() => setShowComments(false)} onNeedAccount={() => { setShowComments(false); onClose(); go("signup"); }} onOpenAuthorId={onOpenAuthorId ? (id) => { onClose(); onOpenAuthorId(id); } : undefined} />
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[680px] px-3 pb-10 sm:px-4">
+          {items.length === 0 && (
+            <p className="py-10 text-center text-sm text-[var(--dim)]">There are no posts left to show here.</p>
+          )}
+          {items.map((item) => (
+            <div key={item.id} ref={item.id === startId ? startRef : undefined} className="scroll-mt-2">
+              <ProfilePostFullCard
+                post={item}
+                playerKey={playerKey}
+                gamertag={gamertag}
+                onHashtag={(tag) => { onClose(); go("feed", `#${tag}`); }}
+                onOpenAuthorKey={onOpenAuthorKey ? (key) => { onClose(); onOpenAuthorKey(key); } : undefined}
+                onOpenAuthorId={onOpenAuthorId ? (id) => { onClose(); onOpenAuthorId(id); } : undefined}
+                onNeedAccount={() => { onClose(); go("signup"); }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
-  );
+  ), document.body);
 }
 
 function FollowButton({ playerKey, targetKey, viewerFollows, followsViewer, viewerHasProfile, isMe, onNeedProfile, compact, viewerRequested, isPrivate }: {
@@ -22533,6 +25106,30 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
     queryFn: () => api.listDmThread({ playerKey, otherKey: openKey }),
     enabled: Boolean(openKey && gamertag),
   });
+  // Phone full-screen chat (owner's direction, Nov 21 2026):
+  // below the 860px two-pane breakpoint, an open chat leaves the
+  // page and covers the whole screen — portalled to <body> and
+  // styled by .dm-chat-fullscreen in theme.css, the same pattern
+  // as the post viewer — with the back arrow in its header
+  // returning to the chat list. At 860px and up the chat stays
+  // in its pane, exactly as before.
+  const [phoneNarrow, setPhoneNarrow] = useState<boolean>(() => typeof window !== "undefined" && window.matchMedia("(max-width: 859.98px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 859.98px)");
+    const onChange = () => setPhoneNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const chatFullscreen = phoneNarrow && Boolean(openKey || openGroupId);
+  // While the chat owns the phone screen, the page behind it
+  // must not scroll.
+  useEffect(() => {
+    if (!chatFullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [chatFullscreen]);
   const seenSyncRef = useRef("");
   useEffect(() => {
     if (thread.data && openKey && seenSyncRef.current !== `${openKey}:${thread.data.messages.length}`) {
@@ -22639,6 +25236,23 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
     },
     onError: (e) => setGError(e.message),
   });
+  // Crew join-request cards in the crew chat: the Leader accepts
+  // or declines right on the card (the server keeps it Leader-only
+  // for these asks). Accepting puts the player straight into the
+  // crew and its chat, like any approved application.
+  const reviewJoinRequest = useMutation({
+    mutationFn: async (input: { clanId: number; applicationId: number; approve: boolean }) =>
+      await api.reviewApplication({ clanId: input.clanId, playerKey, applicationId: input.applicationId, approve: input.approve }),
+    onSuccess: () => {
+      setGError("");
+      qc.invalidateQueries({ queryKey: ["group-thread"] });
+      qc.invalidateQueries({ queryKey: ["dm-conversations"] });
+      qc.invalidateQueries({ queryKey: ["clan"] });
+      qc.invalidateQueries({ queryKey: ["clans"] });
+      qc.invalidateQueries({ queryKey: ["my-clan"] });
+    },
+    onError: (e) => setGError(e.message),
+  });
   if (!gamertag) {
     return (
       <div className="mx-auto flex h-full w-full max-w-[520px] flex-col items-center justify-center px-2 py-10 text-center">
@@ -22680,7 +25294,7 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
       aria-label={`${g.kind === "crew" ? "Crew chat" : g.kind === "event" ? "Event chat" : "Group chat"}: ${g.name} — ${g.memberCount} members${g.unread ? ` — ${g.unread} unread` : ""}`}
     >
       {g.kind === "crew" ? (
-        <span className="flex-none"><ClanEmblem tag={g.clanTag || initialsOf(g.name)} color={g.clanColor || "#FF2E88"} emblem={g.clanEmblem || "shield"} size={52} /></span>
+        <span className="flex-none"><ClanEmblem tag={g.clanTag || initialsOf(g.name)} color={g.clanColor || "#FF2E88"} emblem={g.clanEmblem || "shield"} effect={g.clanEmblemEffect || ""} finish={g.clanColorFinish || ""} size={52} /></span>
       ) : g.kind === "event" ? (
         <span className="flex h-[52px] w-[52px] flex-none items-center justify-center rounded-full bg-[var(--surface3)] text-[15px] font-extrabold" aria-hidden="true">{initialsOf(g.name)}</span>
       ) : (
@@ -22698,8 +25312,292 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
   const other = thread.data?.other ?? null;
   const messages = thread.data?.messages ?? [];
   const lastMineSeen = [...messages].reverse().find((m) => m.mine)?.seen ?? false;
+  // The chat pane itself: rendered in place in the two-pane
+  // shell, or — on a phone with a chat open — portalled to
+  // <body> as a full-screen layer (see chatFullscreen above).
+  const chatPane = (
+        <div className={chatFullscreen ? "dm-chat-fullscreen messages-view" : `dm-chat-pane min-w-0 flex-col ${openAny ? "flex" : "hidden min-[860px]:flex"}`}>
+          {openGroupId ? (
+            <>
+              {group?.kind === "crew" && group.clanCard ? (
+                <div className="flex-none border-b border-[var(--border)]">
+                  <CallingCard designKey={group.clanCard} name={group.name} mini />
+                </div>
+              ) : null}
+              <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+                <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl hover:bg-[var(--surface2)] min-[860px]:hidden" style={{ minHeight: 40 }} onClick={() => setOpenGroupId(0)} aria-label="Back to your chats">←</button>
+                {group?.kind === "crew" ? (
+                  <span className="flex-none"><ClanEmblem tag={group.clanTag || initialsOf(group.name)} color={group.clanColor || "#FF2E88"} emblem={group.clanEmblem || "shield"} effect={group.clanEmblemEffect || ""} finish={group.clanColorFinish || ""} size={40} /></span>
+                ) : group?.kind === "event" ? (
+                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[var(--surface3)] text-[13px] font-extrabold" aria-hidden="true">{initialsOf(group?.name ?? "Event")}</span>
+                ) : (
+                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[var(--surface3)] text-[13px] font-extrabold" aria-hidden="true">{initialsOf(group?.name ?? "Group")}</span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15.5px] font-bold">{group?.name ?? "Group chat"}</p>
+                  <p className="truncate text-[12.5px] text-[var(--dim)]">
+                    {group
+                      ? group.kind === "crew"
+                        ? `${group.memberCount} members · Crew chat${group.clanPlatform ? ` · ${group.clanPlatform}` : ""}${group.clanPrivacy ? ` · ${group.clanPrivacy}` : ""}${group.clanRegion ? ` · ${group.clanRegion}` : ""}`
+                        : group.kind === "event"
+                          ? `${group.memberCount} members · Event chat${group.eventStartsAt ? ` · Starts ${fmtEventWhen(group.eventStartsAt, "America/New_York")}` : ""}`
+                          : `${group.memberCount} members · Group chat`
+                      : ""}
+                  </p>
+                </div>
+                <button type="button" className="btn-ghost flex-none" style={{ minHeight: 38, padding: "6px 12px", fontSize: 13 }} aria-expanded={membersOpen} onClick={() => setMembersOpen((v) => !v)} aria-label={membersOpen ? `Hide the members of ${group?.name ?? "this chat"}` : `Show the members of ${group?.name ?? "this chat"}`}>
+                  Members
+                </button>
+              </div>
+              {membersOpen && group && (
+                <div className="flex-none border-b border-[var(--border)] px-4 py-3">
+                  <ul className="grid gap-1">
+                    {groupMembers.map((m) => (
+                      <li key={m.playerKey} className="flex items-center gap-2.5 py-1">
+                        <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 text-left hover:bg-[var(--surface2)]" style={{ minHeight: 40 }} onClick={() => openProfile(m.playerKey)} aria-label={`Open ${m.gamertag}'s profile`}>
+                          <CosmeticAvatar name={m.gamertag} size={34} avatarUrl={m.avatarUrl} />
+                          <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">{m.displayName.trim() || m.gamertag}{m.playerKey === playerKey ? " (you)" : ""}</span>
+                        </button>
+                        {m.isLeader && <span className="flex-none rounded-full bg-[var(--surface3)] px-2 py-0.5 text-[11px] font-extrabold">{group.kind === "crew" ? "Crew Leader" : group.kind === "event" ? "Event host" : "Group owner"}</span>}
+                        {m.muted && <span className="flex-none rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ border: "1px solid var(--amber)", color: "var(--amber)" }}>Muted</span>}
+                        {group.isLeader && m.playerKey !== playerKey && (
+                          <button type="button" className="btn-ghost flex-none" style={{ minHeight: 32, padding: "3px 10px", fontSize: 12 }} disabled={setMuted.isPending} onClick={() => setMuted.mutate({ memberKey: m.playerKey, muted: !m.muted })} aria-label={m.muted ? `Unmute ${m.gamertag} in ${group.name}` : `Mute ${m.gamertag} in ${group.name} — they can read but not send`}>
+                            {m.muted ? "Unmute" : "Mute"}
+                          </button>
+                        )}
+                        {group.kind === "event" && group.isLeader && m.playerKey !== playerKey && (
+                          <button type="button" className="btn-ghost flex-none" style={{ minHeight: 32, padding: "3px 10px", fontSize: 12 }} disabled={kickFromEvent.isPending} onClick={() => kickFromEvent.mutate({ memberKey: m.playerKey, eventId: group.eventId })} aria-label={`Remove ${m.gamertag} from the event ${group.name} — they leave the event and this chat, and cannot rejoin the event`}>
+                            Remove from event
+                          </button>
+                        )}
+                        {group.kind === "group" && group.isLeader && m.playerKey !== playerKey && (
+                          <button type="button" className="btn-ghost flex-none" style={{ minHeight: 32, padding: "3px 10px", fontSize: 12 }} disabled={removeMember.isPending} onClick={() => removeMember.mutate(m.playerKey)} aria-label={`Remove ${m.gamertag} from ${group.name}`}>
+                            Remove
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {group.kind === "crew" ? (
+                    <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--dim)]">Membership follows the crew — joining the crew adds you here, leaving the crew removes you. The Leader controls this chat through the crew: its name, picture, banner and settings are the crew&apos;s own. When someone who can&apos;t join directly asks to join — they already used their one direct join this week, or they were in this crew before — their request shows up here as a card, and only the Leader can accept or decline it. Only the Leader can delete other members&apos; messages in this chat — everyone can delete their own.{group.isLeader ? " As Leader you can also mute a member here — they can read, but not send, until you unmute them." : ""}</p>
+                  ) : group.kind === "event" ? (
+                    <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--dim)]">Everyone here RSVP&apos;d Going to this event, plus its host. The host leads this chat: they can mute a member (they can read, but not send) and remove someone from the event entirely, which also removes them from this chat. Changing your RSVP away from Going takes you out of the chat.</p>
+                  ) : (
+                    <>
+                      <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--dim)]">{group.isLeader ? "You own this group — you can remove members above." : "You are a member of this group."}</p>
+                      <button type="button" className="btn-ghost mt-2" style={{ minHeight: 36, padding: "5px 12px", fontSize: 13 }} disabled={leaveGroup.isPending} onClick={() => leaveGroup.mutate()} aria-label={`Leave the group ${group.name}`}>
+                        Leave group
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              <div className="flex min-h-[320px] flex-1 flex-col gap-1.5 overflow-y-auto px-4 py-5" aria-label={`Messages in ${group?.name ?? "this group"}`}>
+                {groupThread.isPending && <p className="text-sm text-[var(--dim)]">Loading messages…</p>}
+                {groupThread.data && groupMessages.length === 0 && (
+                  <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
+                    <p className="text-[16px] font-extrabold">{group?.name}</p>
+                    <p className="mt-1 max-w-[300px] text-[13.5px] leading-relaxed text-[var(--dim)]">No messages yet — say hello{group?.kind === "crew" ? " to your crew" : " to the group"}.</p>
+                  </div>
+                )}
+                {groupMessages.map((m) => m.senderKey === "system" ? (
+                  m.joinRequestId > 0 ? (
+                    /* A join-request card: a player who could not
+                       join directly (one direct join a week, and
+                       no direct way back into a crew they were in)
+                       is asking to come in. The Leader decides
+                       right here — Accept puts them in the crew
+                       and this chat at once. */
+                    <div key={m.id} className="flex justify-center px-2 py-1.5">
+                      <div className="w-full max-w-[420px] rounded-2xl border border-[var(--border)] bg-[var(--surface2)] px-4 py-3 text-center">
+                        <p className="text-[13px] font-semibold leading-relaxed" title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                        {m.joinRequestStatus === "Pending" ? (
+                          group?.isLeader ? (
+                            <div className="mt-2.5 flex justify-center gap-2">
+                              <button
+                                type="button"
+                                className="btn-game"
+                                style={{ minHeight: 38, padding: "6px 18px", fontSize: 13.5 }}
+                                disabled={reviewJoinRequest.isPending}
+                                onClick={() => { if (group) reviewJoinRequest.mutate({ clanId: group.clanId, applicationId: m.joinRequestId, approve: true }); }}
+                                aria-label={`Accept this join request: ${m.body}`}
+                              >
+                                Accept
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                style={{ minHeight: 38, padding: "6px 18px", fontSize: 13.5 }}
+                                disabled={reviewJoinRequest.isPending}
+                                onClick={() => { if (group) reviewJoinRequest.mutate({ clanId: group.clanId, applicationId: m.joinRequestId, approve: false }); }}
+                                aria-label={`Decline this join request: ${m.body}`}
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="mt-1.5 text-[12px] font-semibold text-[var(--dim)]">Waiting for the Leader to decide.</p>
+                          )
+                        ) : m.joinRequestStatus === "Approved" ? (
+                          <p className="mt-1.5 text-[12px] font-extrabold text-[var(--accent2)]">Accepted by the Leader — they&apos;re in the crew.</p>
+                        ) : m.joinRequestStatus === "Declined" ? (
+                          <p className="mt-1.5 text-[12px] font-extrabold text-[var(--dim)]">Declined by the Leader.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={m.id} className="flex justify-center px-2 py-1.5">
+                      <p className="max-w-[88%] text-center text-[12.5px] font-semibold leading-relaxed text-[var(--dim)]" title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                    </div>
+                  )
+                ) : (
+                  <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
+                    {!m.mine && <span className="mb-0.5 pl-1 text-[11px] font-bold text-[var(--dim)]">{m.senderName}</span>}
+                    <div className={`flex items-center gap-1.5 ${m.mine ? "flex-row-reverse" : ""}`}>
+                      <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                      {m.canDelete && (
+                        <button type="button" className="flex-none text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} disabled={deleteGroupMsg.isPending} onClick={() => deleteGroupMsg.mutate(m.id)} aria-label={`Delete this message${m.mine ? "" : ` by ${m.senderName}`}: ${m.body.slice(0, 40)}`}>
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {groupMembers.find((m) => m.playerKey === playerKey)?.muted ? (
+                <p className="border-t border-[var(--border)] px-4 py-3.5 text-center text-[13.5px] font-semibold text-[var(--amber)]" role="status">
+                  You&apos;re muted in this chat by its leader — you can read everything, but you can&apos;t send messages here until they unmute you.
+                </p>
+              ) : (
+              <form
+                className="border-t border-[var(--border)] px-4 py-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setGError("");
+                  if (!gDraft.trim()) { setGError("Write a message first."); return; }
+                  sendGroup.mutate();
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <label className="sr-only" htmlFor="dm-group-draft">Message {group?.name ?? "this group"}</label>
+                  <input id="dm-group-draft" className="field flex-1" style={{ borderRadius: 999, minHeight: 46 }} {...FIELDS.sendGroupMessage.body} value={gDraft} onChange={(e) => setGDraft(e.target.value)} placeholder="Message…" autoComplete="off" />
+                  <button type="submit" className="btn-blue flex-none" style={{ minHeight: 46, borderRadius: 999, padding: "8px 18px" }} disabled={sendGroup.isPending || !gDraft.trim()} aria-label={`Send message to ${group?.name ?? "this group"}`}>
+                    {sendGroup.isPending ? "…" : "Send"}
+                  </button>
+                </div>
+                {gError && <p className="mt-2 text-sm font-semibold text-[var(--amber)]" role="alert">{gError}</p>}
+              </form>
+              )}
+            </>
+          ) : !openKey ? (
+            <div className="flex flex-1 flex-col items-center justify-center px-6 py-20 text-center">
+              <span className="flex h-[104px] w-[104px] items-center justify-center rounded-full bg-[var(--surface3)]" aria-hidden="true">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>
+              </span>
+              <h3 className="mt-6 text-[24px] font-extrabold tracking-tight">Start Conversation</h3>
+              <p className="mt-2 max-w-[340px] text-[14.5px] leading-relaxed text-[var(--dim)]">Choose from your existing conversations, or start a new one.</p>
+              <button type="button" className="btn-pale mt-6 rounded-full px-6 text-[14.5px] font-extrabold" style={{ minHeight: 44 }} onClick={() => setPickerOpen(true)} aria-label="New chat — choose who to message">New chat</button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+                <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl hover:bg-[var(--surface2)] min-[860px]:hidden" style={{ minHeight: 40 }} onClick={() => setOpenKey("")} aria-label="Back to your chats">←</button>
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 text-left hover:bg-[var(--surface2)]" style={{ minHeight: 44 }} disabled={!other} onClick={() => { if (other) openProfile(other.playerKey); }} aria-label={other ? `Open ${other.gamertag}'s profile` : "Conversation"}>
+                  <span className="relative flex-none">
+                    <CosmeticAvatar name={other?.gamertag ?? "?"} size={40} avatarUrl={other?.avatarUrl ?? ""} />
+                    <span className="absolute bottom-0 right-0"><PresenceDot status={other?.presence ?? "Offline"} size={11} ring /></span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15.5px] font-bold">{other?.displayName.trim() || other?.gamertag || "Conversation"}</span>
+                    <span className="block truncate text-[12.5px] text-[var(--dim)]">{other ? `@${other.gamertag} · ${other.presence}` : ""}</span>
+                  </span>
+                </button>
+              </div>
+              <div className="flex min-h-[320px] flex-1 flex-col gap-1.5 overflow-y-auto px-4 py-5" aria-label={`Conversation with ${other?.gamertag ?? "this player"}`}>
+                {thread.isPending && <p className="text-sm text-[var(--dim)]">Loading messages…</p>}
+                {thread.data && messages.length === 0 && (
+                  <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
+                    <button type="button" className="flex flex-col items-center" style={{ minHeight: 0 }} disabled={!other} onClick={() => { if (other) openProfile(other.playerKey); }} aria-label={other ? `Open ${other.gamertag}'s profile` : "This player's profile"}>
+                      <CosmeticAvatar name={other?.gamertag ?? "?"} size={84} avatarUrl={other?.avatarUrl ?? ""} />
+                      <span className="mt-3 block text-[17px] font-extrabold">{other?.displayName.trim() || other?.gamertag}</span>
+                      <span className="block text-[13px] text-[var(--dim)]">@{other?.gamertag} · ViceSunshine</span>
+                    </button>
+                    <p className="mt-2 max-w-[300px] text-[13.5px] leading-relaxed text-[var(--dim)]">Say hello — messages here are only between you two.</p>
+                  </div>
+                )}
+                {messages.map((m) => (
+                  <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
+                    <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                    {!m.mine && reportMsgId !== m.id && (
+                      <button type="button" className="mt-0.5 pl-1 text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} onClick={() => { setReportMsgId(m.id); setDmReportDone(""); }} aria-label={`Report this message from ${other?.gamertag ?? "this player"} to the owner for review`}>
+                        Report
+                      </button>
+                    )}
+                    {!m.mine && reportMsgId === m.id && (
+                      <form
+                        className="mt-1.5 w-full max-w-[340px] rounded-2xl border border-[var(--border)] p-3.5"
+                        onSubmit={(e) => { e.preventDefault(); setSendError(""); reportDm.mutate(); }}
+                        aria-label={`Report this message from ${other?.gamertag ?? "this player"}`}
+                      >
+                        <span className="flabel" style={{ marginTop: 0 }} id={`dm-report-why-${m.id}`}>Why are you reporting this message?</span>
+                        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`dm-report-why-${m.id}`}>
+                          {["Harassment", "Illegal content", "Hate speech", "Spam", "Bad words", "False information", "Breaking the rules", "Something else"].map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              role="radio"
+                              aria-checked={dmReportReason === r}
+                              className="chip-btn"
+                              style={dmReportReason === r ? { background: "var(--accent)", borderColor: "var(--accent)", color: "#fff" } : undefined}
+                              onClick={() => setDmReportReason(r)}
+                            >
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                        <label className="sr-only" htmlFor={`dm-report-detail-${m.id}`}>Anything the owner should know (optional)</label>
+                        <input id={`dm-report-detail-${m.id}`} className="field mt-2.5" {...FIELDS.reportDirectMessage.details} value={dmReportDetail} onChange={(e) => setDmReportDetail(e.target.value)} placeholder="Anything else? (optional)" autoComplete="off" />
+                        <p className="mt-2 text-[12px] leading-relaxed text-[var(--dim)]">Only this one message is shared with the owner so they can deal with the report — the rest of this private chat stays private, and {other?.gamertag ?? "the other person"} is not told who reported it.</p>
+                        <div className="mt-2.5 flex flex-wrap gap-2">
+                          <button type="submit" className="btn-primary" style={{ minHeight: 40, padding: "6px 16px", fontSize: 13 }} disabled={reportDm.isPending} aria-label="Send this message report to the owner">
+                            {reportDm.isPending ? "Sending…" : "Report message"}
+                          </button>
+                          <button type="button" className="btn-ghost" style={{ minHeight: 40, padding: "6px 14px", fontSize: 13 }} onClick={() => setReportMsgId(0)} aria-label="Cancel reporting this message">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                ))}
+                {dmReportDone && <p className="mt-1 rounded-xl border border-[var(--border)] bg-[var(--surface2)] px-3 py-2.5 text-[12.5px] font-semibold text-[var(--accent2)]" role="status">{dmReportDone}</p>}
+                {messages.length > 0 && lastMineSeen && <p className="pr-1 text-right text-[11.5px] font-semibold text-[var(--dim)]">Seen</p>}
+              </div>
+              <form
+                className="border-t border-[var(--border)] px-4 py-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setSendError("");
+                  if (!draft.trim()) { setSendError("Write a message first."); return; }
+                  send.mutate();
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <label className="sr-only" htmlFor="dm-draft">Message {other?.gamertag ?? ""}</label>
+                  <input id="dm-draft" className="field flex-1" style={{ borderRadius: 999, minHeight: 46 }} {...FIELDS.sendDm.body} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message…" autoComplete="off" />
+                  <button type="submit" className="btn-blue flex-none" style={{ minHeight: 46, borderRadius: 999, padding: "8px 18px" }} disabled={send.isPending || !draft.trim()} aria-label={`Send message to ${other?.gamertag ?? "this player"}`}>
+                    {send.isPending ? "…" : "Send"}
+                  </button>
+                </div>
+                {sendError && <p className="mt-2 text-sm font-semibold text-[var(--amber)]" role="alert">{sendError}</p>}
+              </form>
+            </>
+          )}
+        </div>
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="messages-view flex h-full min-h-0 flex-col">
       <div className="dm-shell dm-fill">
         {/* ---- Left column ---- */}
         <div className={`dm-list-col ${openAny ? "hidden min-[860px]:flex" : "flex"}`}>
@@ -22856,236 +25754,9 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
             )}
           </div>
         </div>
-        {/* ---- Main pane ---- */}
-        <div className={`min-w-0 flex-col ${openAny ? "flex" : "hidden min-[860px]:flex"}`}>
-          {openGroupId ? (
-            <>
-              {group?.kind === "crew" && group.clanCard ? (
-                <div className="flex-none border-b border-[var(--border)]">
-                  <CallingCard designKey={group.clanCard} name={group.name} mini />
-                </div>
-              ) : null}
-              <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-                <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl hover:bg-[var(--surface2)] min-[860px]:hidden" style={{ minHeight: 40 }} onClick={() => setOpenGroupId(0)} aria-label="Back to your chats">←</button>
-                {group?.kind === "crew" ? (
-                  <span className="flex-none"><ClanEmblem tag={group.clanTag || initialsOf(group.name)} color={group.clanColor || "#FF2E88"} emblem={group.clanEmblem || "shield"} size={40} /></span>
-                ) : group?.kind === "event" ? (
-                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[var(--surface3)] text-[13px] font-extrabold" aria-hidden="true">{initialsOf(group?.name ?? "Event")}</span>
-                ) : (
-                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[var(--surface3)] text-[13px] font-extrabold" aria-hidden="true">{initialsOf(group?.name ?? "Group")}</span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15.5px] font-bold">{group?.name ?? "Group chat"}</p>
-                  <p className="truncate text-[12.5px] text-[var(--dim)]">
-                    {group
-                      ? group.kind === "crew"
-                        ? `${group.memberCount} members · Crew chat${group.clanPlatform ? ` · ${group.clanPlatform}` : ""}${group.clanPrivacy ? ` · ${group.clanPrivacy}` : ""}${group.clanRegion ? ` · ${group.clanRegion}` : ""}`
-                        : group.kind === "event"
-                          ? `${group.memberCount} members · Event chat${group.eventStartsAt ? ` · Starts ${fmtEventWhen(group.eventStartsAt, "America/New_York")}` : ""}`
-                          : `${group.memberCount} members · Group chat`
-                      : ""}
-                  </p>
-                </div>
-                <button type="button" className="btn-ghost flex-none" style={{ minHeight: 38, padding: "6px 12px", fontSize: 13 }} aria-expanded={membersOpen} onClick={() => setMembersOpen((v) => !v)} aria-label={membersOpen ? `Hide the members of ${group?.name ?? "this chat"}` : `Show the members of ${group?.name ?? "this chat"}`}>
-                  Members
-                </button>
-              </div>
-              {membersOpen && group && (
-                <div className="flex-none border-b border-[var(--border)] px-4 py-3">
-                  <ul className="grid gap-1">
-                    {groupMembers.map((m) => (
-                      <li key={m.playerKey} className="flex items-center gap-2.5 py-1">
-                        <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 text-left hover:bg-[var(--surface2)]" style={{ minHeight: 40 }} onClick={() => openProfile(m.playerKey)} aria-label={`Open ${m.gamertag}'s profile`}>
-                          <CosmeticAvatar name={m.gamertag} size={34} avatarUrl={m.avatarUrl} />
-                          <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">{m.displayName.trim() || m.gamertag}{m.playerKey === playerKey ? " (you)" : ""}</span>
-                        </button>
-                        {m.isLeader && <span className="flex-none rounded-full bg-[var(--surface3)] px-2 py-0.5 text-[11px] font-extrabold">{group.kind === "crew" ? "Crew Leader" : group.kind === "event" ? "Event host" : "Group owner"}</span>}
-                        {m.muted && <span className="flex-none rounded-full px-2 py-0.5 text-[11px] font-extrabold" style={{ border: "1px solid var(--amber)", color: "var(--amber)" }}>Muted</span>}
-                        {group.isLeader && m.playerKey !== playerKey && (
-                          <button type="button" className="btn-ghost flex-none" style={{ minHeight: 32, padding: "3px 10px", fontSize: 12 }} disabled={setMuted.isPending} onClick={() => setMuted.mutate({ memberKey: m.playerKey, muted: !m.muted })} aria-label={m.muted ? `Unmute ${m.gamertag} in ${group.name}` : `Mute ${m.gamertag} in ${group.name} — they can read but not send`}>
-                            {m.muted ? "Unmute" : "Mute"}
-                          </button>
-                        )}
-                        {group.kind === "event" && group.isLeader && m.playerKey !== playerKey && (
-                          <button type="button" className="btn-ghost flex-none" style={{ minHeight: 32, padding: "3px 10px", fontSize: 12 }} disabled={kickFromEvent.isPending} onClick={() => kickFromEvent.mutate({ memberKey: m.playerKey, eventId: group.eventId })} aria-label={`Remove ${m.gamertag} from the event ${group.name} — they leave the event and this chat, and cannot rejoin the event`}>
-                            Remove from event
-                          </button>
-                        )}
-                        {group.kind === "group" && group.isLeader && m.playerKey !== playerKey && (
-                          <button type="button" className="btn-ghost flex-none" style={{ minHeight: 32, padding: "3px 10px", fontSize: 12 }} disabled={removeMember.isPending} onClick={() => removeMember.mutate(m.playerKey)} aria-label={`Remove ${m.gamertag} from ${group.name}`}>
-                            Remove
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {group.kind === "crew" ? (
-                    <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--dim)]">Membership follows the crew — joining the crew adds you here, leaving the crew removes you. The Leader controls this chat through the crew: its name, picture, banner and settings are the crew&apos;s own. The Leader and Co-Leaders can delete messages in this chat.{group.isLeader ? " As Leader you can also mute a member here — they can read, but not send, until you unmute them." : ""}</p>
-                  ) : group.kind === "event" ? (
-                    <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--dim)]">Everyone here RSVP&apos;d Going to this event, plus its host. The host leads this chat: they can mute a member (they can read, but not send) and remove someone from the event entirely, which also removes them from this chat. Changing your RSVP away from Going takes you out of the chat.</p>
-                  ) : (
-                    <>
-                      <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--dim)]">{group.isLeader ? "You own this group — you can remove members above." : "You are a member of this group."}</p>
-                      <button type="button" className="btn-ghost mt-2" style={{ minHeight: 36, padding: "5px 12px", fontSize: 13 }} disabled={leaveGroup.isPending} onClick={() => leaveGroup.mutate()} aria-label={`Leave the group ${group.name}`}>
-                        Leave group
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-              <div className="flex min-h-[320px] flex-1 flex-col gap-1.5 overflow-y-auto px-4 py-5" aria-label={`Messages in ${group?.name ?? "this group"}`}>
-                {groupThread.isPending && <p className="text-sm text-[var(--dim)]">Loading messages…</p>}
-                {groupThread.data && groupMessages.length === 0 && (
-                  <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-                    <p className="text-[16px] font-extrabold">{group?.name}</p>
-                    <p className="mt-1 max-w-[300px] text-[13.5px] leading-relaxed text-[var(--dim)]">No messages yet — say hello{group?.kind === "crew" ? " to your crew" : " to the group"}.</p>
-                  </div>
-                )}
-                {groupMessages.map((m) => (
-                  <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
-                    {!m.mine && <span className="mb-0.5 pl-1 text-[11px] font-bold text-[var(--dim)]">{m.senderName}</span>}
-                    <div className={`flex items-center gap-1.5 ${m.mine ? "flex-row-reverse" : ""}`}>
-                      <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
-                      {m.canDelete && (
-                        <button type="button" className="flex-none text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} disabled={deleteGroupMsg.isPending} onClick={() => deleteGroupMsg.mutate(m.id)} aria-label={`Delete this message${m.mine ? "" : ` by ${m.senderName}`}: ${m.body.slice(0, 40)}`}>
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {groupMembers.find((m) => m.playerKey === playerKey)?.muted ? (
-                <p className="border-t border-[var(--border)] px-4 py-3.5 text-center text-[13.5px] font-semibold text-[var(--amber)]" role="status">
-                  You&apos;re muted in this chat by its leader — you can read everything, but you can&apos;t send messages here until they unmute you.
-                </p>
-              ) : (
-              <form
-                className="border-t border-[var(--border)] px-4 py-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setGError("");
-                  if (!gDraft.trim()) { setGError("Write a message first."); return; }
-                  sendGroup.mutate();
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <label className="sr-only" htmlFor="dm-group-draft">Message {group?.name ?? "this group"}</label>
-                  <input id="dm-group-draft" className="field flex-1" style={{ borderRadius: 999, minHeight: 46 }} {...FIELDS.sendGroupMessage.body} value={gDraft} onChange={(e) => setGDraft(e.target.value)} placeholder="Message…" autoComplete="off" />
-                  <button type="submit" className="btn-blue flex-none" style={{ minHeight: 46, borderRadius: 999, padding: "8px 18px" }} disabled={sendGroup.isPending || !gDraft.trim()} aria-label={`Send message to ${group?.name ?? "this group"}`}>
-                    {sendGroup.isPending ? "…" : "Send"}
-                  </button>
-                </div>
-                {gError && <p className="mt-2 text-sm font-semibold text-[var(--amber)]" role="alert">{gError}</p>}
-              </form>
-              )}
-            </>
-          ) : !openKey ? (
-            <div className="flex flex-1 flex-col items-center justify-center px-6 py-20 text-center">
-              <span className="flex h-[104px] w-[104px] items-center justify-center rounded-full bg-[var(--surface3)]" aria-hidden="true">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>
-              </span>
-              <h3 className="mt-6 text-[24px] font-extrabold tracking-tight">Start Conversation</h3>
-              <p className="mt-2 max-w-[340px] text-[14.5px] leading-relaxed text-[var(--dim)]">Choose from your existing conversations, or start a new one.</p>
-              <button type="button" className="btn-pale mt-6 rounded-full px-6 text-[14.5px] font-extrabold" style={{ minHeight: 44 }} onClick={() => setPickerOpen(true)} aria-label="New chat — choose who to message">New chat</button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-                <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl hover:bg-[var(--surface2)] min-[860px]:hidden" style={{ minHeight: 40 }} onClick={() => setOpenKey("")} aria-label="Back to your chats">←</button>
-                <button type="button" className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 text-left hover:bg-[var(--surface2)]" style={{ minHeight: 44 }} disabled={!other} onClick={() => { if (other) openProfile(other.playerKey); }} aria-label={other ? `Open ${other.gamertag}'s profile` : "Conversation"}>
-                  <span className="relative flex-none">
-                    <CosmeticAvatar name={other?.gamertag ?? "?"} size={40} avatarUrl={other?.avatarUrl ?? ""} />
-                    <span className="absolute bottom-0 right-0"><PresenceDot status={other?.presence ?? "Offline"} size={11} ring /></span>
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15.5px] font-bold">{other?.displayName.trim() || other?.gamertag || "Conversation"}</span>
-                    <span className="block truncate text-[12.5px] text-[var(--dim)]">{other ? `@${other.gamertag} · ${other.presence}` : ""}</span>
-                  </span>
-                </button>
-              </div>
-              <div className="flex min-h-[320px] flex-1 flex-col gap-1.5 overflow-y-auto px-4 py-5" aria-label={`Conversation with ${other?.gamertag ?? "this player"}`}>
-                {thread.isPending && <p className="text-sm text-[var(--dim)]">Loading messages…</p>}
-                {thread.data && messages.length === 0 && (
-                  <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-                    <button type="button" className="flex flex-col items-center" style={{ minHeight: 0 }} disabled={!other} onClick={() => { if (other) openProfile(other.playerKey); }} aria-label={other ? `Open ${other.gamertag}'s profile` : "This player's profile"}>
-                      <CosmeticAvatar name={other?.gamertag ?? "?"} size={84} avatarUrl={other?.avatarUrl ?? ""} />
-                      <span className="mt-3 block text-[17px] font-extrabold">{other?.displayName.trim() || other?.gamertag}</span>
-                      <span className="block text-[13px] text-[var(--dim)]">@{other?.gamertag} · ViceSunshine</span>
-                    </button>
-                    <p className="mt-2 max-w-[300px] text-[13.5px] leading-relaxed text-[var(--dim)]">Say hello — messages here are only between you two.</p>
-                  </div>
-                )}
-                {messages.map((m) => (
-                  <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
-                    <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
-                    {!m.mine && reportMsgId !== m.id && (
-                      <button type="button" className="mt-0.5 pl-1 text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} onClick={() => { setReportMsgId(m.id); setDmReportDone(""); }} aria-label={`Report this message from ${other?.gamertag ?? "this player"} to the owner for review`}>
-                        Report
-                      </button>
-                    )}
-                    {!m.mine && reportMsgId === m.id && (
-                      <form
-                        className="mt-1.5 w-full max-w-[340px] rounded-2xl border border-[var(--border)] p-3.5"
-                        onSubmit={(e) => { e.preventDefault(); setSendError(""); reportDm.mutate(); }}
-                        aria-label={`Report this message from ${other?.gamertag ?? "this player"}`}
-                      >
-                        <span className="flabel" style={{ marginTop: 0 }} id={`dm-report-why-${m.id}`}>Why are you reporting this message?</span>
-                        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`dm-report-why-${m.id}`}>
-                          {["Harassment", "Illegal content", "Hate speech", "Spam", "Bad words", "False information", "Breaking the rules", "Something else"].map((r) => (
-                            <button
-                              key={r}
-                              type="button"
-                              role="radio"
-                              aria-checked={dmReportReason === r}
-                              className="chip-btn"
-                              style={dmReportReason === r ? { background: "var(--accent)", borderColor: "var(--accent)", color: "#fff" } : undefined}
-                              onClick={() => setDmReportReason(r)}
-                            >
-                              {r}
-                            </button>
-                          ))}
-                        </div>
-                        <label className="sr-only" htmlFor={`dm-report-detail-${m.id}`}>Anything the owner should know (optional)</label>
-                        <input id={`dm-report-detail-${m.id}`} className="field mt-2.5" {...FIELDS.reportDirectMessage.details} value={dmReportDetail} onChange={(e) => setDmReportDetail(e.target.value)} placeholder="Anything else? (optional)" autoComplete="off" />
-                        <p className="mt-2 text-[12px] leading-relaxed text-[var(--dim)]">Only this one message is shared with the owner so they can deal with the report — the rest of this private chat stays private, and {other?.gamertag ?? "the other person"} is not told who reported it.</p>
-                        <div className="mt-2.5 flex flex-wrap gap-2">
-                          <button type="submit" className="btn-primary" style={{ minHeight: 40, padding: "6px 16px", fontSize: 13 }} disabled={reportDm.isPending} aria-label="Send this message report to the owner">
-                            {reportDm.isPending ? "Sending…" : "Report message"}
-                          </button>
-                          <button type="button" className="btn-ghost" style={{ minHeight: 40, padding: "6px 14px", fontSize: 13 }} onClick={() => setReportMsgId(0)} aria-label="Cancel reporting this message">
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    )}
-                  </div>
-                ))}
-                {dmReportDone && <p className="mt-1 rounded-xl border border-[var(--border)] bg-[var(--surface2)] px-3 py-2.5 text-[12.5px] font-semibold text-[var(--accent2)]" role="status">{dmReportDone}</p>}
-                {messages.length > 0 && lastMineSeen && <p className="pr-1 text-right text-[11.5px] font-semibold text-[var(--dim)]">Seen</p>}
-              </div>
-              <form
-                className="border-t border-[var(--border)] px-4 py-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setSendError("");
-                  if (!draft.trim()) { setSendError("Write a message first."); return; }
-                  send.mutate();
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <label className="sr-only" htmlFor="dm-draft">Message {other?.gamertag ?? ""}</label>
-                  <input id="dm-draft" className="field flex-1" style={{ borderRadius: 999, minHeight: 46 }} {...FIELDS.sendDm.body} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message…" autoComplete="off" />
-                  <button type="submit" className="btn-blue flex-none" style={{ minHeight: 46, borderRadius: 999, padding: "8px 18px" }} disabled={send.isPending || !draft.trim()} aria-label={`Send message to ${other?.gamertag ?? "this player"}`}>
-                    {send.isPending ? "…" : "Send"}
-                  </button>
-                </div>
-                {sendError && <p className="mt-2 text-sm font-semibold text-[var(--amber)]" role="alert">{sendError}</p>}
-              </form>
-            </>
-          )}
-        </div>
+        {!chatFullscreen && chatPane}
       </div>
+      {chatFullscreen && createPortal(chatPane, document.body)}
       {pickerOpen && <DmPeoplePicker playerKey={playerKey} onClose={() => setPickerOpen(false)} onPick={(k) => { setPickerOpen(false); openDm(k); }} />}
       {groupPickerOpen && <DmGroupPicker playerKey={playerKey} onClose={() => setGroupPickerOpen(false)} onCreated={(id) => { setGroupPickerOpen(false); setMsgTab("personal"); openGroup(id); }} />}
     </div>
@@ -23135,9 +25806,13 @@ function VsMessagesMark({ size = 88 }: { size?: number }) {
 }
 
 /* The Instagram empty state, centred: camera in a circle, bold
-   heading, one line, Upload button only — the owner asked for the
-   blue "Share your first photo" link to be removed for good
-   (Nov 21 2026); do not re-add it. Used by the Posts tab. */
+   heading, one line. The owner asked for the blue "Share your
+   first photo" link to be removed for good (Nov 21 2026); do
+   not re-add it. Since Nov 21 2026 this renders on OTHER
+   players' profiles only — your own profile never shows this
+   text block: its Posts tab always renders the grid, whose
+   first box (top-left corner) is the permanent camera-mark
+   add box, even with zero posts. */
 function SharePhotosEmpty({ mine, name, onShare, onUpload }: { mine: boolean; name: string; onShare: () => void; onUpload?: () => void }) {
   return (
     <div className="flex flex-col items-center px-6 py-16 text-center">
@@ -23147,22 +25822,24 @@ function SharePhotosEmpty({ mine, name, onShare, onUpload }: { mine: boolean; na
         {mine ? "When you share photos, they will appear on your profile." : `When ${name} shares photos, they will appear on their profile.`}
       </p>
       {mine && (
-        <>
-          <button type="button" className="btn-primary mt-5" style={{ minHeight: 48, padding: "10px 36px", borderRadius: 999 }} onClick={onUpload ?? onShare} aria-label="Upload — open the creator's New post picker to upload a photo (photos and Live Photos only)">
-            Upload
-          </button>
-        </>
+        <div className="mt-6" style={{ width: 92 }}>
+          <ProfileAddTile onClick={onUpload ?? onShare} label="Add a photo post — open the New post picker to select a post (photos and Live Photos only)" mark="camera" />
+        </div>
       )}
     </div>
   );
 }
 
-/* The clips twin of SharePhotosEmpty (owner's direction): the
-   Videos tab empty state is the SAME centred layout, spacing and
-   buttons as the Posts tab's — play icon in the circle,
-   "Share Clips", the same one line, Upload button only. The blue
-   "Share your first clip" link was removed for good (Nov 21 2026);
-   do not re-add it. */
+/* The clips twin of SharePhotosEmpty: the SAME centred layout
+   and spacing as the Posts tab's — play icon in the circle,
+   "Share Videos", the same one line. The blue "Share your
+   first clip" link was removed for good (Nov 21 2026); do not
+   re-add it. Since Nov 21 2026 this renders on OTHER players'
+   profiles only — your own profile never shows this text
+   block: its Videos tab always renders the grid, whose first
+   box (top-left corner, same corner and layout as the Photos
+   side) is the permanent play-logo add box, even with zero
+   posts. */
 function ShareVideosEmpty({ mine, name, onShare, onUpload }: { mine: boolean; name: string; onShare: () => void; onUpload?: () => void }) {
   return (
     <div className="flex flex-col items-center px-6 py-16 text-center">
@@ -23172,11 +25849,9 @@ function ShareVideosEmpty({ mine, name, onShare, onUpload }: { mine: boolean; na
         {mine ? "When you share videos, they will appear on your profile." : `When ${name} shares videos, they will appear on their profile.`}
       </p>
       {mine && (
-        <>
-          <button type="button" className="btn-primary mt-5" style={{ minHeight: 48, padding: "10px 36px", borderRadius: 999 }} onClick={onUpload ?? onShare} aria-label="Upload — open the creator's New video picker to upload a short video (videos only)">
-            Upload
-          </button>
-        </>
+        <div className="mt-6" style={{ width: 92 }}>
+          <ProfileAddTile onClick={onUpload ?? onShare} label="Add a video post — open the New clip picker to select a post (videos only)" mark="play" />
+        </div>
       )}
     </div>
   );
@@ -23248,6 +25923,8 @@ function StoryPickTile({ story, selected, onToggle, variant, ariaLabel }: {
         <img decoding="async" src={story.mediaUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
       ) : story.mediaType === "video" && story.mediaUrl ? (
         <video src={story.mediaUrl} className="absolute inset-0 h-full w-full object-cover" preload="metadata" muted playsInline aria-hidden="true" onLoadedMetadata={(e) => setDuration(formatStoryDuration(e.currentTarget.duration))} />
+      ) : story.mediaType === "embed" && story.mediaUrl && youtubeIdFromUrl(story.mediaUrl) ? (
+        <img decoding="async" src={`https://i.ytimg.com/vi/${youtubeIdFromUrl(story.mediaUrl)}/hqdefault.jpg`} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
       ) : (
         <span className="absolute inset-0 flex items-center justify-center p-2.5 text-center text-[12px] font-bold leading-snug text-white/90">{story.text || story.sticker || "Story"}</span>
       )}
@@ -23327,8 +26004,9 @@ function StoryPickTile({ story, selected, onToggle, variant, ariaLabel }: {
    circle and video durations (tap to add or remove). It is
    reached while WATCHING the highlight — the highlight viewer's
    More → Edit highlight — so a highlight can be edited mid-watch;
-   More → Remove highlight deletes the highlight (the viewer's
-   own confirm), so this screen carries no delete of its own. */
+   More → Remove from highlight takes the story on screen out
+   of the highlight (the viewer's own confirm), so this screen
+   carries no delete of its own. */
 function HighlightEditorSheet({ playerKey, existing, initialPicked, onClose, onSaved }: {
   playerKey: string; gamertag: string; existing: HighlightData | null; initialPicked?: number[]; onClose: () => void; onSaved: () => void;
 }) {
@@ -23714,10 +26392,11 @@ function HighlightEditorSheet({ playerKey, existing, initialPicked, onClose, onS
    to the other highlight balls — created highlights are NOT
    shown inside the picker page. Tapping a ball on the profile
    plays it in the story viewer, which for your own highlight
-   carries Send and More at the bottom (More → Edit highlight
-   opens the Edit highlight screen — so you can edit a
-   highlight while watching it — More → Remove highlight
-   deletes it). On someone else's profile the same row shows
+   carries the highlight black bar at the bottom — Activity,
+   Browse, Send and More (More → Edit highlight opens the Edit
+   highlight screen — so you can edit a highlight while
+   watching it — More → Remove from highlight takes the story
+   on screen out of it). On someone else's profile the same row shows
    their balls, tap one to play it. Highlights themselves are
    unchanged server-side: named collections of the owner's own
    stories (listHighlights) that stay viewable past the 24-hour
@@ -23760,9 +26439,10 @@ function ProfileHighlights({ playerKey, targetKey, targetName, targetAvatarUrl, 
     };
     setSheetOpen(false);
     // Your own highlight opens the viewer in highlight mode:
-    // Send and More at the bottom (More → Edit highlight /
-    // Remove highlight). Someone else's highlight plays in the
-    // plain viewer.
+    // the highlight black bar at the bottom — Activity, Browse,
+    // Send and More (More → Edit highlight / Remove from
+    // highlight). Someone else's highlight plays in the plain
+    // viewer.
     setViewer({ groups: [group], groupIndex: 0, highlight: mine ? h : null });
   };
   const refreshHighlights = () => {
@@ -23784,27 +26464,28 @@ function ProfileHighlights({ playerKey, targetKey, targetName, targetAvatarUrl, 
           highlights" screen, then the New highlight screen;
           pressing the check there lands you back here with the
           new ball in this row. Tapping a highlight ball plays
-          it in the viewer (your own carries Send and More at
-          the bottom, and More → Edit highlight edits it while
-          you watch). */}
+          it in the viewer (your own carries the highlight
+          black bar at the bottom — Activity, Browse, Send and
+          More — and More → Edit highlight edits it while you
+          watch). */}
       {(mine || highlights.length > 0) && (
         <div className="flex gap-3.5 overflow-x-auto px-3 pb-1 pt-3 sm:px-4" style={{ scrollbarWidth: "none" }} role="list" aria-label={mine ? "Your highlight balls — New first, then each of your highlights with its name under the ball" : `${targetName}'s highlight balls — each highlight with its name under the ball`}>
           {mine && (
-            <button type="button" role="listitem" className="flex w-[72px] flex-none flex-col items-center gap-1.5" style={{ minHeight: 44 }} onClick={() => setSheetOpen(true)} aria-label="New highlight — pick stories for a new highlight">
+            <button type="button" role="listitem" className="highlight-ball flex w-[72px] flex-none flex-col items-center gap-1.5" style={{ minHeight: 44 }} onClick={() => setSheetOpen(true)} aria-label="New highlight — pick stories for a new highlight">
               <span className="highlight-circle" style={{ width: 64, height: 64 }} aria-hidden="true">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
               </span>
-              <span className="block w-full truncate text-center text-[12px] font-semibold">New</span>
+              <span className="highlight-ball-label block w-full truncate text-center text-[12px] font-semibold">New</span>
             </button>
           )}
           {highlights.map((h) => (
-            <button key={h.id} type="button" role="listitem" className="flex w-[72px] flex-none flex-col items-center gap-1.5" style={{ minHeight: 44 }} onClick={() => openHighlight(h)} aria-label={`Watch ${mine ? "your" : `${targetName}'s`} highlight: ${h.title} — ${h.storyCount} ${h.storyCount === 1 ? "story" : "stories"}`}>
+            <button key={h.id} type="button" role="listitem" className="highlight-ball flex w-[72px] flex-none flex-col items-center gap-1.5" style={{ minHeight: 44 }} onClick={() => openHighlight(h)} aria-label={`Watch ${mine ? "your" : `${targetName}'s`} highlight: ${h.title} — ${h.storyCount} ${h.storyCount === 1 ? "story" : "stories"}`}>
               <span className="highlight-circle" style={{ width: 64, height: 64 }}>
                 {h.coverMediaType === "image" && h.coverUrl
                   ? <img decoding="async" src={h.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
                   : <CosmeticAvatar name={targetName} size={56} avatarUrl={targetAvatarUrl} />}
               </span>
-              <span className="block w-full truncate text-center text-[12px] font-semibold">{h.title}</span>
+              <span className="highlight-ball-label block w-full truncate text-center text-[12px] font-semibold">{h.title}</span>
             </button>
           ))}
         </div>
@@ -23906,10 +26587,10 @@ function ProfileBanner({ callingCard, ownerName, bannerMediaUrl = "", bannerMedi
   // precedence a custom avatar picture has over catalogue avatars.
   if (bannerMediaUrl) {
     return (
-      <div className="relative h-[168px] w-full overflow-hidden rounded-[20px] border border-[var(--border)] bg-black sm:h-[204px]" role="img" aria-label={`${ownerName}'s banner — their own uploaded ${bannerMediaType === "video" ? "video" : "picture"}`}>
+      <div className="relative h-[120px] w-full overflow-hidden rounded-[20px] border border-[var(--border)] bg-black sm:h-[204px]" role="img" aria-label={`${ownerName}'s banner — their own uploaded ${bannerMediaType === "video" ? "video" : "picture"}`}>
         {bannerMediaType === "video"
           ? <video src={bannerMediaUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline aria-hidden="true" />
-          : <img decoding="async" src={bannerMediaUrl} alt="" className="h-full w-full object-cover" />}
+          : <img decoding="async" src={bannerMediaUrl} alt="" className="h-full w-full object-cover" loading="eager" fetchPriority="high" />}
         <span className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
       </div>
     );
@@ -23917,7 +26598,7 @@ function ProfileBanner({ callingCard, ownerName, bannerMediaUrl = "", bannerMedi
   const design = callingCard ? cardDesignOf(callingCard) : undefined;
   if (design) {
     return (
-      <div className="relative h-[168px] w-full overflow-hidden rounded-[20px] border border-[var(--border)] sm:h-[204px]" style={{ background: design.background }} role="img" aria-label={`${ownerName}'s banner — their ${design.title} calling card`}>
+      <div className="relative h-[120px] w-full overflow-hidden rounded-[20px] border border-[var(--border)] sm:h-[204px]" style={{ background: design.background }} role="img" aria-label={`${ownerName}'s banner — their ${design.title} calling card`}>
         <CardSceneArt scene={design.scene} animated={design.animated} />
         {design.scene === "founders" ? <span className="cc-shimmer" aria-hidden="true" /> : null}
         <span className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent" aria-hidden="true" />
@@ -23930,7 +26611,7 @@ function ProfileBanner({ callingCard, ownerName, bannerMediaUrl = "", bannerMedi
   // picture, so every profile looks the same only until its owner
   // sets their own banner.
   return (
-    <div className="relative h-[168px] w-full overflow-hidden rounded-[20px] border border-[var(--border)] bg-black sm:h-[204px]" role="img" aria-label={`${ownerName}'s banner — plain black, no banner set yet`} />
+    <div className="relative h-[120px] w-full overflow-hidden rounded-[20px] border border-[var(--border)] bg-black sm:h-[204px]" role="img" aria-label={`${ownerName}'s banner — plain black, no banner set yet`} />
   );
 }
 
@@ -23949,14 +26630,14 @@ function JoinedLine({ memberSince, onPress }: { memberSince: string; onPress?: (
   );
   if (onPress) {
     return (
-      <button type="button" className="mt-2.5 flex items-center gap-1.5 text-left text-[13.5px] text-[var(--dim)] underline-offset-4 hover:text-[var(--text)] hover:underline" style={{ minHeight: 32 }} onClick={onPress} aria-label={`About this account — joined ${label}`}>
+      <button type="button" className="profile-meta-line mt-2.5 flex items-center gap-1.5 text-left text-[13.5px] text-[var(--dim)] underline-offset-4 hover:text-[var(--text)] hover:underline" style={{ minHeight: 32 }} onClick={onPress} aria-label={`About this account — joined ${label}`}>
         {inner}
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none -ml-0.5 opacity-80"><path d="M9 5l7 7-7 7" /></svg>
       </button>
     );
   }
   return (
-    <p className="mt-2.5 flex items-center gap-1.5 text-[13.5px] text-[var(--dim)]">
+    <p className="profile-meta-line mt-2.5 flex items-center gap-1.5 text-[13.5px] text-[var(--dim)]">
       {inner}
     </p>
   );
@@ -23979,7 +26660,7 @@ function ProfileDobLine({ dob }: { dob: string }) {
   const label = formatDobLabel(dob);
   if (!label) return null;
   return (
-    <p className="mt-2.5 flex items-center gap-1.5 text-[13.5px] text-[var(--dim)]">
+    <p className="profile-meta-line mt-2.5 flex items-center gap-1.5 text-[13.5px] text-[var(--dim)]">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none"><path d="M4 21h16" /><path d="M5 21v-6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6" /><path d="M12 9V6" /><path d="M8.5 10.5v-1" /><path d="M15.5 10.5v-1" /><path d="M12 3.5a.9.9 0 1 0 0 .01" /></svg>
       <span>Born {label}</span>
     </p>
@@ -24063,7 +26744,7 @@ function IgTabBar({ active, onPick, mine, name }: { active: IgMediaTab; onPick: 
     { id: "stats", label: "Stats", icon: IgStatsIcon },
   ];
   return (
-    <div className="ig-tabbar mt-10" role="tablist" aria-label={mine ? "Your profile tabs — posts, videos and stats" : `${name}'s profile tabs — posts, videos and stats`}>
+    <div className="ig-tabbar profile-tabbar mt-10" role="tablist" aria-label={mine ? "Your profile tabs — posts, videos and stats" : `${name}'s profile tabs — posts, videos and stats`}>
       {tabs.map((t) => {
         const Icon = t.icon;
         return (
@@ -24138,30 +26819,55 @@ function AccountAboutSheet({ playerKey, targetKey, onClose }: { playerKey: strin
   );
 }
 
-/* Profile share screen (owner's direction, Instagram-style):
-   pressing Share on your profile opens this full-screen share
-   card — a REAL QR code for your profile in the middle (it
-   encodes your real profile link, so a phone camera scan opens
-   your ViceSunshine profile), your @handle under it, and three
-   working actions underneath: Share profile (the phone's own
-   share sheet), Copy link (copies the real profile link) and
-   Download (saves the QR card as a PNG). COLOR at the top
-   cycles the card's colour themes; the X closes. The link is
-   #player=<public profile ID> — the ID names exactly one
-   account, so the link can never open the wrong person the way
-   the old handle links could — and no playerKey ever goes in a
-   link. */
+/* Profile share screen — the "Vice Pass" (owner's direction,
+   Nov 22 2026): pressing Share on your profile used to open an
+   Instagram-style QR screen — full-screen colour gradient, a
+   big dotted QR card, a COLOR pill — and the owner asked for
+   something of our own instead of a copy ("make it different,
+   make it unique"). This screen is a ViceSunshine player pass,
+   styled like a Leonida sunset licence plate / backstage pass
+   and built from YOUR real profile:
+   - a sunset "plate" header in the finish colourway, with the
+     VS logo, VICESUNSHINE lettering and a striped retro sun,
+   - your picture, display name and @handle, crew tag included
+     when you're in a crew, plus Premium / member-since lines,
+   - a perforated ticket stub holding a plain SQUARE-module QR
+     of your real profile link (square modules scan at least as
+     well as dots and don't borrow Instagram's look) beside your
+     real follower / following counts,
+   - a finish swatch row — the pass's own sunset colourway; it
+     recolours the pass and the saved image, never the whole
+     screen — and three actions: Share pass (the phone's own
+     share sheet), Copy link, and Save pass (downloads the pass
+     itself as a PNG, drawn to match the on-screen card).
+   The link is #player=<public profile ID> — the ID names
+   exactly one account, so the link can never open the wrong
+   person the way the old handle links could — and no playerKey
+   ever goes in a link. */
 const PROFILE_LINK_BASE = "https://muse.ai/library/artifacts/leonida-hub";
-const SHARE_THEMES: { name: string; gradient: string; tint: string }[] = [
-  { name: "Vice pink", gradient: "linear-gradient(160deg, #FF2E88 0%, #7B2FFF 100%)", tint: "#C2187A" },
-  { name: "Lagoon", gradient: "linear-gradient(160deg, #00C9A7 0%, #0077C8 100%)", tint: "#00796B" },
-  { name: "Sunset", gradient: "linear-gradient(160deg, #FF9E4F 0%, #FF2E63 100%)", tint: "#C21847" },
-  { name: "Grape", gradient: "linear-gradient(160deg, #7B2FFF 0%, #00B3A4 100%)", tint: "#4A2FBF" },
-  { name: "Mint", gradient: "linear-gradient(160deg, #38E08C 0%, #00B3A4 100%)", tint: "#0E7C61" },
+const PASS_FINISHES: { name: string; sky: string; ink: string; pop: string; deep: string; stops: [string, string, string] }[] = [
+  { name: "Vice Sunset", sky: "linear-gradient(120deg, #FF2E88 0%, #FF7A3D 55%, #FFC53D 100%)", ink: "#FF2E88", pop: "#FFC53D", deep: "#2A0E2E", stops: ["#FF2E88", "#FF7A3D", "#FFC53D"] },
+  { name: "Lagoon Dusk", sky: "linear-gradient(120deg, #00C9A7 0%, #00B3C8 55%, #2E6BFF 100%)", ink: "#00A98F", pop: "#4FD8FF", deep: "#0B2436", stops: ["#00C9A7", "#00B3C8", "#2E6BFF"] },
+  { name: "Neon Night", sky: "linear-gradient(120deg, #7B2FFF 0%, #FF2E88 60%, #FF5E3A 100%)", ink: "#8A3FFC", pop: "#C9A7FF", deep: "#1B1035", stops: ["#7B2FFF", "#FF2E88", "#FF5E3A"] },
+  { name: "Gold Hour", sky: "linear-gradient(120deg, #B97F16 0%, #E8A33D 55%, #FF2E63 100%)", ink: "#C07F16", pop: "#FFD166", deep: "#2E1D08", stops: ["#B97F16", "#E8A33D", "#FF2E63"] },
+  { name: "Palm Mint", sky: "linear-gradient(120deg, #0E9F6E 0%, #38E08C 55%, #00B3A4 100%)", ink: "#0E8C61", pop: "#5CF2B8", deep: "#0A2A22", stops: ["#0E9F6E", "#38E08C", "#00B3A4"] },
 ];
 
-function ProfileShareScreen({ gamertag, playerKey, onClose }: { gamertag: string; playerKey: string; onClose: () => void }) {
+function ProfileShareScreen({ gamertag, displayName, avatarUrl, memberSince, clanTag, clanColor, premium, followers, following, playerKey, onClose }: {
+  gamertag: string;
+  displayName: string;
+  avatarUrl: string;
+  memberSince: string;
+  clanTag: string;
+  clanColor: string;
+  premium: boolean;
+  followers: number;
+  following: number;
+  playerKey: string;
+  onClose: () => void;
+}) {
   const handle = gamertag.replace(/\s+/g, "");
+  const name = displayName.trim() || gamertag;
   // The share link carries the profile's PUBLIC profile ID,
   // never the gamertag handle (owner's rule, Nov 21 2026):
   // dozens of accounts can share one handle, and a handle link
@@ -24176,10 +26882,15 @@ function ProfileShareScreen({ gamertag, playerKey, onClose }: { gamertag: string
     enabled: Boolean(playerKey),
   });
   const link = myIdQ.data?.publicId ? `${PROFILE_LINK_BASE}#player=${myIdQ.data.publicId}` : "";
-  const [themeIdx, setThemeIdx] = useState(0);
+  const [finishIdx, setFinishIdx] = useState(0);
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState("");
-  const theme = SHARE_THEMES[themeIdx] ?? SHARE_THEMES[0]!;
+  const finish = PASS_FINISHES[finishIdx] ?? PASS_FINISHES[0]!;
+  const joinedLabel = (() => {
+    if (!memberSince) return "";
+    const d = new Date(memberSince);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  })();
   const matrix = useMemo(() => {
     try { return qrMatrix(link); } catch { return null; }
   }, [link]);
@@ -24211,7 +26922,7 @@ function ProfileShareScreen({ gamertag, playerKey, onClose }: { gamertag: string
     const nav = navigator as Navigator & { share?: (data: { title?: string; text?: string; url?: string }) => Promise<void> };
     if (typeof nav.share === "function") {
       try {
-        await nav.share({ title: "My ViceSunshine profile", text: `@${handle} on ViceSunshine — the GTA VI community hub`, url: link });
+        await nav.share({ title: "My ViceSunshine Vice Pass", text: `@${handle} on ViceSunshine — the GTA VI community hub. Here's my Vice Pass:`, url: link });
         setNote("");
         return;
       } catch (e) {
@@ -24227,140 +26938,277 @@ function ProfileShareScreen({ gamertag, playerKey, onClose }: { gamertag: string
       setNote(`Your profile link: ${link}`);
     }
   };
-  const downloadQr = () => {
-    if (!matrix) return;
-    const size = matrix.length;
-    const quiet = 4;
-    const total = size + quiet * 2;
-    const scale = 28;
-    const qrPx = total * scale;
-    const pad = 72;
-    const textH = 120;
+  // Save pass: draw the whole pass to a PNG — sunset plate,
+  // identity, perforated stub and the same square-module QR —
+  // so the picture people post IS the pass, not a bare QR.
+  const downloadPass = async () => {
+    if (!matrix) { setNote("Your pass is still loading — give it a second and try again."); return; }
+    const loadImg = (src: string) => new Promise<HTMLImageElement | null>((res) => {
+      if (!src) { res(null); return; }
+      const im = new Image();
+      im.crossOrigin = "anonymous";
+      im.onload = () => res(im);
+      im.onerror = () => res(null);
+      im.src = src;
+    });
+    const [logo, avatar] = await Promise.all([loadImg(vsLogoUrl), loadImg(avatarUrl)]);
+    const W = 1200;
+    const H = 760;
     const canvas = document.createElement("canvas");
-    canvas.width = qrPx + pad * 2;
-    canvas.height = qrPx + pad * 2 + textH;
+    canvas.width = W;
+    canvas.height = H;
     const g = canvas.getContext("2d");
     if (!g) return;
+    g.fillStyle = "#0B0B14";
+    g.fillRect(0, 0, W, H);
+    // Card body.
+    g.beginPath();
+    g.roundRect(4, 4, W - 8, H - 8, 46);
+    g.fillStyle = finish.deep;
+    g.fill();
+    g.save();
+    g.beginPath();
+    g.roundRect(4, 4, W - 8, H - 8, 46);
+    g.clip();
+    // Sunset plate band.
+    const grad = g.createLinearGradient(0, 0, W, 0);
+    grad.addColorStop(0, finish.stops[0]);
+    grad.addColorStop(0.55, finish.stops[1]);
+    grad.addColorStop(1, finish.stops[2]);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, 168);
+    // Striped retro sun setting on the plate's horizon.
+    g.save();
+    g.beginPath();
+    g.arc(880, 168, 92, 0, Math.PI * 2);
+    g.clip();
+    g.fillStyle = "rgba(255,244,214,0.95)";
+    g.fillRect(788, 76, 184, 184);
+    g.fillStyle = finish.deep;
+    g.globalAlpha = 0.16;
+    [148, 166, 186, 208].forEach((y, i) => { g.fillRect(788, y, 184, 3 + i * 2); });
+    g.restore();
+    g.globalAlpha = 1;
+    // Plate lettering.
+    g.textAlign = "left";
     g.fillStyle = "#ffffff";
-    g.fillRect(0, 0, canvas.width, canvas.height);
-    g.fillStyle = theme.tint;
+    g.font = "900 58px system-ui, sans-serif";
+    g.fillText("VICESUNSHINE", 56, 100);
+    g.font = "700 23px system-ui, sans-serif";
+    g.fillStyle = "rgba(255,255,255,0.88)";
+    g.fillText("LEONIDA · GTA VI COMMUNITY HUB", 58, 142);
+    if (logo) g.drawImage(logo, W - 56 - 140, 30, 140, 92);
+    // Avatar: the real picture when it loads, else an initials
+    // medallion in the finish colour.
+    g.save();
+    g.beginPath();
+    g.arc(140, 300, 64, 0, Math.PI * 2);
+    g.clip();
+    if (avatar && avatar.width > 0 && avatar.height > 0) {
+      const s = Math.max(128 / avatar.width, 128 / avatar.height);
+      g.drawImage(avatar, 140 - (avatar.width * s) / 2, 300 - (avatar.height * s) / 2, avatar.width * s, avatar.height * s);
+    } else {
+      g.fillStyle = finish.ink;
+      g.fillRect(76, 236, 128, 128);
+      const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => (w[0] ?? "").toUpperCase()).join("") || "VS";
+      g.fillStyle = "#ffffff";
+      g.font = "800 46px system-ui, sans-serif";
+      g.textAlign = "center";
+      g.fillText(initials, 140, 317);
+      g.textAlign = "left";
+    }
+    g.restore();
+    g.beginPath();
+    g.arc(140, 300, 64, 0, Math.PI * 2);
+    g.strokeStyle = "rgba(255,255,255,0.35)";
+    g.lineWidth = 3;
+    g.stroke();
+    // Identity lines.
+    let nameSize = 54;
+    g.font = `800 ${nameSize}px system-ui, sans-serif`;
+    const fullName = clanTag ? `[${clanTag}] ${name}` : name;
+    while (g.measureText(fullName).width > W - 232 - 56 && nameSize > 28) {
+      nameSize -= 4;
+      g.font = `800 ${nameSize}px system-ui, sans-serif`;
+    }
+    let nx = 232;
+    if (clanTag) {
+      g.fillStyle = clanColor || finish.pop;
+      const t = `[${clanTag}] `;
+      g.fillText(t, nx, 300);
+      nx += g.measureText(t).width;
+    }
+    g.fillStyle = "#ffffff";
+    g.fillText(name, nx, 300);
+    g.font = "600 33px system-ui, sans-serif";
+    g.fillStyle = finish.pop;
+    g.fillText(`@${handle}`, 232, 350);
+    g.font = "600 27px system-ui, sans-serif";
+    g.fillStyle = "rgba(255,255,255,0.55)";
+    g.fillText(`${premium ? "Premium member" : "Community member"}${joinedLabel ? ` · since ${joinedLabel}` : ""}`, 232, 398);
+    // Perforation.
+    g.strokeStyle = "rgba(255,255,255,0.22)";
+    g.lineWidth = 3;
+    g.setLineDash([12, 10]);
+    g.beginPath();
+    g.moveTo(48, 448);
+    g.lineTo(W - 48, 448);
+    g.stroke();
+    g.setLineDash([]);
+    // Stub QR — plain square modules on white.
+    const qrBox = 216;
+    const qx = 56;
+    const qy = 488;
+    const size = matrix.length;
+    const quiet = 4;
+    const cell = qrBox / (size + quiet * 2);
+    g.beginPath();
+    g.roundRect(qx, qy, qrBox, qrBox, 16);
+    g.fillStyle = "#ffffff";
+    g.fill();
+    g.fillStyle = "#17102B";
     matrix.forEach((row, y) => {
       row.forEach((dark, x) => {
-        if (dark) g.fillRect(pad + (x + quiet) * scale, pad + (y + quiet) * scale, scale, scale);
+        if (dark) g.fillRect(qx + (x + quiet) * cell, qy + (y + quiet) * cell, cell + 0.5, cell + 0.5);
       });
     });
-    const finish = () => {
-      g.fillStyle = theme.tint;
-      g.font = `800 ${Math.round(scale * 1.55)}px system-ui, sans-serif`;
-      g.textAlign = "center";
-      g.fillText(`@${handle.toUpperCase()}`, canvas.width / 2, pad + qrPx + Math.round(textH * 0.68));
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `vicesunshine-${handle}-qr.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.setTimeout(() => URL.revokeObjectURL(url), 4000);
-        setNote("QR code image downloaded.");
-      }, "image/png");
-    };
-    // The VS logo sits over the centre of the QR, like the
-    // on-screen card (error correction level M leaves room).
-    const logo = new Image();
-    logo.onload = () => {
-      const logoPx = Math.round(qrPx * 0.19);
-      const lx = pad + (qrPx - logoPx) / 2;
-      const ly = pad + (qrPx - logoPx) / 2;
-      g.fillStyle = "#ffffff";
-      g.beginPath();
-      g.roundRect(lx - 10, ly - 10, logoPx + 20, logoPx + 20, 22);
-      g.fill();
-      g.drawImage(logo, lx, ly, logoPx, logoPx);
-      finish();
-    };
-    logo.onerror = () => finish();
-    logo.src = vsLogoUrl;
+    // Stub text.
+    g.font = "800 24px system-ui, sans-serif";
+    g.fillStyle = "rgba(255,255,255,0.5)";
+    g.fillText("SCAN TO OPEN MY PROFILE", 312, 540);
+    g.font = "800 36px system-ui, sans-serif";
+    g.fillStyle = "#ffffff";
+    g.fillText(`${fmtCount(followers)} followers · ${fmtCount(following)} following`, 312, 596);
+    g.font = "700 27px system-ui, sans-serif";
+    g.fillStyle = finish.pop;
+    g.fillText("ViceSunshine · Leonida Hub", 312, 646);
+    g.restore();
+    // Card outline.
+    g.beginPath();
+    g.roundRect(4, 4, W - 8, H - 8, 46);
+    g.strokeStyle = finish.ink;
+    g.globalAlpha = 0.55;
+    g.lineWidth = 3;
+    g.stroke();
+    g.globalAlpha = 1;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `vicesunshine-pass-${handle}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      setNote("Your Vice Pass image was saved — post it anywhere.");
+    }, "image/png");
   };
-  // QR rendered Instagram-style: rounded data modules (dots),
-  // finder patterns as rounded squares, everything in the
-  // theme tint on white, with the VS logo over the centre.
+  // The stub QR: plain square modules in dark plum ink on
+  // white — maximum contrast for phone cameras, and a look of
+  // its own next to Instagram's dotted codes.
   const qrSvg = (() => {
     if (!matrix) return null;
     const size = matrix.length;
     const quiet = 2;
     const total = size + quiet * 2;
-    const inFinder = (x: number, y: number) =>
-      (x < 7 && y < 7) || (x >= size - 7 && y < 7) || (x < 7 && y >= size - 7);
-    const dots: ReactNode[] = [];
+    const cells: ReactNode[] = [];
     matrix.forEach((row, y) => {
       row.forEach((dark, x) => {
-        if (dark && !inFinder(x, y)) {
-          dots.push(<circle key={`${x}-${y}`} cx={x + quiet + 0.5} cy={y + quiet + 0.5} r={0.42} />);
-        }
+        if (dark) cells.push(<rect key={`${x}-${y}`} x={x + quiet} y={y + quiet} width={1.02} height={1.02} />);
       });
     });
-    // Finder corner radii stay at or under ~1.3 modules: past
-    // that, camera decoders stop recognising the finder pattern
-    // (verified against a real QR decoder during the build).
-    const finder = (fx: number, fy: number) => (
-      <g key={`${fx}-${fy}`}>
-        <rect x={fx} y={fy} width={7} height={7} rx={1.2} fill={theme.tint} />
-        <rect x={fx + 1} y={fy + 1} width={5} height={5} rx={0.8} fill="#ffffff" />
-        <rect x={fx + 2} y={fy + 2} width={3} height={3} rx={0.5} fill={theme.tint} />
-      </g>
-    );
     return (
       <svg viewBox={`0 0 ${total} ${total}`} className="h-full w-full" role="img" aria-label={`QR code for @${handle}'s ViceSunshine profile — scan it with a phone camera to open the profile`}>
         <rect x={0} y={0} width={total} height={total} fill="#ffffff" />
-        <g fill={theme.tint}>{dots}</g>
-        {finder(quiet, quiet)}
-        {finder(quiet + size - 7, quiet)}
-        {finder(quiet, quiet + size - 7)}
+        <g fill="#17102B">{cells}</g>
       </svg>
     );
   })();
-  const tileBtn = "flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white/95 px-2 py-3 text-[12.5px] font-bold text-[#14101f] shadow-lg transition active:scale-[0.97]";
+  const ghostTile = "flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-white/[0.06] px-2 py-3 text-[12.5px] font-bold text-white transition active:scale-[0.97]";
   return (
-    <div className="fixed inset-0 z-[125] flex flex-col overflow-y-auto" style={{ background: theme.gradient }} role="dialog" aria-modal="true" aria-label={`Share @${handle}'s profile`}>
-      <div className="mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5 pb-8 pt-5">
+    <div className="fixed inset-0 z-[125] overflow-y-auto bg-[#0B0B14]" role="dialog" aria-modal="true" aria-label={`Share @${handle}'s profile — your Vice Pass`}>
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-52" style={{ background: `linear-gradient(180deg, ${finish.ink}2E, transparent)` }} />
+      <div className="relative mx-auto flex min-h-full w-full max-w-[430px] flex-col px-5 pb-8 pt-5">
         <div className="relative flex items-center justify-center">
-          <button type="button" className="absolute left-0 flex h-10 w-10 items-center justify-center rounded-full bg-black/25 text-white" style={{ minHeight: 40 }} onClick={onClose} aria-label="Close the share screen">
+          <button type="button" className="absolute left-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white" style={{ minHeight: 40 }} onClick={onClose} aria-label="Close the share screen">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
-          <button
-            type="button"
-            className="flex items-center gap-2 rounded-full bg-black/25 px-4 py-2 text-[12px] font-extrabold uppercase tracking-[0.14em] text-white"
-            style={{ minHeight: 40 }}
-            onClick={() => { setThemeIdx((i) => (i + 1) % SHARE_THEMES.length); setNote(""); }}
-            aria-label={`Colour theme: ${theme.name} — tap to change the colour`}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18c-1.4 0-2-.9-2-1.8 0-.8.5-1.3.5-2.1 0-.9-.7-1.6-1.7-1.6H7.2A4.2 4.2 0 0 1 3 11.4C3.5 6.7 7.3 3 12 3Z" /><circle cx="7.5" cy="10.5" r="0.6" fill="currentColor" /><circle cx="10.5" cy="7" r="0.6" fill="currentColor" /><circle cx="15" cy="7.5" r="0.6" fill="currentColor" /></svg>
-            Color
-          </button>
+          <h3 className="text-[15px] font-extrabold uppercase tracking-[0.22em] text-white">Your Vice Pass</h3>
+          <span className="absolute right-0 w-10" aria-hidden="true" />
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center py-8">
-          <div className="w-full max-w-[320px] rounded-[28px] bg-white p-5 pb-6 shadow-2xl">
-            <div className="relative mx-auto aspect-square w-full">
-              {qrSvg ?? <p className="flex h-full items-center justify-center text-center text-sm font-semibold text-[#14101f]">The QR code could not be made — use Copy link below instead.</p>}
-              {qrSvg && (
-                <span className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[22%] bg-white shadow" style={{ width: "21%", height: "21%" }} aria-hidden="true">
-                  <img decoding="async" src={vsLogoUrl} alt="" className="h-[86%] w-[86%] object-contain" />
-                </span>
-              )}
+        <div className="flex flex-1 flex-col items-center justify-center py-7">
+          {/* The pass itself */}
+          <div className="w-full overflow-hidden rounded-[26px]" style={{ background: finish.deep, border: `1px solid ${finish.ink}59`, boxShadow: `0 24px 60px rgba(0,0,0,0.55), 0 10px 44px ${finish.ink}30` }}>
+            <div className="relative overflow-hidden px-5 pb-4 pt-4" style={{ background: finish.sky }}>
+              <div aria-hidden="true" className="absolute -bottom-14 right-10 h-24 w-24 rounded-full" style={{ background: "repeating-linear-gradient(180deg, rgba(255,244,214,0.95) 0 7px, rgba(43,16,46,0.20) 7px 9px, rgba(255,244,214,0.95) 9px 16px)" }} />
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[19px] font-black uppercase leading-none tracking-[0.08em] text-white" style={{ textShadow: "0 1px 10px rgba(0,0,0,0.35)" }}>ViceSunshine</p>
+                  <p className="mt-1.5 text-[10.5px] font-extrabold uppercase tracking-[0.28em] text-white/85">Leonida · GTA VI Community</p>
+                </div>
+                <img decoding="async" src={vsLogoUrl} alt="" className="h-9 w-auto flex-none object-contain" style={{ filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.35))" }} />
+              </div>
+              <p className="relative mt-3 text-[10px] font-bold uppercase tracking-[0.24em] text-white/75">Official player pass</p>
             </div>
-            <p className="mt-4 truncate text-center text-[17px] font-extrabold uppercase tracking-[0.18em]" style={{ color: theme.tint }}>@{handle}</p>
+            <div className="flex items-center gap-3.5 px-5 pt-4">
+              <CosmeticAvatar name={gamertag} size={62} avatarUrl={avatarUrl} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[19px] font-extrabold leading-tight text-white">
+                  {clanTag && <span style={{ color: clanColor || finish.pop }}>[{clanTag}] </span>}
+                  {name}
+                </p>
+                <p className="truncate text-[14px] font-semibold" style={{ color: finish.pop }}>@{handle}</p>
+                <p className="mt-0.5 truncate text-[12px] font-semibold text-white/55">
+                  {premium ? "Premium member" : "Community member"}{joinedLabel ? ` · since ${joinedLabel}` : ""}
+                </p>
+              </div>
+            </div>
+            <div className="relative mx-5 mt-4 border-t-2 border-dashed border-white/15" aria-hidden="true">
+              <span className="absolute -top-[9px] h-[18px] w-[18px] rounded-full bg-[#0B0B14]" style={{ left: -28 }} />
+              <span className="absolute -top-[9px] h-[18px] w-[18px] rounded-full bg-[#0B0B14]" style={{ right: -28 }} />
+            </div>
+            <div className="flex items-center gap-4 px-5 py-4">
+              <div className="h-[92px] w-[92px] flex-none overflow-hidden rounded-[14px] bg-white p-[5px] shadow">
+                {qrSvg ?? <p className="flex h-full items-center justify-center text-center text-[10px] font-semibold leading-snug text-[#14101f]">QR loading…</p>}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10.5px] font-extrabold uppercase tracking-[0.22em] text-white/50">Scan to open my profile</p>
+                <p className="mt-1.5 text-[15px] font-extrabold leading-snug text-white">
+                  {fmtCount(followers)} <span className="font-semibold text-white/55">followers</span> · {fmtCount(following)} <span className="font-semibold text-white/55">following</span>
+                </p>
+                <p className="mt-1 truncate text-[12.5px] font-semibold" style={{ color: finish.pop }}>ViceSunshine · Leonida Hub</p>
+              </div>
+            </div>
           </div>
-          <div className="mt-7 grid w-full max-w-[320px] grid-cols-3 gap-3">
-            <button type="button" className={tileBtn} style={{ minHeight: 64 }} onClick={() => { void shareProfile(); }} aria-label="Share profile — open the share sheet with your profile link">
+          {/* Finish picker — the pass's sunset colourway */}
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <div className="flex items-center gap-2" role="group" aria-label="Pass finish — choose the sunset colourway for your pass">
+              {PASS_FINISHES.map((f, i) => (
+                <button
+                  key={f.name}
+                  type="button"
+                  className="flex items-center justify-center rounded-full transition active:scale-95"
+                  style={{ minHeight: 40, minWidth: 40 }}
+                  onClick={() => { setFinishIdx(i); setNote(""); }}
+                  aria-label={`Pass finish: ${f.name}${i === finishIdx ? " (selected)" : ""}`}
+                  aria-pressed={i === finishIdx}
+                >
+                  <span className="block h-8 w-8 rounded-full" style={{ background: f.sky, boxShadow: i === finishIdx ? "0 0 0 2px #0B0B14, 0 0 0 4px #ffffff" : "0 0 0 1px rgba(255,255,255,0.25)" }} />
+                </button>
+              ))}
+            </div>
+            <p className="text-[11.5px] font-bold uppercase tracking-[0.18em] text-white/60">Finish · {finish.name}</p>
+          </div>
+          {/* Actions */}
+          <div className="mt-6 grid w-full grid-cols-3 gap-3">
+            <button type="button" className="flex flex-col items-center justify-center gap-1.5 rounded-2xl px-2 py-3 text-[12.5px] font-extrabold text-white shadow-lg transition active:scale-[0.97]" style={{ minHeight: 64, background: finish.sky, textShadow: "0 1px 6px rgba(0,0,0,0.3)" }} onClick={() => { void shareProfile(); }} aria-label="Share pass — open the share sheet with your profile link">
               <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V4m0 0L8 8m4-4 4 4" /><path d="M5 13v6a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6" /></svg>
-              Share profile
+              Share pass
             </button>
             <button
               type="button"
-              className={tileBtn}
+              className={ghostTile}
               style={{ minHeight: 64 }}
               onClick={async () => {
                 if (await copyLink()) {
@@ -24376,12 +27224,13 @@ function ProfileShareScreen({ gamertag, playerKey, onClose }: { gamertag: string
               <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7-7.1l-1.2 1.1" /><path d="M14 10a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7 7.1l1.2-1.1" /></svg>
               {copied ? "Copied" : "Copy link"}
             </button>
-            <button type="button" className={tileBtn} style={{ minHeight: 64 }} onClick={downloadQr} aria-label="Download — save the QR code as a picture">
+            <button type="button" className={ghostTile} style={{ minHeight: 64 }} onClick={() => { void downloadPass(); }} aria-label="Save pass — download your Vice Pass as a picture">
               <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4" /><path d="M5 19h14" /></svg>
-              Download
+              Save pass
             </button>
           </div>
-          {note && <p className="mt-4 max-w-[320px] text-center text-[13px] font-semibold leading-relaxed text-white" role="status">{note}</p>}
+          {note && <p className="mt-4 max-w-[340px] text-center text-[13px] font-semibold leading-relaxed text-white" role="status">{note}</p>}
+          <p className="mt-5 max-w-[340px] text-center text-[12.5px] leading-relaxed text-white/45">Anyone who scans the pass or opens the link lands on your ViceSunshine profile — posts, crew and all.</p>
         </div>
       </div>
     </div>
@@ -24611,6 +27460,11 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
   // pressing the Linked accounts row in Edit profile swaps the
   // editor for this page, where the links are edited and saved.
   const [linksOpen, setLinksOpen] = useState(false);
+  // Which single platform the Linked accounts page is showing
+  // (owner's direction): pressing a platform's logo — its profile
+  // tile or its row on the Linked accounts page — opens a screen
+  // for THAT platform only. null = the page's platform list.
+  const [linkFocus, setLinkFocus] = useState<PlatformKind | null>(null);
   // ---- Instagram-style hub state ----
   // viewingKey: another player's key while their profile is open
   // (from the directory, a follower list, or Friends). "" = my own.
@@ -24639,7 +27493,11 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
   });
   const [mediaTab, setMediaTab] = useState<IgMediaTab>("posts");
   const [followListMode, setFollowListMode] = useState<"followers" | "following" | null>(null);
-  const [openPost, setOpenPost] = useState<ProfilePostItem | null>(null);
+  // The profile post viewer: which section's list is open
+  // ("posts" = the Photos grid, "videos" = the Videos grid —
+  // both open the exact same scrollable viewer) and which post
+  // it starts on (the tile that was tapped).
+  const [openViewer, setOpenViewer] = useState<{ mode: "posts" | "videos"; startId: number } | null>(null);
   const hubPosts = useQuery({
     queryKey: ["profile-posts", playerKey, targetKey, "posts"],
     queryFn: () => api.listProfilePosts({ playerKey, targetKey, mode: "posts" }),
@@ -24668,7 +27526,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     // opens my profile from here — it does nothing at all.
     if (!key || key === playerKey || (myPublicId && key === myPublicId)) return;
     setFollowListMode(null);
-    setOpenPost(null);
+    setOpenViewer(null);
     setMediaTab("posts");
     setViewingFromElsewhere(false);
     setViewingStack((s) => [...s.slice(-9), viewingKey]);
@@ -24691,9 +27549,10 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     go("feed");
   };
   // Share on the profile header (owner's direction): opens the
-  // Instagram-style QR share screen (ProfileShareScreen) — a
-  // real QR code of your own profile link for sharing OUTSIDE
-  // ViceSunshine, with Share profile / Copy link / Download.
+  // Vice Pass share screen (ProfileShareScreen) — your player
+  // pass with a real QR code of your own profile link, for
+  // sharing OUTSIDE ViceSunshine: Share pass / Copy link /
+  // Save pass.
   const [shareOpen, setShareOpen] = useState(false);
   // New story (owner's direction, Nov 21 2026): tapping your own
   // profile picture opens the "Add to story" flow right here on
@@ -24740,7 +27599,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
         const cachedMine = qc.getQueryData<{ publicId: string }>(["my-public-id", playerKey])?.publicId ?? "";
         if (k !== playerKey && k !== cachedMine) {
           setFollowListMode(null);
-          setOpenPost(null);
+          setOpenViewer(null);
           setMediaTab("posts");
           setViewingFromElsewhere(true);
           setViewingKey(k);
@@ -24757,7 +27616,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
           .then((r) => {
             if (!r.publicId) return;
             setFollowListMode(null);
-            setOpenPost(null);
+            setOpenViewer(null);
             setMediaTab("posts");
             setViewingFromElsewhere(true);
             setViewingKey(r.publicId);
@@ -24847,6 +27706,17 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     },
     onError: (e) => setError(e.message),
   });
+  // Per-platform bindings for the Linked accounts page's single-
+  // platform screens: the focused platform's field value, setter,
+  // visibility switch and form-field props, picked by kind so the
+  // screen renders exactly one platform and nothing else.
+  const linkFields: Record<PlatformKind, { value: string; setValue: (v: string) => void; show: boolean; setShow: (b: boolean) => void; field: "psnId" | "xboxId" | "discordId" | "rockstarId" }> = {
+    psn: { value: psnId, setValue: setPsnId, show: showPsn, setShow: setShowPsn, field: "psnId" },
+    xbox: { value: xboxId, setValue: setXboxId, show: showXbox, setShow: setShowXbox, field: "xboxId" },
+    discord: { value: discordId, setValue: setDiscordId, show: showDiscord, setShow: setShowDiscord, field: "discordId" },
+    rockstar: { value: rockstarId, setValue: setRockstarId, show: showRockstar, setShow: setShowRockstar, field: "rockstarId" },
+  };
+  const lf = linkFocus ? linkFields[linkFocus] : null;
   const [bannerMsg, setBannerMsg] = useState("");
   // Same instant-cache write for uploaded banner media (and for
   // removing it: url "").
@@ -24858,6 +27728,22 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     );
     qc.setQueryData<SocialResp>(["social-profile", playerKey, playerKey], (old) =>
       old?.profile ? { ...old, profile: { ...old.profile, bannerMediaUrl: url, bannerMediaType: mediaType } } : old,
+    );
+  };
+  // The avatar twin of applyBannerMediaToCaches: writes an avatar
+  // URL (the server's, or the just-uploaded bytes as a data URL —
+  // see swapToServerPhotoWhenLoaded) straight into the profile
+  // caches the shell header and the Profile page read, so a new
+  // profile picture shows the moment it is saved instead of
+  // after a refetch plus a fresh download.
+  const applyAvatarUrlToCaches = (url: string) => {
+    type ProfileResp = ApiResponse<typeof api, "getProfile">;
+    type SocialResp = ApiResponse<typeof api, "getSocialProfile">;
+    qc.setQueryData<ProfileResp>(["profile", playerKey], (old) =>
+      old?.profile ? { ...old, profile: { ...old.profile, avatarUrl: url, hasCustomAvatar: true } } : old,
+    );
+    qc.setQueryData<SocialResp>(["social-profile", playerKey, playerKey], (old) =>
+      old?.profile ? { ...old, profile: { ...old.profile, avatarUrl: url } } : old,
     );
   };
   // Online status: the Change Online Status sheet (opened by
@@ -24874,11 +27760,26 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
   const storiesQ = useQuery({ queryKey: ["stories", playerKey], queryFn: () => api.listStories({ playerKey }), enabled: Boolean(playerKey) });
   const [avatarZoom, setAvatarZoom] = useState<{ name: string; avatarUrl: string } | null>(null);
   const [storyViewer, setStoryViewer] = useState<{ groups: StoryGroup[]; groupIndex: number } | null>(null);
+  // Create-a-highlight straight from your own story's black
+  // bar (owner's direction, Nov 21 2026): the viewer's
+  // Highlight button with no highlights yet closes the viewer
+  // and opens the New highlight screen here, with the story
+  // already picked.
+  const [hlCreate, setHlCreate] = useState<{ picked: number[] } | null>(null);
   const [aboutTarget, setAboutTarget] = useState("");
   const openAvatarPress = (tKey: string, name: string, avatarUrl: string) => {
     const groups = storiesQ.data?.groups ?? [];
-    const gi = groups.findIndex((g) => g.authorKey === tKey);
-    if (gi >= 0) { setStoryViewer({ groups, groupIndex: gi }); return; }
+    const g = groups.find((x) => x.authorKey === tKey);
+    // PROFILE-ONLY viewer (owner's direction, Nov 21 2026): a
+    // story opened from a profile — your own avatar / story ring
+    // here, or a highlight ball (ProfileHighlights passes a
+    // single group the same way) — plays ONLY that profile's own
+    // stories and then closes. It never rolls on into the next
+    // person's or a recommended person's stories. The Feed's
+    // StoriesRow is the opposite on purpose: opened from the
+    // Feed, the viewer keeps the full chain and moves to the
+    // next person after yours.
+    if (g) { setStoryViewer({ groups: [g], groupIndex: 0 }); return; }
     setAvatarZoom({ name, avatarUrl });
   };
   const hasStory = (tKey: string) => (storiesQ.data?.groups ?? []).some((g) => g.authorKey === tKey);
@@ -24940,9 +27841,16 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     setAvatarBusy(true);
     try {
       const { dataBase64, mimeType } = await optimizedPhotoUpload(f, 512);
-      await api.uploadCustomAvatar({ playerKey, filename: f.name, mimeType, dataBase64 });
+      const res = await api.uploadCustomAvatar({ playerKey, filename: f.name, mimeType, dataBase64 });
+      // Paint the new picture everywhere from the bytes already
+      // on this device, then swap in the server's copy once it
+      // has loaded (see swapToServerPhotoWhenLoaded) — the
+      // profile never sits on the broken-image placeholder
+      // waiting for a fresh download of a picture this device
+      // already has.
+      applyAvatarUrlToCaches(`data:${mimeType};base64,${dataBase64}`);
+      swapToServerPhotoWhenLoaded(res.url, (url) => applyAvatarUrlToCaches(url));
       setAvatarMsg("Your picture passed the automatic safety check and is now your avatar everywhere.");
-      qc.invalidateQueries({ queryKey: ["profile"] });
       qc.invalidateQueries({ queryKey: ["players"] });
       qc.invalidateQueries({ queryKey: ["feed"] });
       qc.invalidateQueries({ queryKey: ["clan"] });
@@ -24972,10 +27880,12 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     try {
       const { dataBase64, mimeType } = await optimizedPhotoUpload(f, 1600);
       const res = await api.uploadCustomBanner({ playerKey, filename: f.name, mimeType, dataBase64 });
-      applyBannerMediaToCaches(res.url, res.mediaType);
+      // Same instant paint as the avatar: the banner shows the
+      // bytes already on this device first, and the server's
+      // copy takes over once it has loaded.
+      applyBannerMediaToCaches(`data:${mimeType};base64,${dataBase64}`, "image");
+      swapToServerPhotoWhenLoaded(res.url, (url) => applyBannerMediaToCaches(url, res.mediaType));
       setBannerMsg("Your picture passed the automatic safety check and is now your profile banner.");
-      qc.invalidateQueries({ queryKey: ["profile"] });
-      qc.invalidateQueries({ queryKey: ["social-profile"] });
     } catch (e) {
       setBannerMsg(e instanceof Error ? e.message : "Upload failed — try again.");
     } finally {
@@ -25008,6 +27918,14 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
   // optimizedStoredPhoto above): silently re-save an oversized
   // stored avatar / banner picture at the optimized size, once,
   // so the profile stops loading a multi-MB photo every visit.
+  // Two guards keep the heal itself from ever slowing the
+  // profile down (owner's slow-picture report, Nov 21 2026):
+  // it runs a few seconds AFTER the page paints, never during
+  // first load; and it checks the stored file's size with a
+  // HEAD request first — a picture already within a sane byte
+  // size is left completely alone without downloading a single
+  // picture byte, so the check no longer competes with the
+  // avatar and banner on screen.
   const healAvatarUrl = me?.hasCustomAvatar ? me.avatarUrl : "";
   const healBannerUrl = me?.bannerMediaType === "image" ? me.bannerMediaUrl : "";
   useEffect(() => {
@@ -25015,23 +27933,28 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
     const heal = async (url: string, maxEdge: number, save: (p: { dataBase64: string; mimeType: string }) => Promise<void>) => {
       if (!url || healedPhotoUrls.has(url)) return;
       healedPhotoUrls.add(url);
+      const size = await storedPhotoByteSize(url);
+      if (cancelled) return;
+      if (size !== null && size <= 450_000) return;
       const payload = await optimizedStoredPhoto(url, maxEdge);
       if (!payload || cancelled) return;
       try { await save(payload); } catch { /* leave the current picture untouched */ }
     };
-    void heal(healAvatarUrl, 512, async (p) => {
-      await api.uploadCustomAvatar({ playerKey, filename: "profile-photo.jpg", mimeType: p.mimeType, dataBase64: p.dataBase64 });
-      qc.invalidateQueries({ queryKey: ["profile"] });
-      qc.invalidateQueries({ queryKey: ["players"] });
-      qc.invalidateQueries({ queryKey: ["feed"] });
-    });
-    void heal(healBannerUrl, 1600, async (p) => {
-      const res = await api.uploadCustomBanner({ playerKey, filename: "profile-banner.jpg", mimeType: p.mimeType, dataBase64: p.dataBase64 });
-      applyBannerMediaToCaches(res.url, res.mediaType);
-      qc.invalidateQueries({ queryKey: ["profile"] });
-      qc.invalidateQueries({ queryKey: ["social-profile"] });
-    });
-    return () => { cancelled = true; };
+    const timer = setTimeout(() => {
+      void heal(healAvatarUrl, 512, async (p) => {
+        const res = await api.uploadCustomAvatar({ playerKey, filename: "profile-photo.jpg", mimeType: p.mimeType, dataBase64: p.dataBase64 });
+        applyAvatarUrlToCaches(`data:${p.mimeType};base64,${p.dataBase64}`);
+        swapToServerPhotoWhenLoaded(res.url, (url) => applyAvatarUrlToCaches(url));
+        qc.invalidateQueries({ queryKey: ["players"] });
+        qc.invalidateQueries({ queryKey: ["feed"] });
+      });
+      void heal(healBannerUrl, 1600, async (p) => {
+        const res = await api.uploadCustomBanner({ playerKey, filename: "profile-banner.jpg", mimeType: p.mimeType, dataBase64: p.dataBase64 });
+        applyBannerMediaToCaches(`data:${p.mimeType};base64,${p.dataBase64}`, "image");
+        swapToServerPhotoWhenLoaded(res.url, (url) => applyBannerMediaToCaches(url, res.mediaType));
+      });
+    }, 3500);
+    return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [healAvatarUrl, healBannerUrl, playerKey]);
   // Display-name lock (owner's direction): once a name is entered
@@ -25054,42 +27977,54 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
   // story groups' authorKey.
   const spStoryGroup = sp ? (storiesQ.data?.groups ?? []).find((g) => g.authorKey === sp.playerKey) ?? null : null;
   // The Stats tab (owner's direction, from his photos): ONLY
-  // three boxes for every player — Events Attended, Crew and
-  // Linked accounts. No Rank Points, no Reputation, nothing
-  // else. When the player is in a crew the whole Crew box is a
-  // button that opens THAT crew's own page (the vv-open-crew
-  // hand-off into Crews), never the general Crews list; with no
-  // crew it shows "No crew yet" and the Open crews button.
+  // three boxes for every player — Crew, Linked accounts and
+  // Events Attended, in that order (owner's direction: Events
+  // Attended sits all the way at the bottom). No Rank Points, no
+  // Reputation, nothing else. All three boxes are full width and
+  // evenly spaced so the page reads as one aligned stack. When
+  // the player is in a crew the whole Crew box is a button that
+  // opens THAT crew's own page (the vv-open-crew hand-off into
+  // Crews), never the general Crews list; with no crew it shows
+  // "No crew yet" and the Open crews button.
   const openCrewPage = (clanId: number) => {
     try { window.localStorage.setItem("vv-open-crew", String(clanId)); } catch { /* storage unavailable */ }
     go("clans");
   };
   const statsBoxes = (p: NonNullable<typeof sp>) => (
-    <div aria-label={`${p.gamertag}'s stats`}>
-      <div className="grid grid-cols-2 gap-3">
-        <div className={cardShell}>
-          <p className={cardLabel}>Events Attended</p>
-          <p className="mt-1.5 text-[26px] font-extrabold leading-none">{p.eventsAttended}</p>
-          <p className="mt-1.5 text-[13px] leading-snug text-[var(--dim)]">Community events RSVP&apos;d Going</p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-3" aria-label={`${p.gamertag}'s stats`}>
       {p.clanName ? (
-        <button type="button" className={`${cardShell} mt-3 block w-full text-left`} onClick={() => openCrewPage(p.clanId)} aria-label={`Crew: ${p.clanName} — open the crew page`}>
+        <button type="button" className={`${cardShell} block w-full text-left`} onClick={() => openCrewPage(p.clanId)} aria-label={`Crew: ${p.clanName} — open the crew page`}>
           <p className={cardLabel}>Crew</p>
-          <p className="mt-0.5 truncate text-[17px] font-extrabold" style={p.clanColor ? { color: p.clanColor } : undefined}>{p.clanName}{p.clanTag ? ` [${p.clanTag}]` : ""}</p>
+          <p className="mt-0.5 truncate text-[17px] font-extrabold" style={p.clanColor ? { color: p.clanColor } : undefined}>{p.clanTag ? `[${p.clanTag}] ` : ""}{p.clanName}</p>
           <p className="text-[13px] text-[var(--dim)]">{p.clanRole} · Tap to open the crew page</p>
         </button>
       ) : (
-        <div className={`${cardShell} mt-3`}>
+        <div className={cardShell}>
           <p className={cardLabel}>Crew</p>
           <p className="mt-0.5 text-[15px] font-bold">No crew yet</p>
           <button type="button" className="btn-ghost mt-3" style={{ minHeight: 40, padding: "6px 14px", fontSize: 13 }} onClick={() => go("clans")}>Open crews</button>
         </div>
       )}
-      <div className={`${cardShell} mt-3`}>
+      <div className={cardShell}>
         <p className={cardLabel}>Linked accounts</p>
-        <PlayerLinks name={p.gamertag} links={p.links} />
-        {!p.links.psn && !p.links.xbox && !p.links.discord && !p.links.rockstar && p.links.others.length === 0 && <p className="mt-1.5 text-sm text-[var(--dim)]">No linked accounts shown.</p>}
+        {/* Compact TRN-style tiles (owner's direction): only
+            PlayStation, Xbox, Discord and Rockstar — the accounts
+            GTA players link. On your own profile an unlinked tile
+            opens THAT platform's own link screen; a linked tile
+            opens the player's real page on the platform. */}
+        <LinkedAccountTiles
+          name={p.gamertag}
+          links={p.links}
+          mine={p.playerKey === playerKey}
+          onLink={(kind) => { setEditing(true); setLinksOpen(true); setLinkFocus(kind); }}
+        />
+      </div>
+      <div className={cardShell}>
+        <p className={cardLabel}>Events Attended</p>
+        <div className="mt-1.5 flex items-baseline gap-2.5">
+          <p className="text-[26px] font-extrabold leading-none">{p.eventsAttended}</p>
+          <p className="text-[13px] leading-snug text-[var(--dim)]">Community events RSVP&apos;d Going</p>
+        </div>
       </div>
     </div>
   );
@@ -25139,7 +28074,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
         />
       )}
       {shareOpen && me && (
-        <ProfileShareScreen gamertag={me.gamertag} playerKey={playerKey} onClose={() => setShareOpen(false)} />
+        <ProfileShareScreen gamertag={me.gamertag} displayName={me.displayName} avatarUrl={me.avatarUrl} memberSince={me.memberSince} clanTag={me.clanTag} clanColor={me.clanColor} premium={me.premium} followers={sp?.followersCount ?? 0} following={sp?.followingCount ?? 0} playerKey={playerKey} onClose={() => setShareOpen(false)} />
       )}
       {avatarZoom && (
         <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 p-6" role="dialog" aria-modal="true" aria-label={`${avatarZoom.name}'s profile picture, enlarged`}>
@@ -25154,7 +28089,17 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
         </div>
       )}
       {storyViewer && (
-        <StoryViewer groups={storyViewer.groups} startGroupIndex={storyViewer.groupIndex} playerKey={playerKey} gamertag={me?.gamertag ?? ""} onClose={() => { setStoryViewer(null); qc.invalidateQueries({ queryKey: ["stories"] }); }} onOpenProfile={(k) => { setStoryViewer(null); viewProfile(k); }} />
+        <StoryViewer groups={storyViewer.groups} startGroupIndex={storyViewer.groupIndex} playerKey={playerKey} gamertag={me?.gamertag ?? ""} onClose={() => { setStoryViewer(null); qc.invalidateQueries({ queryKey: ["stories"] }); }} onOpenProfile={(k) => { setStoryViewer(null); viewProfile(k); }} onCreateHighlight={(storyId) => setHlCreate({ picked: [storyId] })} />
+      )}
+      {hlCreate && (
+        <HighlightEditorSheet
+          playerKey={playerKey}
+          gamertag={me?.gamertag ?? ""}
+          existing={null}
+          initialPicked={hlCreate.picked}
+          onClose={() => setHlCreate(null)}
+          onSaved={() => { setHlCreate(null); qc.invalidateQueries({ queryKey: ["highlights"] }); qc.invalidateQueries({ queryKey: ["story-archive"] }); }}
+        />
       )}
       {aboutTarget && (
         <AccountAboutSheet playerKey={playerKey} targetKey={aboutTarget} onClose={() => setAboutTarget("")} />
@@ -25197,7 +28142,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
   // ---- Another player's Instagram-style profile ----
   if (viewingKey) {
     return (
-      <div className="mx-auto w-full max-w-[820px]">
+      <div className="mx-auto w-full max-w-[820px] pb-44 lg:pb-0">
         {profileOverlays}
         {/* Mixed profile, X-style top bar (X aesthetic dominant):
             back arrow + name + real posts count. */}
@@ -25206,8 +28151,8 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
           </button>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[19px] font-extrabold leading-tight tracking-tight">{sp ? <>{sp.clanTag && <span style={{ color: sp.clanColor || "var(--accent)" }}>[{sp.clanTag}]</span>}{sp.displayName.trim() || sp.gamertag}</> : "Profile"}</p>
-            <p className="text-[13px] leading-tight text-[var(--dim)]">{fmtCount(sp?.postsCount ?? 0)} posts</p>
+            <p className="profile-topname truncate text-[19px] font-extrabold leading-tight tracking-tight">{sp ? <>{sp.clanTag && <span style={{ color: sp.clanColor || "var(--accent)" }}>[{sp.clanTag}]</span>}{sp.displayName.trim() || sp.gamertag}</> : "Profile"}</p>
+            <p className="profile-posts-count text-[13px] leading-tight text-[var(--dim)]">{fmtCount(sp?.postsCount ?? 0)} posts</p>
           </div>
         </div>
         {social.isPending && <p className="text-sm text-[var(--dim)]">Loading profile…</p>}
@@ -25230,19 +28175,19 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
               <div className="flex flex-wrap items-end justify-between gap-3 px-3 sm:px-4">
                 <button
                   type="button"
-                  className="relative z-10 -mt-[52px] block flex-none rounded-full sm:-mt-[58px]"
+                  className="profile-head-avatar relative z-10 -mt-[38px] block flex-none rounded-full sm:-mt-[58px]"
                   style={{ minHeight: 0, padding: 0, background: "none", border: "none", cursor: "pointer", boxShadow: "0 0 0 4px var(--bg)" }}
                   onClick={() => openAvatarPress(sp.playerKey, sp.gamertag, sp.avatarUrl)}
                   aria-label={hasStory(sp.playerKey) ? `Watch ${sp.gamertag}'s story${spStoryGroup?.hasUnseen ? " — unwatched" : " — watched"}` : `See ${sp.gamertag}'s profile picture bigger`}
                 >
                   <span className="inline-flex rounded-full p-[4px]" style={{ background: spStoryGroup ? (spStoryGroup.hasUnseen ? "#9333ea" : "#737373") : "transparent" }}>
                     <span className="inline-flex rounded-full border-[3px] border-[var(--bg)]">
-                      <CosmeticAvatar name={sp.gamertag} size={100} avatarUrl={sp.avatarUrl} />
+                      <CosmeticAvatar name={sp.gamertag} size={100} avatarUrl={sp.avatarUrl} eager />
                     </span>
                   </span>
                   <span className="absolute bottom-1 right-1"><PresenceDot status={sp.presenceStatus} size={22} ring /></span>
                 </button>
-                <div className="flex flex-none flex-wrap items-center justify-end gap-2 pb-1 pt-3">
+                <div className="profile-head-actions flex flex-none flex-wrap items-center justify-end gap-2 pb-1 pt-3">
                   <FollowButton playerKey={playerKey} targetKey={sp.playerKey} viewerFollows={sp.viewerFollows} followsViewer={sp.followsViewer} viewerHasProfile={viewerHasProfile} isMe={false} compact viewerRequested={sp.viewerRequested} isPrivate={sp.isPrivate} onNeedProfile={() => { setViewingKey(""); go("signup"); scrollPageToTopSoon(); }} />
                   <button type="button" className="btn-grey" style={{ minHeight: 38, padding: "6px 18px", fontSize: 14 }} onClick={() => { try { localStorage.setItem("vv-dm-open", sp.playerKey); } catch { /* storage unavailable */ } go("messages"); }} aria-label={`Message ${sp.gamertag} — opens Messages with your conversation`}>
                     Message
@@ -25313,14 +28258,14 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
                 </form>
               )}
               <div className="px-3 pt-3.5 sm:px-4">
-                <h2 className="truncate text-[21px] font-extrabold leading-tight tracking-tight">{sp.clanTag && <span style={{ color: sp.clanColor || "var(--accent)" }}>[{sp.clanTag}]</span>}{sp.displayName.trim() || sp.gamertag}</h2>
-                <p className="mt-0.5 truncate text-[14.5px] text-[var(--dim)]">@{sp.gamertag.replace(/\s+/g, "")}</p>
+                <h2 className="profile-name truncate text-[21px] font-extrabold leading-tight tracking-tight">{sp.clanTag && <span style={{ color: sp.clanColor || "var(--accent)" }}>[{sp.clanTag}]</span>}{sp.displayName.trim() || sp.gamertag}</h2>
+                <p className="profile-handle mt-0.5 truncate text-[14.5px] text-[var(--dim)]">@{sp.gamertag.replace(/\s+/g, "")}</p>
                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label={`${sp.gamertag}'s badges`}>
                   {sp.premium && <span className="rounded-md px-2 py-1 text-[11px] font-extrabold" style={{ background: "var(--amber)", color: "#1a1200" }}>Premium</span>}
                   <span className="rounded-md bg-[var(--surface2)] px-2 py-1 text-[11px] font-extrabold text-[var(--dim)]" style={{ border: "1px solid var(--border)" }}>{sp.platform === "Xbox" ? "XB" : sp.platform === "Both" ? "PS · XB" : "PS"}</span>
                   <span className="text-[13px] font-semibold text-[var(--dim)]"><PresenceLabel status={sp.presenceStatus} /></span>
                 </div>
-                {sp.bio && <p className="mt-2.5 max-w-[560px] whitespace-pre-line text-[14.5px] leading-relaxed">{sp.bio}</p>}
+                {sp.bio && <p className="profile-bio mt-2.5 max-w-[560px] whitespace-pre-line text-[14.5px] leading-relaxed">{sp.bio}</p>}
                 <ProfileDobLine dob={sp.dob} />
                 <JoinedLine memberSince={sp.memberSince} onPress={() => setAboutTarget(sp.playerKey)} />
                 <XCounts following={sp.followingCount} followers={sp.followersCount} name={sp.gamertag} listsLocked={privacyLocked} onFollowing={() => openFollowList("following")} onFollowers={() => openFollowList("followers")} />
@@ -25366,13 +28311,13 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
             ) : (
             <section id="profile-hub" aria-label={`${sp.gamertag}'s posts`}>
               <IgTabBar active={mediaTab} onPick={setMediaTab} mine={false} name={sp.gamertag} />
-              <div className="pt-5">
+              <div className="pt-2">
                 {mediaTab === "posts" && ((hubPosts.data?.items.length ?? 0) === 0 && !hubPosts.isPending
                   ? <SharePhotosEmpty mine={false} name={sp.gamertag} onShare={() => undefined} />
-                  : <ProfilePostGrid items={hubPosts.data?.items ?? []} onOpen={setOpenPost} pending={hubPosts.isPending} emptyText="" />)}
+                  : <ProfilePostGrid items={hubPosts.data?.items ?? []} onOpen={(item) => setOpenViewer({ mode: "posts", startId: item.id })} pending={hubPosts.isPending} emptyText="" />)}
                 {mediaTab === "videos" && ((hubVideos.data?.items.length ?? 0) === 0 && !hubVideos.isPending
                   ? <ShareVideosEmpty mine={false} name={sp.gamertag} onShare={() => undefined} />
-                  : <ProfilePostGrid items={hubVideos.data?.items ?? []} onOpen={setOpenPost} pending={hubVideos.isPending} emptyText="" />)}
+                  : <ProfilePostGrid items={hubVideos.data?.items ?? []} onOpen={(item) => setOpenViewer({ mode: "videos", startId: item.id })} pending={hubVideos.isPending} emptyText="" />)}
                 {mediaTab === "stats" && statsBoxes(sp)}
 
               </div>
@@ -25384,13 +28329,26 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
         {followListMode && sp && (
           <FollowListSheet mode={followListMode} targetKey={sp.playerKey} targetName={sp.gamertag} playerKey={playerKey} viewerHasProfile={viewerHasProfile} ownProfile={false} onClose={() => setFollowListMode(null)} onView={viewProfile} onNeedProfile={() => { setFollowListMode(null); setViewingKey(""); go("signup"); scrollPageToTopSoon(); }} />
         )}
-        {openPost && <ProfilePostSheet post={openPost} playerKey={playerKey} gamertag={me?.gamertag ?? ""} go={go} onClose={() => setOpenPost(null)} onOpenAuthorKey={viewProfile} onOpenAuthorId={viewProfile} />}
+        {openViewer && sp && (
+          <ProfilePostsViewer
+            items={openViewer.mode === "videos" ? (hubVideos.data?.items ?? []) : (hubPosts.data?.items ?? [])}
+            startId={openViewer.startId}
+            title={openViewer.mode === "videos" ? "Videos" : "Posts"}
+            profileName={sp.gamertag}
+            playerKey={playerKey}
+            gamertag={me?.gamertag ?? ""}
+            go={go}
+            onClose={() => setOpenViewer(null)}
+            onOpenAuthorKey={viewProfile}
+            onOpenAuthorId={viewProfile}
+          />
+        )}
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-[820px]">
+    <div className="mx-auto w-full max-w-[820px] pb-44 lg:pb-0">
       {profileOverlays}
       {/* ---- Mixed X + Instagram header (owner's direction):
           X aesthetic DOMINANT on top — back arrow + name + posts
@@ -25424,8 +28382,8 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
           </button>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[19px] font-extrabold leading-tight tracking-tight">{me ? <>{me.clanTag && <span style={{ color: me.clanColor || "var(--accent)" }}>[{me.clanTag}]</span>}{displayName}</> : "Welcome"}</p>
-            <p className="text-[13px] leading-tight text-[var(--dim)]">{fmtCount(sp?.postsCount ?? 0)} posts</p>
+            <p className="profile-topname truncate text-[19px] font-extrabold leading-tight tracking-tight">{me ? <>{me.clanTag && <span style={{ color: me.clanColor || "var(--accent)" }}>[{me.clanTag}]</span>}{displayName}</> : "Welcome"}</p>
+            <p className="profile-posts-count text-[13px] leading-tight text-[var(--dim)]">{fmtCount(sp?.postsCount ?? 0)} posts</p>
           </div>
           <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-[var(--text)] hover:bg-[var(--surface2)]" style={{ minHeight: 40 }} onClick={() => go("settings")} aria-label="Open Settings">
             <SettingsGearIcon />
@@ -25433,7 +28391,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
         </div>
         <ProfileBanner callingCard="" ownerName={me?.gamertag ?? "Your"} bannerMediaUrl={me?.bannerMediaUrl ?? ""} bannerMediaType={me?.bannerMediaType ?? ""} />
         <div className="flex flex-wrap items-end justify-between gap-3 px-3 sm:px-4">
-          <div className="relative z-10 -mt-[52px] flex-none sm:-mt-[58px]">
+          <div className="profile-head-avatar relative z-10 -mt-[38px] flex-none sm:-mt-[58px]">
             <button
               type="button"
               className="block rounded-full"
@@ -25448,11 +28406,11 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
               {me && hasStory(playerKey) ? (
                 <span className="inline-flex rounded-full p-[4px]" style={{ background: "#9333ea" }}>
                   <span className="inline-flex rounded-full border-[3px] border-[var(--bg)]">
-                    <CosmeticAvatar name={me.gamertag} size={100} avatarUrl={me.avatarUrl} />
+                    <CosmeticAvatar name={me.gamertag} size={100} avatarUrl={me.avatarUrl} eager />
                   </span>
                 </span>
               ) : (
-                <CosmeticAvatar name={me?.gamertag ?? "You"} size={112} avatarUrl={me?.avatarUrl ?? ""} />
+                <CosmeticAvatar name={me?.gamertag ?? "You"} size={112} avatarUrl={me?.avatarUrl ?? ""} eager />
               )}
             </button>
             {me && (
@@ -25467,7 +28425,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
               </button>
             )}
           </div>
-          <div className="flex flex-none flex-wrap items-center justify-end gap-2 pb-1 pt-3">
+          <div className="profile-head-actions flex flex-none flex-wrap items-center justify-end gap-2 pb-1 pt-3">
             <button
               type="button"
               className="btn-ghost"
@@ -25485,15 +28443,15 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
               style={{ minHeight: 38, padding: "6px 18px", fontSize: 14, borderRadius: 999 }}
               disabled={!me}
               onClick={() => setShareOpen(true)}
-              aria-label="Share — open your profile share screen with a QR code of your profile"
+              aria-label="Share — open your Vice Pass share screen with a QR code of your profile"
             >
               Share
             </button>
           </div>
         </div>
         <div className="px-3 pt-3.5 sm:px-4">
-          <h2 className="truncate text-[21px] font-extrabold leading-tight tracking-tight">{me?.clanTag && <span style={{ color: me.clanColor || "var(--accent)" }}>[{me.clanTag}]</span>}{displayName}</h2>
-          <p className="mt-0.5 truncate text-[14.5px] text-[var(--dim)]">{me ? `@${me.gamertag.replace(/\s+/g, "")}` : "@guest"}</p>
+          <h2 className="profile-name truncate text-[21px] font-extrabold leading-tight tracking-tight">{me?.clanTag && <span style={{ color: me.clanColor || "var(--accent)" }}>[{me.clanTag}]</span>}{displayName}</h2>
+          <p className="profile-handle mt-0.5 truncate text-[14.5px] text-[var(--dim)]">{me ? `@${me.gamertag.replace(/\s+/g, "")}` : "@guest"}</p>
           {me && (
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label="Your badges">
               {me.premium && <span className="rounded-md px-2 py-1 text-[11px] font-extrabold" style={{ background: "var(--amber)", color: "#1a1200" }}>Premium</span>}
@@ -25504,7 +28462,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
               </button>
             </div>
           )}
-          {me?.bio && <p className="mt-2.5 max-w-[560px] whitespace-pre-line text-[14.5px] leading-relaxed">{me.bio}</p>}
+          {me?.bio && <p className="profile-bio mt-2.5 max-w-[560px] whitespace-pre-line text-[14.5px] leading-relaxed">{me.bio}</p>}
           {me && <ProfileDobLine dob={me.showDob ? me.dob : ""} />}
           {me && <JoinedLine memberSince={me.memberSince} onPress={() => setAboutTarget(playerKey)} />}
           {!me && <p className="mt-2 max-w-[520px] text-[14.5px] leading-relaxed text-[var(--dim)]">Create your profile to make this page yours.</p>}
@@ -25538,7 +28496,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
         <section className="card mb-4 p-4" style={{ borderColor: "var(--amber)" }} aria-label="Claim your Premium Discord role">
           <p className="text-[15px] font-extrabold tracking-tight">Link your Discord to claim your Premium role</p>
           <p className="mt-1 text-sm leading-relaxed text-[var(--dim)]">Premium includes the Premium Discord role + private Premium lounge in the ViceSunshine Discord server. Link your Discord username and the role is queued for you — no need to buy anything again.</p>
-          <button type="button" className="btn-primary btn-accent mt-3" style={{ minHeight: 42, padding: "8px 20px", fontSize: 14 }} onClick={() => { setEditing(true); setLinksOpen(true); }} aria-label="Link your Discord — open Linked accounts">
+          <button type="button" className="btn-primary btn-accent mt-3" style={{ minHeight: 42, padding: "8px 20px", fontSize: 14 }} onClick={() => { setEditing(true); setLinksOpen(true); setLinkFocus("discord"); }} aria-label="Link your Discord — open the Discord link screen">
             Link your Discord
           </button>
         </section>
@@ -25561,43 +28519,31 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
       {me && (
         <section id="profile-hub" aria-label="Your media hub — posts, videos and stats">
           <IgTabBar active={mediaTab} onPick={setMediaTab} mine name={me.gamertag} />
-          <div className="pt-5">
+          <div className="pt-2">
             {mediaTab === "posts" && (
-              (hubPosts.data?.items.length ?? 0) === 0 && !hubPosts.isPending
-                ? <SharePhotosEmpty mine name={me.gamertag} onShare={() => openShareUpload("share")} onUpload={() => openShareUpload("upload-photos")} />
-                : (
-                  <>
-                    {/* Upload stays on the Photos tab once it has
-                        photos too (owner's direction): it opens
-                        the same pictures-only picker as the empty
-                        state's Upload. */}
-                    <div className="mb-3 flex justify-end px-1">
-                      <button type="button" className="btn-primary" style={{ minHeight: 42, padding: "8px 24px", fontSize: 14, borderRadius: 999 }} onClick={() => openShareUpload("upload-photos")} aria-label="Upload — open the photo picker, pictures only, showing your whole album">
-                        Upload
-                      </button>
-                    </div>
-                    <ProfilePostGrid items={hubPosts.data?.items ?? []} onOpen={setOpenPost} pending={hubPosts.isPending} emptyText="" />
-                  </>
-                )
+              /* No "Upload" word button and no centred text
+                 empty state (owner's direction, Nov 21 2026):
+                 the grid ALWAYS renders on your own profile,
+                 even with zero posts, and its first box — the
+                 top-left corner — is the permanent camera-mark
+                 add box. Tapping it opens the pictures-only
+                 select-post picker (the creator's New post
+                 tab). */
+              <ProfilePostGrid items={hubPosts.data?.items ?? []} onOpen={(item) => setOpenViewer({ mode: "posts", startId: item.id })} pending={hubPosts.isPending} emptyText="" onAdd={() => openShareUpload("upload-photos")} addLabel="Add a photo post — open the New post picker to select a post, pictures only" addMark="camera" />
             )}
             {mediaTab === "videos" && (
-              (hubVideos.data?.items.length ?? 0) === 0 && !hubVideos.isPending
-                ? <ShareVideosEmpty mine name={me.gamertag} onShare={() => openShareUpload("share")} onUpload={() => openShareUpload("upload-clips")} />
-                : (
-                  <>
-                    {/* Upload stays on the Videos tab once it has
-                        videos too (owner's direction): it opens
-                        the same videos-only picker as the empty
-                        state's Upload, and the video posts to
-                        this Videos category. */}
-                    <div className="mb-3 flex justify-end px-1">
-                      <button type="button" className="btn-primary" style={{ minHeight: 42, padding: "8px 24px", fontSize: 14, borderRadius: 999 }} onClick={() => openShareUpload("upload-clips")} aria-label="Upload — open the video picker, videos only, showing your whole album">
-                        Upload
-                      </button>
-                    </div>
-                    <ProfilePostGrid items={hubVideos.data?.items ?? []} onOpen={setOpenPost} pending={hubVideos.isPending} emptyText="" />
-                  </>
-                )
+              /* The Videos side matches the Photos side exactly
+                 (owner's direction, Nov 21 2026): same grid,
+                 same corner — the permanent add box sits as the
+                 first box, top-left, with the play logo instead
+                 of a +, and the "Share Videos" text block is
+                 gone, so the box is there even when no video
+                 has been posted. Tapping it opens the same
+                 select-post tab as the Photos box but the
+                 videos-only function (the creator's New clip
+                 picker), and the video posts to this Videos
+                 category. */
+              <ProfilePostGrid items={hubVideos.data?.items ?? []} onOpen={(item) => setOpenViewer({ mode: "videos", startId: item.id })} pending={hubVideos.isPending} emptyText="" onAdd={() => openShareUpload("upload-clips")} addLabel="Add a video post — open the New clip picker to select a post, videos only" addMark="play" />
             )}
             {mediaTab === "stats" && sp && statsBoxes(sp)}
           </div>
@@ -25606,7 +28552,20 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
       {followListMode && sp && (
         <FollowListSheet mode={followListMode} targetKey={playerKey} targetName={me?.gamertag ?? "You"} playerKey={playerKey} viewerHasProfile={viewerHasProfile} ownProfile onClose={() => setFollowListMode(null)} onView={viewProfile} onNeedProfile={() => { setFollowListMode(null); go("signup"); }} />
       )}
-      {openPost && <ProfilePostSheet post={openPost} playerKey={playerKey} gamertag={me?.gamertag ?? ""} go={go} onClose={() => setOpenPost(null)} onOpenAuthorKey={viewProfile} onOpenAuthorId={viewProfile} />}
+      {openViewer && me && (
+        <ProfilePostsViewer
+          items={openViewer.mode === "videos" ? (hubVideos.data?.items ?? []) : (hubPosts.data?.items ?? [])}
+          startId={openViewer.startId}
+          title={openViewer.mode === "videos" ? "Videos" : "Posts"}
+          profileName={me.gamertag}
+          playerKey={playerKey}
+          gamertag={me.gamertag}
+          go={go}
+          onClose={() => setOpenViewer(null)}
+          onOpenAuthorKey={viewProfile}
+          onOpenAuthorId={viewProfile}
+        />
+      )}
 
       {/* Add to story (owner's direction, Nov 21 2026): the +
           badge on your profile picture — or the picture itself
@@ -25792,7 +28751,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none text-[var(--dim)]"><path d="M9 6l6 6-6 6" /></svg>
               </button>
               {dobOpen && (
-                <div id="prof-dob-editor" className="mt-2.5 rounded-2xl border border-[var(--border)] bg-[var(--surface2)] px-4 py-3.5">
+                <div id="prof-dob-editor" className="dob-editor mt-2.5 rounded-2xl border border-[var(--border)] bg-[var(--surface2)] px-4 py-3.5">
                   <input {...FIELDS.updateProfile.dob} type="date" className="field" value={dobF} onChange={(e) => setDobF(e.target.value)} aria-label="Your birth date" />
                   <div className="mt-1.5">
                     <VisibilitySwitch on={showDobF} onToggle={setShowDobF} label="Show birth date on my profile" />
@@ -25807,7 +28766,7 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
               )}
             </div>
           </div>
-          <button type="button" className="xrow mt-2 w-full" onClick={() => setLinksOpen(true)} aria-label="Linked accounts — open the Linked accounts page to edit how players reach you">
+          <button type="button" className="xrow mt-2 w-full" onClick={() => { setLinksOpen(true); setLinkFocus(null); }} aria-label="Linked accounts — open the Linked accounts page to edit how players reach you">
             <span className="xrow-main">
               <span className="xrow-label">Linked accounts</span>
               <span className="xrow-sub">{[psnId.trim() && "PSN", xboxId.trim() && "Xbox", discordId.trim() && "Discord", rockstarId.trim() && "Rockstar", others.some((o) => o.label.trim() && o.url.trim()) && "More links"].filter(Boolean).join(" · ") || "None linked yet — tap to add yours"}</span>
@@ -25881,80 +28840,123 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
       )}
       {/* Linked accounts page (owner's direction): its own
           page over the editor — Edit profile only carries the
-          row that opens it. The fields bind the same profile
-          state, and its Save runs the same profile save. */}
+          row that opens it. The page lists the four platforms;
+          pressing one opens a screen for THAT platform only
+          (its field, its steps, its visibility switch), and its
+          Save runs the same profile save. Back from a platform
+          screen returns to the list; linking another platform
+          means tapping it there. */}
       {editing && linksOpen && (
-        <div className="fixed inset-0 z-[92]" role="dialog" aria-modal="true" aria-label="Linked accounts — how players reach you">
+        <div className="fixed inset-0 z-[92]" role="dialog" aria-modal="true" aria-label={linkFocus ? `Link your ${PLATFORM_META[linkFocus].label} account` : "Linked accounts — how players reach you"}>
           <div className="edit-profile-sheet absolute inset-0 overflow-y-auto bg-[var(--surface)]">
             <div className="mx-auto w-full max-w-[620px] p-5">
               <div className="flex items-center gap-2">
-                <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl text-[var(--dim)] hover:bg-[var(--surface2)]" style={{ minHeight: 40 }} onClick={() => setLinksOpen(false)} aria-label="Back to Edit profile">
+                <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-xl text-[var(--dim)] hover:bg-[var(--surface2)]" style={{ minHeight: 40 }} onClick={() => (linkFocus ? setLinkFocus(null) : setLinksOpen(false))} aria-label={linkFocus ? "Back to the Linked accounts list" : "Back to Edit profile"}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
                 </button>
-                <h3 className="flex-1 text-lg font-extrabold tracking-tight">Linked accounts</h3>
-                <button type="button" className="btn-primary flex-none" style={{ minHeight: 40, padding: "7px 22px", fontSize: 14, borderRadius: 999 }} disabled={save.isPending} onClick={() => save.mutate(undefined, { onSuccess: () => setLinksOpen(false) })} aria-label="Save your linked accounts">
+                <h3 className="flex-1 text-lg font-extrabold tracking-tight">{linkFocus ? PLATFORM_META[linkFocus].label : "Linked accounts"}</h3>
+                <button type="button" className="btn-primary flex-none" style={{ minHeight: 40, padding: "7px 22px", fontSize: 14, borderRadius: 999 }} disabled={save.isPending} onClick={() => save.mutate(undefined, { onSuccess: () => (linkFocus ? setLinkFocus(null) : setLinksOpen(false)) })} aria-label={linkFocus ? `Save your ${PLATFORM_META[linkFocus].label} link` : "Save your linked accounts"}>
                   {save.isPending ? "Saving…" : "Save"}
                 </button>
               </div>
-          <p className="text-sm text-[var(--dim)]">
-            All optional. Linked accounts appear on your profile, your crew
-            member card so people can add you. Tick or
-            untick “Show” for each one — hidden accounts are never displayed
-            anywhere.
-          </p>
-          <div className="grid gap-0 sm:grid-cols-2 sm:gap-x-4">
+          {linkFocus && lf ? (
             <div>
-              <label className="flabel" htmlFor="prof-rockstar">Rockstar Social Club ID <span className="font-normal text-[var(--dim)]">(optional)</span></label>
-              <input id="prof-rockstar" className="field" {...FIELDS.saveProfile.rockstarId} value={rockstarId} onChange={(e) => setRockstarId(e.target.value)} placeholder="Your Social Club ID" />
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-[13px] font-semibold text-[var(--dim)]">Who can see it:</span>
-                <span className="mode-seg" role="group" aria-label="Rockstar ID visibility">
-                  <button type="button" style={{ width: "auto", padding: "0 12px", fontSize: 12.5, fontWeight: 700 }} aria-pressed={!showRockstar} onClick={() => setShowRockstar(false)}>Private</button>
-                  <button type="button" style={{ width: "auto", padding: "0 12px", fontSize: 12.5, fontWeight: 700 }} aria-pressed={showRockstar} onClick={() => setShowRockstar(true)}>Public</button>
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl" style={{ background: PLATFORM_META[linkFocus].brand, color: PLATFORM_META[linkFocus].onBrand }} aria-hidden="true">
+                  <PlatformMark kind={linkFocus} size={20} />
                 </span>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-extrabold leading-tight">Link your {PLATFORM_META[linkFocus].label}</p>
+                  <p className="text-[12.5px] leading-snug text-[var(--dim)]">This screen is only for {PLATFORM_META[linkFocus].label} — to link another platform, go back and tap its logo.</p>
+                </div>
               </div>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--dim)]">{showRockstar ? "Public: everyone can see it and copy it to add you." : "Private: only you and your crew can see it."}</p>
-            </div>
-            <div>
-              <label className="flabel" htmlFor="prof-psn">PlayStation / PSN ID</label>
-              <input id="prof-psn" className="field" {...FIELDS.saveProfile.psnId} value={psnId} onChange={(e) => setPsnId(e.target.value)} placeholder="Your PSN ID" />
-              <label className="mt-2 flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" className="h-5 w-5" checked={showPsn} onChange={(e) => setShowPsn(e.target.checked)} />
-                Show my PSN publicly
-              </label>
-            </div>
-            <div>
-              <label className="flabel" htmlFor="prof-xbox">Xbox gamertag</label>
-              <input id="prof-xbox" className="field" {...FIELDS.saveProfile.xboxId} value={xboxId} onChange={(e) => setXboxId(e.target.value)} placeholder="Your Xbox gamertag" />
-              <label className="mt-2 flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" className="h-5 w-5" checked={showXbox} onChange={(e) => setShowXbox(e.target.checked)} />
-                Show my Xbox publicly
-              </label>
-            </div>
-            <div>
-              <label className="flabel" htmlFor="prof-discord">Discord</label>
-              <input id="prof-discord" className="field" {...FIELDS.saveProfile.discordId} value={discordId} onChange={(e) => setDiscordId(e.target.value)} placeholder="username or discord.gg link" />
-              <label className="mt-2 flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" className="h-5 w-5" checked={showDiscord} onChange={(e) => setShowDiscord(e.target.checked)} />
-                Show my Discord publicly
-              </label>
-              {me?.premium && !discordId.trim() && (
-                <p className="mt-1.5 text-[12.5px] font-semibold leading-relaxed text-[var(--amber)]">Link your Discord to claim your Premium role — Premium members get the Premium role + private Premium lounge in the ViceSunshine Discord server. Add your Discord username here and save.</p>
+              {linkFocus === "discord" && (
+                <a className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl text-[14.5px] font-bold text-white" style={{ minHeight: 46, background: "#5865f2" }} href="https://discord.com/app" target="_blank" rel="noreferrer" aria-label="Open Discord — takes you straight into Discord to copy your user ID">
+                  Open Discord
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17L17 7" /><path d="M9 7h8v8" /></svg>
+                </a>
               )}
-              {me?.premium && discordId.trim() && discordRoleState?.status === "pending" && (
+              <ol className="mt-4 grid gap-2">
+                {PLATFORM_LINK_GUIDES[linkFocus].steps.map((s, i) => (
+                  <li key={i} className="flex gap-2.5 text-[13px] leading-relaxed text-[var(--dim)]">
+                    <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[var(--surface2)] text-[11px] font-extrabold text-[var(--text)]" aria-hidden="true">{i + 1}</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ol>
+              <label className="flabel" htmlFor={`prof-link-${linkFocus}`}>{PLATFORM_LINK_GUIDES[linkFocus].fieldLabel}</label>
+              <input id={`prof-link-${linkFocus}`} className="field" {...FIELDS.saveProfile[lf.field]} value={lf.value} onChange={(e) => lf.setValue(e.target.value)} placeholder={PLATFORM_LINK_GUIDES[linkFocus].placeholder} autoComplete="off" />
+              {lf.value.trim() !== "" && (platformLink(linkFocus, lf.value) ? (
+                <p className="mt-2.5 text-[13px] leading-relaxed text-[var(--dim)]">
+                  People who tap your {PLATFORM_META[linkFocus].label} tile land on{" "}
+                  <a className="font-semibold text-[var(--accent2)] underline" href={platformLink(linkFocus, lf.value)} target="_blank" rel="noreferrer" aria-label={`Test your ${PLATFORM_META[linkFocus].label} link — opens the page people will land on`}>{platformLink(linkFocus, lf.value).replace(/^https?:\/\//, "")}</a>
+                  {" "}— tap it to check it opens your profile.
+                </p>
+              ) : (
+                <p className="mt-2.5 text-[13px] leading-relaxed text-[var(--amber)]">
+                  That reads as a username, so your tile will show it and people can copy it — but it can&apos;t open a page. Discord only opens profiles from the number user ID: paste yours (steps 1–4 above) or your full discord.com/users link and your tile becomes a real link.
+                </p>
+              ))}
+              {linkFocus === "rockstar" ? (
+                <div className="mt-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-semibold text-[var(--dim)]">Who can see it:</span>
+                    <span className="mode-seg" role="group" aria-label="Rockstar ID visibility">
+                      <button type="button" style={{ width: "auto", padding: "0 12px", fontSize: 12.5, fontWeight: 700 }} aria-pressed={!showRockstar} onClick={() => setShowRockstar(false)}>Private</button>
+                      <button type="button" style={{ width: "auto", padding: "0 12px", fontSize: 12.5, fontWeight: 700 }} aria-pressed={showRockstar} onClick={() => setShowRockstar(true)}>Public</button>
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--dim)]">{showRockstar ? "Public: everyone can see it and open your Social Club page." : "Private: only you and your crew can see it."}</p>
+                </div>
+              ) : (
+                <label className="mt-3 flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-semibold">
+                  <input type="checkbox" className="h-5 w-5" checked={lf.show} onChange={(e) => lf.setShow(e.target.checked)} />
+                  {PLATFORM_LINK_GUIDES[linkFocus].showLabel}
+                </label>
+              )}
+              {linkFocus === "discord" && me?.premium && !discordId.trim() && (
+                <p className="mt-1.5 text-[12.5px] font-semibold leading-relaxed text-[var(--amber)]">Link your Discord to claim your Premium role — Premium members get the Premium role + private Premium lounge in the ViceSunshine Discord server. Add your Discord here and save.</p>
+              )}
+              {linkFocus === "discord" && me?.premium && discordId.trim() && discordRoleState?.status === "pending" && (
                 <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--dim)]" role="status">Premium role pending — join the Discord server and link your account. It is applied in the server by the ViceSunshine bot (or by the owner from the site&apos;s Premium list until the bot is live) — the site never marks it active before that.</p>
               )}
-              {me?.premium && discordId.trim() && discordRoleState?.status === "granted" && (
+              {linkFocus === "discord" && me?.premium && discordId.trim() && discordRoleState?.status === "granted" && (
                 <p className="mt-1.5 text-[12.5px] font-semibold leading-relaxed text-[var(--accent2)]" role="status">Your Premium Discord role is active — the Premium lounge is open to you in the server.</p>
               )}
             </div>
-            <div>
-              <label className="mt-4 flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-semibold sm:mt-[52px]">
-                <input type="checkbox" className="h-5 w-5" checked={showOther} onChange={(e) => setShowOther(e.target.checked)} />
-                Show my other links publicly
-              </label>
-            </div>
-          </div>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--dim)]">
+                All optional. Tap a platform to link it — each one opens its
+                own screen with the steps to grab your link. Linked accounts
+                appear on your profile and your crew member card, and tapping
+                one opens your page on that platform so people can add you.
+                Hidden accounts are never displayed anywhere.
+              </p>
+              <div className="mt-3 grid gap-2" role="list" aria-label="Platforms you can link">
+                {PLATFORM_ORDER.map((kind) => {
+                  const f = linkFields[kind];
+                  const isLinked = f.value.trim() !== "";
+                  return (
+                    <button key={kind} type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left" style={{ background: "var(--surface)", border: "1px solid var(--border)", minHeight: 58 }} onClick={() => setLinkFocus(kind)} aria-label={isLinked ? `${PLATFORM_META[kind].label}: linked as ${f.value} — tap to edit your ${PLATFORM_META[kind].label} link` : `Link your ${PLATFORM_META[kind].label} account`}>
+                      <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-lg" style={isLinked ? { background: PLATFORM_META[kind].brand, color: PLATFORM_META[kind].onBrand } : { background: "var(--surface2)", color: "var(--dim)" }} aria-hidden="true">
+                        <PlatformMark kind={kind} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[14px] font-bold leading-tight">{PLATFORM_META[kind].label}</span>
+                        <span className="block truncate text-[12.5px] leading-snug" style={{ color: "var(--dim)" }}>{isLinked ? f.value : "Not linked — tap to add yours"}</span>
+                      </span>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none text-[var(--dim)]"><path d="M9 6l6 6-6 6" /></svg>
+                    </button>
+                  );
+                })}
+              </div>
+              <div>
+                <label className="mt-4 flex min-h-[36px] cursor-pointer items-center gap-2 text-sm font-semibold">
+                  <input type="checkbox" className="h-5 w-5" checked={showOther} onChange={(e) => setShowOther(e.target.checked)} />
+                  Show my other links publicly
+                </label>
+              </div>
           <p className="flabel">Other gaming / social accounts (Twitch, YouTube, Steam, X…)</p>
           {others.map((o, i) => (
             <div key={i} className="mb-2 grid grid-cols-[1fr_1.4fr_auto] gap-2">
@@ -26005,6 +29007,8 @@ function ProfileView({ playerKey, go, onBack }: { playerKey: string; search: str
                 }}
               />
             </div>
+          )}
+            </>
           )}
               {error && <p className="mt-3 text-sm text-[var(--amber)]" role="alert">{error}</p>}
             </div>
@@ -26264,7 +29268,7 @@ function PremiumView({ playerKey, go, onBack }: { playerKey: string; go: (t: Tab
   const w = wallet.data;
   const cancelling = !!w?.premiumEndsAt;
   return (
-    <div>
+    <div className="premium-view">
       <button type="button" className="btn-ghost btn-compact mb-4" onClick={() => (onBack ? onBack() : go("home"))} aria-label="Back to where you were">← Back</button>
       <SectionBanner src={premiumHeroUrl} alt="Original ViceSunshine illustration of a dark supercar with gold accents on a rooftop over a neon coastal city at sunset" />
       <SectionTitle sub="News, guides and the bug tracker are always free. Premium pays for the extras — never for information.">
@@ -26295,7 +29299,7 @@ function PremiumView({ playerKey, go, onBack }: { playerKey: string; go: (t: Tab
             <li> Premium badge &amp; identity — the Premium Member badge and exclusive Premium effects</li>
             <li> Unlimited Ask Vice</li>
             <li> Monthly Vice Credits — 250 every week, 1,000 a month, paid into your personal wallet while your membership is active</li>
-            <li> Exclusive cosmetics — the 3 Premium picks in every crew customisation section (crew badges, crew calling cards / banners including the animated Vice Haze, Dead Palms and Inferno, crew themes, crew emblems and crew colours), including the gold Vice Crest, equippable to any crew you own</li>
+            <li> Exclusive cosmetics — the 3 Premium picks in every crew customisation section (crew badges, crew calling cards / banners including the animated Vice Haze, Dead Palms and Inferno, crew themes, crew emblems and the animated Fire / Lightning / Champion Gold emblem effects), including the gold Vice Crest, equippable to any crew you own — plus the Custom colour tool: any crew colour you like, with Chrome, Gold Chrome, Rose Gold and Iridescent finishes (the named crew colours are free for everyone)</li>
             <li> Early event access — RSVP Going during an event&apos;s first 48 hours</li>
             <li> Display name changes once a month — free members can change theirs once every 3 months (your username stays permanent either way)</li>
             <li> Premium Discord role + private Premium lounge</li>

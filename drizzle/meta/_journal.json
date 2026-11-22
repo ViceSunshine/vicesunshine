@@ -519,6 +519,55 @@
       "when": 1795303059998,
       "tag": "0074_dm_reports_for_owner_moderation_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1795310077460,
+      "tag": "0075_feed_post_media_list_and_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "6",
+      "when": 1795313538718,
+      "tag": "0076_feed_post_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "6",
+      "when": 1795321135561,
+      "tag": "0077_client_error_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "6",
+      "when": 1795323490329,
+      "tag": "0078_feed_post_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "6",
+      "when": 1795330408060,
+      "tag": "0079_crew_activity_cleanup_and_member_dedupe",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "6",
+      "when": 1795333043848,
+      "tag": "0080_crew_colour_finish",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "6",
+      "when": 1795335943536,
+      "tag": "0081_crew_join_weekly_gate_and_chat_requests",
+      "breakpoints": true
     }
   ]
 }
