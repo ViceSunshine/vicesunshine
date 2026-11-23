@@ -14395,7 +14395,7 @@ export const Actions = {
   }),
 
   createGroupChat: defineAction({
-    description: "Creates a group chat. The creator can add ANYONE they follow (any crew, no crew — following is the only rule), up to 30 people; the creator owns the group. Crew chats are separate and automatic — this is only for player-made groups.",
+    description: "Creates a group chat. The creator can add ANY ViceSunshine player (any crew, no crew, followed or not — the picker lists every profile, people they follow and crewmates first), up to 30 people; blocked players either way are refused. The creator owns the group. Crew chats are separate and automatic — this is only for player-made groups.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       name: z.string().trim().max(60).default(""),
@@ -14408,13 +14408,13 @@ export const Actions = {
       const byKey = new Map(profs.map((p) => [p.playerKey, p]));
       const me = byKey.get(args.playerKey);
       if (!me) throw new Error("Create your profile first — group chats only work when you're signed in.");
-      const follows = await db.select().from(schema.profileFollows);
-      const iFollow = new Set(follows.filter((f) => f.followerKey === args.playerKey).map((f) => f.followingKey));
+      const blockedSet = await blockedKeysFor(ctx, args.playerKey);
+      const blockedBySet = await blockedByKeysFor(ctx, args.playerKey);
       const keys = [...new Set(args.memberKeys)].filter((k) => k !== args.playerKey);
-      if (keys.length === 0) throw new Error("Pick at least one person you follow for the group chat.");
+      if (keys.length === 0) throw new Error("Pick at least one person for the group chat.");
       for (const k of keys) {
         if (!byKey.get(k)) throw new Error("One of those players no longer has a profile.");
-        if (!iFollow.has(k)) throw new Error("You can only add people you follow to a group chat.");
+        if (blockedSet.has(k) || blockedBySet.has(k)) throw new Error("One of those players can't be added — you have a block between you.");
       }
       const name = args.name.trim() || [me.gamertag, ...keys.map((k) => byKey.get(k)?.gamertag ?? "")].join(", ").slice(0, 60);
       const res = await db.insert(schema.chatGroups).values({
@@ -14610,7 +14610,7 @@ export const Actions = {
   }),
 
   listDmPeople: defineAction({
-    description: "Lists people the player can start a new direct-message conversation with: every other ViceSunshine profile, people they follow and crewmates first, with search. Used by the Messages page's new-message picker and its blue Send message button.",
+    description: "Lists people the player can start a new direct-message conversation with, or add to a new group chat: every other ViceSunshine profile, people they follow and crewmates first, with search. Used by the Messages page's new-message picker, its blue Send message button, and the group chat's Select people page.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       search: z.string().trim().max(80).default(""),

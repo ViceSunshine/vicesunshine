@@ -663,6 +663,20 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .story-footer .story-bar { padding-bottom: 84px; }
 }
 
+/* Select people (group chat picker) — PHONE ONLY Create bar lift
+   (owner's direction, Nov 23 2026: "Make the create bottom go
+   more up"): the sticky bar carrying the "N people selected"
+   line and the Create group button sat at the very bottom of
+   the screen, where the website / app bottom bar that floats
+   over the page covered the button — only its top edge showed.
+   On phone the bar keeps the same 84px clearance the story bar
+   uses above that floating bar, so the whole button (and the
+   selected line above it) sits clear and tappable. Desktop is
+   unchanged. */
+@media (max-width: 639.98px) {
+  .dm-group-picker .dm-group-create-bar { padding-bottom: 88px; }
+}
+
 /* Home quick actions (Open the Feed / GTA VI Database /
    Latest News) — PHONE ONLY (owner's direction): all four sit next to
    each other in ONE row, made smaller so they fit side by side

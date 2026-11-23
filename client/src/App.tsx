@@ -29233,11 +29233,12 @@ function DmPeoplePicker({ playerKey, onClose, onPick }: { playerKey: string; onC
    pages, so the shell's bars never paint over its header. */
 function DmGroupPicker({ playerKey, onClose, onCreated }: { playerKey: string; onClose: () => void; onCreated: (groupId: number) => void }) {
   const [name, setName] = useState("");
+  const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [error, setError] = useState("");
   const people = useQuery({
-    queryKey: ["dm-followed", playerKey],
-    queryFn: () => api.listFollowedPeople({ playerKey }),
+    queryKey: ["dm-people", playerKey, q],
+    queryFn: () => api.listDmPeople({ playerKey, search: q }),
   });
   const create = useMutation({
     mutationFn: async () => await api.createGroupChat({ playerKey, name: name.trim(), memberKeys: picked }),
@@ -29246,7 +29247,7 @@ function DmGroupPicker({ playerKey, onClose, onCreated }: { playerKey: string; o
   });
   const toggle = (k: string) => setPicked((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]));
   return createPortal((
-    <div className="fixed inset-0 z-[90] overflow-y-auto bg-[var(--bg)]" role="dialog" aria-modal="true" aria-label="Select people — start a new group chat">
+    <div className="dm-group-picker fixed inset-0 z-[90] overflow-y-auto bg-[var(--bg)]" role="dialog" aria-modal="true" aria-label="Select people — start a new group chat">
       <div className="mx-auto flex min-h-full w-full max-w-[640px] flex-col px-4 pb-10 sm:px-5">
         <div className="sticky top-0 z-10 -mx-4 flex items-center gap-2 bg-[var(--bg)] px-4 pb-2 pt-3 sm:-mx-5 sm:px-5">
           <span className="flex h-12 w-12 flex-none items-center justify-start">
@@ -29257,14 +29258,18 @@ function DmGroupPicker({ playerKey, onClose, onCreated }: { playerKey: string; o
           <h3 className="flex-1 text-center text-lg font-extrabold tracking-tight">{uiT("Select people")}</h3>
           <span className="flex h-12 w-12 flex-none items-center justify-end" aria-hidden="true" />
         </div>
-        <p className="pt-1 text-[13.5px] leading-relaxed text-[var(--dim)]">Start a group chat — add anyone you follow, from any crew or none at all. Group chats are separate from crew chats.</p>
+        <p className="pt-1 text-[13.5px] leading-relaxed text-[var(--dim)]">Start a group chat — add anyone on ViceSunshine, from any crew or none at all. People you follow and your crewmates come first. Group chats are separate from crew chats.</p>
         <div className="pt-4">
           <label className="sr-only" htmlFor="dm-group-name">{uiT("Group name (optional)")}</label>
           <input id="dm-group-name" className="field" {...FIELDS.createGroupChat.name} value={name} onChange={(e) => setName(e.target.value)} placeholder={uiT("Group name (optional)")} autoComplete="off" />
         </div>
+        <div className="pt-3">
+          <label className="sr-only" htmlFor="dm-group-search">{uiT("Search people to add")}</label>
+          <input id="dm-group-search" className="field" {...FIELDS.listDmPeople.search} value={q} onChange={(e) => setQ(e.target.value)} placeholder={uiT("Search people…")} autoComplete="off" />
+        </div>
         <div className="flex-1 pt-3">
-          {people.isPending && <p className="py-3 text-sm text-[var(--dim)]">{uiT("Loading people you follow…")}</p>}
-          {people.data && people.data.items.length === 0 && <p className="py-3 text-sm leading-relaxed text-[var(--dim)]">You are not following anyone yet — follow people from their profiles and they will appear here, ready to add.</p>}
+          {people.isPending && <p className="py-3 text-sm text-[var(--dim)]">{uiT("Loading people…")}</p>}
+          {people.data && people.data.items.length === 0 && <p className="py-3 text-sm leading-relaxed text-[var(--dim)]">{q.trim() ? "No players match that search — try a different name." : "No other players found — when more people create profiles, they will appear here, ready to add."}</p>}
           <ul className="grid gap-0.5">
             {people.data?.items.map((person) => {
               const on = picked.includes(person.playerKey);
@@ -29286,7 +29291,7 @@ function DmGroupPicker({ playerKey, onClose, onCreated }: { playerKey: string; o
             })}
           </ul>
         </div>
-        <div className="sticky bottom-0 flex-none bg-[var(--bg)] pb-1 pt-3">
+        <div className="dm-group-create-bar sticky bottom-0 flex-none bg-[var(--bg)] pb-1 pt-3">
           {picked.length > 0 && <p className="mb-2 text-center text-[13px] font-semibold text-[var(--dim)]" aria-live="polite">{picked.length} {picked.length === 1 ? "person" : "people"} selected</p>}
           {error && <p className="mb-2 text-center text-sm font-semibold text-[var(--amber)]" role="alert">{error}</p>}
           <button
@@ -30933,14 +30938,14 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
                 className="dm-chat-row"
                 style={{ borderRadius: 20 }}
                 onClick={() => setGroupPickerOpen(true)}
-                aria-label="Select people — start a new group chat with people you follow"
+                aria-label="Select people — start a new group chat"
               >
                 <span className="flex h-[46px] w-[46px] flex-none items-center justify-center rounded-full bg-[var(--surface3)]" aria-hidden="true">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6M22 11h-6" /></svg>
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-bold">{uiT("Select people")}</span>
-                  <span className="block truncate text-[13px] text-[var(--dim)]">{uiT("Start a group chat with people you follow")}</span>
+                  <span className="block truncate text-[13px] text-[var(--dim)]">{uiT("Start a group chat — pick anyone")}</span>
                 </span>
                 <span className="flex-none text-xl text-[var(--dim)]" aria-hidden="true">›</span>
               </button>
