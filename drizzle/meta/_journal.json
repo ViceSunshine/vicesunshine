@@ -568,6 +568,104 @@
       "when": 1795335943536,
       "tag": "0081_crew_join_weekly_gate_and_chat_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "6",
+      "when": 1795369818685,
+      "tag": "0082_update_discord_invite_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "6",
+      "when": 1795371535639,
+      "tag": "0083_crew_leave_history_for_weekly_join_gate",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "6",
+      "when": 1795392096019,
+      "tag": "0084_event_join_modes_and_crew_chat_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "6",
+      "when": 1795393215717,
+      "tag": "0085_premium_welcome_granted_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "6",
+      "when": 1795396420024,
+      "tag": "0086_crew_invite_cards_in_direct_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "6",
+      "when": 1795402899541,
+      "tag": "0087_profile_number_visibility_switches",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "6",
+      "when": 1795410900328,
+      "tag": "0088_event_party_limit_30",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "6",
+      "when": 1795413906224,
+      "tag": "0089_event_free_passes_per_member",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "6",
+      "when": 1795421137269,
+      "tag": "0090_ui_translations_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "6",
+      "when": 1795430088142,
+      "tag": "0091_host_counts_as_first_event_member",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "6",
+      "when": 1795432581131,
+      "tag": "0092_event_join_request_cards_in_event_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "6",
+      "when": 1795458521669,
+      "tag": "0093_stripe_payments_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "6",
+      "when": 1795463813617,
+      "tag": "0094_event_invite_cards_in_direct_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "6",
+      "when": 1795465310079,
+      "tag": "0095_owner_million_credits_saved_for_official_site",
+      "breakpoints": true
     }
   ]
 }

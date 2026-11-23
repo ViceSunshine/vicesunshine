@@ -241,17 +241,23 @@ export const profiles = sqliteTable("profiles", {
   // bold COD-calling-card-style banner shown on the profile. "" =
   // none equipped.
   callingCard: text("calling_card").notNull().default(""),
-  // Premium weekly credits: the anchor date the current Premium period
-  // started, and how many weekly 250-credit grants it has already paid.
-  // Null anchor = Premium not currently active (lapsed weeks are never
-  // paid retroactively — a renewal starts a fresh anchor).
+  // Premium period anchor: the date the current Premium period
+  // started. Null anchor = Premium not currently active.
+  // premiumWeeksGranted is legacy: it counted the old weekly
+  // 250-credit grants, which were removed Nov 22 2026 (no recurring
+  // Vice Credits grant anymore) — the column stays so old rows keep
+  // reading, and it is only ever reset to 0 now, never paid from.
   premiumSince: integer("premium_since", { mode: "timestamp_ms" }),
   premiumWeeksGranted: integer("premium_weeks_granted").notNull().default(0),
-  // Set when the member cancels Premium: Premium (and its weekly
-  // credits) stays active until this instant — the end of the paid
-  // month — then lapses lazily on the next wallet/profile read. Null =
-  // not cancelling. No retroactive grants ever happen after a lapse.
+  // Set when the member cancels Premium: Premium stays active until
+  // this instant — the end of the paid month — then lapses lazily on
+  // the next wallet/profile read. Null = not cancelling.
   premiumEndsAt: integer("premium_ends_at", { mode: "timestamp_ms" }),
+  // One-time Premium welcome award (owner's direction, Nov 22 2026):
+  // going Premium pays 1,000 Vice Credits ONCE per account. 0 = not
+  // yet paid, 1 = paid. Never reset — a lapse and renewal never pays
+  // it a second time.
+  premiumWelcomeGranted: integer("premium_welcome_granted").notNull().default(0),
   // Settings (migration 0021): display name + bio, contact email (for
   // receipts / support — there is no password sign-in in ViceSunshine;
   // identity is the device player key), privacy and notification
@@ -288,6 +294,16 @@ export const profiles = sqliteTable("profiles", {
   // starts ON because a set location already showed publicly.
   showDob: integer("show_dob").notNull().default(0),
   showLocation: integer("show_location").notNull().default(1),
+  // Number visibility switches (migration 0087, owner's
+  // direction Nov 22 2026): the eye toggles on the Profile's
+  // Personal Wallet and Events Attended boxes. Both start ON
+  // (the numbers showed before, so existing rows keep exactly
+  // what they had). OFF hides the number: the wallet balance —
+  // which only the owner ever receives — renders masked on the
+  // owner's own profile, and the Events Attended count stops
+  // being sent to other viewers at all (they see "Hidden").
+  showWalletNumber: integer("show_wallet_number").notNull().default(1),
+  showEventsNumber: integer("show_events_number").notNull().default(1),
   // LEGACY personal tag column (migration 0060) — no longer read
   // or written by any action. The personal tag was removed
   // (owner's direction, Nov 21 2026): there is no tag on a profile.
@@ -479,8 +495,12 @@ export const clanApplications = sqliteTable("clan_applications", {
     .notNull()
     .default("Pending"),
   // What kind of ask this row is (migration 0081): "application"
-  // is the classic flow for Application / Invite-Only crews
-  // (Leader or Co-Leader reviews it on the crew page).
+  // is the classic flow for Application (request-only) crews
+  // (Leader or Co-Leader reviews it on the crew page). Private
+  // (Invite-Only) crews file the SAME kind of row (owner's
+  // definition, Nov 22 2026: "private" means send a request with
+  // a text bar to explain why) — joinClan files the player's ask
+  // here with their message, and only an approval puts them in.
   // "join_request" is the anti-spam flow for PUBLIC crews: a
   // player who has already used their one direct crew join this
   // week, or who was in this crew before and left, cannot join
@@ -512,6 +532,24 @@ export const crewJoinHistory = sqliteTable("crew_join_history", {
     .notNull()
     .default("direct"),
   joinedAt: ts("joined_at"),
+});
+
+// Every VOLUNTARY crew leave, kept forever (migration 0083) —
+// the owner's anti-spam rule is anchored on LEAVING: leaving ANY
+// crew starts a 7-day wait before the player can join ANY crew
+// again (not just the crew they left). Staying in a crew records
+// nothing and changes nothing. Kicks are NOT recorded here —
+// being removed is not leaving; a kicked player's way back into
+// that one crew is already governed by the join history's
+// "returning" rule. Written by leaveClan on every voluntary
+// path: a member leaving, a Leader leaving (leadership passes
+// on), and a sole Leader leaving (the crew dissolves).
+export const crewLeaveHistory = sqliteTable("crew_leave_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  clanId: integer("clan_id").notNull(),
+  playerKey: text("player_key").notNull(),
+  gamertag: text("gamertag").notNull().default(""),
+  leftAt: ts("left_at"),
 });
 
 export const clanPosts = sqliteTable("clan_posts", {
@@ -587,7 +625,13 @@ export const events = sqliteTable("events", {
   // of the host clan (clan_id) and the host. Hashtags are stored
   // normalised ("carmeet race") so players can find events by name
   // OR by hashtag. host_clan_name snapshots the hosting clan's name.
-  visibility: text("visibility", { enum: ["Public", "Private"] })
+  // "Request" (owner's direction, Nov 22 2026) is the third join
+  // mode the hosting crew's Leader picks at creation: the event is
+  // listed for everyone like a Public one, the host crew joins
+  // right away, and players from OTHER crews ask to join — the
+  // Leader approves or declines each ask (event_join_requests)
+  // before the player is on the Going list and in the event chat.
+  visibility: text("visibility", { enum: ["Public", "Private", "Request"] })
     .notNull()
     .default("Public"),
   hashtags: text("hashtags").notNull().default(""),
@@ -615,6 +659,50 @@ export const rsvps = sqliteTable("rsvps", {
   status: text("status", { enum: ["Going", "Maybe", "Can't Go"] })
     .notNull()
     .default("Going"),
+  createdAt: ts("created_at"),
+});
+
+// The free weekly Community Event pass, per PLAYER (owner's
+// direction, Nov 22 2026): when a crew creates an event, the free
+// pass counts as used for EVERY member of that crew — one row per
+// player, stamped with the moment of that crew's most recent
+// event — and it resets a week later. This is what stops a Leader
+// handing leadership to another member to keep creating free
+// events: the new Leader's pass was used by the same event.
+export const eventFreePasses = sqliteTable("event_free_passes", {
+  playerKey: text("player_key").primaryKey(),
+  lastUsedAt: ts("last_used_at"),
+  lastTitle: text("last_title").notNull().default(""),
+  lastClanId: integer("last_clan_id"),
+});
+
+// Asks to join a "Request"-mode Community Event (migration 0084).
+// One row per player per event: Pending until the hosting crew's
+// Leader approves (the player gets an RSVP Going and lands in the
+// event chat) or declines (they cannot ask again). The host crew's
+// own members never need a row — they join their crew's events
+// directly, like Public and Private ones.
+export const eventJoinRequests = sqliteTable("event_join_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: integer("event_id").notNull(),
+  playerKey: text("player_key").notNull(),
+  gamertag: text("gamertag").notNull().default(""),
+  status: text("status", { enum: ["Pending", "Approved", "Declined"] })
+    .notNull()
+    .default("Pending"),
+  createdAt: ts("created_at"),
+});
+
+// "Not participate" taps on an event announcement card in a crew
+// chat (migration 0084): one row per player per event means that
+// player never sees that event's card in the crew chat again —
+// the card disappears for them alone; everyone else still sees
+// it, and the player can still join the event from the Events
+// page whenever they want.
+export const eventCardDismissals = sqliteTable("event_card_dismissals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: integer("event_id").notNull(),
+  playerKey: text("player_key").notNull(),
   createdAt: ts("created_at"),
 });
 
@@ -1242,6 +1330,49 @@ export const paymentMethods = sqliteTable("payment_methods", {
   createdAt: ts("created_at"),
 });
 
+// ---- Stripe Premium payments (migration 0093) ----
+// One row per Stripe subscription a sync has VERIFIED in the
+// owner's live Stripe account (product prod_Vg7UFc35Fy0oOi,
+// "ViceSunshine Premium"). Rows are written only by
+// recordStripePremiumPayment, which is called by the Stripe sync
+// tasks after they read the subscription from Stripe itself —
+// never from a client claim that a payment happened. The row is
+// the site's durable link between a player and their real
+// subscription: it drives the wallet payment history, the Owner
+// Dashboard revenue total (totalPaidCents is the lifetime amount
+// Stripe reports as actually paid on the subscription, in the
+// smallest unit of `currency`), and the Stripe-side cancel /
+// resume tasks. No card or bank detail ever appears here — only
+// Stripe's own object ids.
+export const stripePayments = sqliteTable("stripe_payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerKey: text("player_key").notNull().default(""),
+  // The email the Stripe customer / checkout used — the match key
+  // between a Stripe payment and a ViceSunshine account (the
+  // player's contact email on their profile).
+  email: text("email").notNull().default(""),
+  stripeCustomerId: text("stripe_customer_id").notNull().default(""),
+  stripeSubscriptionId: text("stripe_subscription_id").notNull().default(""),
+  stripeSessionId: text("stripe_session_id").notNull().default(""),
+  // ISO currency code of the price paid (USD / CAD / GBP / EUR /
+  // AUD — the five live Stripe prices).
+  currency: text("currency").notNull().default("USD"),
+  // The subscription's monthly amount, smallest currency unit.
+  amountCents: integer("amount_cents").notNull().default(0),
+  // Lifetime amount Stripe reports as paid on this subscription,
+  // smallest currency unit — the honest revenue figure.
+  totalPaidCents: integer("total_paid_cents").notNull().default(0),
+  // Stripe's own subscription status: active / trialing /
+  // past_due / canceled / unpaid / incomplete / paused.
+  status: text("status").notNull().default("active"),
+  cancelAtPeriodEnd: integer("cancel_at_period_end").notNull().default(0),
+  // Current paid period as ISO dates (YYYY-MM-DD), from Stripe.
+  periodStart: text("period_start").notNull().default(""),
+  periodEnd: text("period_end").notNull().default(""),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
 // Players who have joined the ViceSunshine Discord server. A row here
 // means the Discord card on the Community Feed never shows for that
 // player again — the card is only for people who have not joined yet.
@@ -1331,6 +1462,47 @@ export const directMessages = sqliteTable("direct_messages", {
   // state is read live from the application row, so an answered
   // card shows Accepted / Declined forever after.
   joinRequestId: integer("join_request_id").notNull().default(0),
+  // Event announcement cards (migration 0084): >0 on a system
+  // message inside a CREW chat means this message IS the card
+  // announcing that Community Event to the hosting crew — posted
+  // by createEvent the moment the crew's Leader creates the
+  // event. The crew chat renders it with Participate / Not
+  // participate: Participate RSVPs the tapper Going (which puts
+  // them in the event's own group chat, exactly like a crew
+  // chat), and Not participate records an event_card_dismissals
+  // row so the card disappears for that player alone.
+  eventCardId: integer("event_card_id").notNull().default(0),
+  // Event join-request cards (migration 0092): >0 on a system
+  // message inside an EVENT chat means this message IS the card
+  // for that event_join_requests row — posted by rsvpEvent the
+  // moment a player from outside the host crew asks to join a
+  // Request-mode event. The event chat renders it with Confirm /
+  // Decline for the event's manager (the host or the hosting
+  // crew's Leader), and its state is read live from the ask row,
+  // exactly like the crew chat's join-request cards above.
+  eventJoinRequestId: integer("event_join_request_id").notNull().default(0),
+  // Crew invite cards (migration 0086): >0 on a one-to-one DM
+  // means this message IS a crew invite card for that clan — sent
+  // from a crew's Share sheet (sendCrewInviteDm). The DM thread
+  // renders it as a welcoming box carrying the crew's banner and
+  // emblem: Accept / Decline when the crew is public, or a
+  // "tell the Leader why you want in" text bar + Request button
+  // when the crew is private or request-only. crewInviteState
+  // records the recipient's Decline ("declined"); whether they
+  // joined, or have a request waiting, is read live from the
+  // crew's own rows, never stored here.
+  crewInviteId: integer("crew_invite_id").notNull().default(0),
+  crewInviteState: text("crew_invite_state").notNull().default(""),
+  // Event invite cards: >0 on a one-to-one DM means this
+  // message IS an event invite card for that event — sent from
+  // an event's Share sheet ("Send it in Messages",
+  // sendEventInviteDm). The DM thread renders it with the same
+  // welcoming invite-box design as a crew invite: the event's
+  // picture as the banner, its title, host and start time, and
+  // the reader's answer on the card (Join RSVPs them Going
+  // through rsvpEvent). Whether they joined is read live from
+  // the event's own RSVP rows, never stored here.
+  eventInviteId: integer("event_invite_id").notNull().default(0),
   createdAt: ts("created_at"),
 });
 
@@ -1447,5 +1619,17 @@ export const discordRoleSync = sqliteTable("discord_role_sync", {
     .default("pending"),
   botNote: text("bot_note").notNull().default(""),
   createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// UI translation cache (Settings → Languages): one row per
+// language, holding the JSON map of ViceSunshine's interface
+// strings translated into that language. Filled once per
+// language by getUiTranslations (model translation), then read
+// by every device that picks the language — so a language is
+// only ever translated a single time.
+export const uiTranslations = sqliteTable("ui_translations", {
+  language: text("language").primaryKey(),
+  data: text("data").notNull().default("{}"),
   updatedAt: ts("updated_at"),
 });

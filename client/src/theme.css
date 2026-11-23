@@ -16,25 +16,31 @@
 }
 
 /* Phone type scale (owner's direction, Nov 21 2026 quality
-   pass): the phone reads as a MINI LAPTOP — the same layout and
-   hierarchy as the desktop, one balanced step smaller. Not the
-   earlier over-minimised scale (too small to read comfortably)
-   and not desktop size (too big for the width): body text sits
-   at 15px, small text at 13px, and display sizes step down in
-   the same proportions as the laptop scale so alignment and
-   rhythm match on both. Desktop sizes are untouched. Form
-   fields keep their own 16px (see .field), so inputs never
-   trigger focus zoom. */
+   pass, stepped down Nov 22 2026 and once more the same day):
+   the phone reads as a MINI LAPTOP — the same layout and
+   hierarchy as the desktop, smaller across the board so more
+   of every page fits the phone while staying crisp and
+   spacious: body text now sits at 13px, small text at 11.5px,
+   and display sizes step down in the same proportions as the
+   laptop scale so alignment and rhythm match on both. This
+   last step takes the TYPE down only — the spacing unit
+   stays at 0.21875rem, so the boxes keep their air and the
+   smaller letters sit in the same breathing room: that is
+   what makes it read spacious and premium rather than
+   cramped. Desktop sizes are untouched. Form fields keep
+   their own 16px (see .field), so inputs never trigger
+   focus zoom. */
 @media (max-width: 640px) {
   :root {
-    --text-xs: 11.5px; --text-xs--line-height: 17px;
-    --text-sm: 13px; --text-sm--line-height: 20px;
-    --text-base: 15px; --text-base--line-height: 24px;
-    --text-lg: 17px; --text-lg--line-height: 26px;
-    --text-xl: 19px; --text-xl--line-height: 28px;
-    --text-2xl: 24px; --text-2xl--line-height: 31px;
-    --text-3xl: 29px; --text-3xl--line-height: 35px;
-    --text-4xl: 36px; --text-4xl--line-height: 41px;
+    --text-xs: 10px; --text-xs--line-height: 15px;
+    --text-sm: 11.5px; --text-sm--line-height: 18px;
+    --text-base: 13px; --text-base--line-height: 21px;
+    --text-lg: 14.5px; --text-lg--line-height: 23px;
+    --text-xl: 16px; --text-xl--line-height: 24px;
+    --text-2xl: 19.5px; --text-2xl--line-height: 26px;
+    --text-3xl: 23px; --text-3xl--line-height: 29px;
+    --text-4xl: 28px; --text-4xl--line-height: 33px;
+    --spacing: 0.21875rem;
   }
   /* A long unbroken word in a heading (a username, a place name)
      wraps instead of painting over whatever sits beside it. */
@@ -111,8 +117,16 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .neon-pink { color: var(--accent); text-shadow: none; }
 .neon-teal { color: var(--accent2); text-shadow: none; }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
-.card-elevated { background: linear-gradient(180deg, #171724, #13131e); border: 1px solid var(--border); border-radius: 20px; }
+/* Card boxes — ONE colour everywhere (owner's direction, Nov 22
+   2026): every box in the app wears the main page's box colours —
+   the dark navy surface warmed with a faint hot-pink / neon-purple
+   wash and a purple-tinted border instead of plain grey. This
+   started as the Home boxes' theme (see .home-themed below) and
+   the owner asked for the Map's boxes — and every box like them
+   across the site — to match it, so the style now lives on the
+   shared .card itself and Home simply inherits it. */
+.card { background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface); border: 1px solid rgba(157, 78, 221, 0.30); border-radius: var(--radius); }
+.card-elevated { background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), linear-gradient(180deg, #171724, #13131e); border: 1px solid rgba(157, 78, 221, 0.30); border-radius: 20px; }
 
 .chip {
   border: 1px solid var(--border); border-radius: 999px; padding: 8px 16px;
@@ -148,20 +162,6 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .btn-pale:disabled { opacity: 0.5; }
 .card-big { border-radius: 24px; }
 
-/* Ideas intro hero — a short, wide CALLING-CARD banner, not a
-   tall card: a 2px sunset gradient frame (hot pink → neon purple
-   → teal) with a soft neon glow around it, the art stretched
-   full-bleed across the whole banner, and a deep navy gradient
-   over the left side carrying the smaller title, short text and
-   one row of compact buttons. Low height (about a third of the
-   old stacked hero) so it reads as a separate part from the idea
-   cards below it. */
-.ideas-hero-frame {
-  border-radius: 24px; padding: 2px;
-  background: linear-gradient(120deg, #ff2e88, #9b5de5 45%, #2dd4bf);
-  box-shadow: 0 0 55px rgba(255, 46, 136, 0.28), 0 0 90px rgba(155, 93, 229, 0.16);
-}
-.ideas-hero-inner { border-radius: 22px; overflow: hidden; background: #0b0b1e; }
 /* Saved hero fade (owner's direction): the picture is at full
    strength at the top of the page and melts away as it goes down —
    a mask gradient, so the artwork dissolves into the page
@@ -189,10 +189,10 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 }
 .btn-ghost:disabled { opacity: 0.5; }
 
-/* Compact button size — used in tight horizontal banners like the
-   Ideas calling-card hero, where the standard 44-48px pills would
-   make the banner tall again. Declared after .btn-primary /
-   .btn-ghost so it wins at equal specificity. */
+/* Compact button size — used in tight horizontal banners, where
+   the standard 44-48px pills would make the banner tall again.
+   Declared after .btn-primary / .btn-ghost so it wins at equal
+   specificity. */
 .btn-compact { padding: 7px 14px; min-height: 36px; font-size: 13px; }
 
 /* Easter Eggs page — PHONE ONLY compact sizing (owner's direction):
@@ -220,21 +220,6 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .news-view .chip { padding: 6px 11px; min-height: 36px; font-size: 12px; }
   .news-card-actions .btn-ghost { min-height: 36px !important; padding: 5px 10px !important; font-size: 11.5px !important; }
   .news-card-actions > span > span { font-size: 9.5px; }
-}
-
-/* Ideas page — PHONE ONLY mini sizing (owner's direction): the Ideas
-   page reads as a mini version of the laptop — same layout, style and
-   order, just smaller boxes and shorter text. The shared Save button
-   (inline styles) goes compact inside idea cards, and the official
-   source-check card at the bottom shrinks to match. At 640px and up
-   nothing here applies and the page keeps its full laptop sizing.
-   Scoped to .ideas-view so no other page changes. */
-@media (max-width: 639.98px) {
-  .ideas-view .idea-card-actions .btn-ghost { min-height: 36px !important; padding: 5px 10px !important; font-size: 11.5px !important; }
-  .ideas-view .ideas-verify .card { padding: 14px; margin-bottom: 12px; }
-  .ideas-view .ideas-verify h3 { font-size: 15px; }
-  .ideas-view .ideas-verify p { font-size: 12px; line-height: 1.5; }
-  .ideas-view .ideas-verify .btn-primary { min-height: 40px; padding: 8px 16px; font-size: 13px; }
 }
 
 /* Map page — PHONE ONLY mini sizing (owner's direction): the Map
@@ -265,6 +250,49 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .bugs-view .bug-card-actions .btn-ghost { min-height: 36px !important; padding: 5px 10px !important; font-size: 11.5px !important; }
 }
 
+/* Phone fixed-pixel text (owner's direction, Nov 22 2026,
+   stepped down once more the same day): much of the app
+   sizes text with fixed-pixel utility classes (text-[15px],
+   text-[13px]…), which the type scale above cannot reach.
+   On the phone each of those steps down the same balanced
+   notch as the scale — roughly 1.5px on body sizes, more on
+   display sizes — so EVERY page's text shrinks together,
+   not just the pages with their own mini block below. The
+   11.5px and 12px classes step down this time too (to 10.5
+   and 11); sizes of 11px and under are already micro labels
+   (timestamps, badges) and stay as they are so nothing goes
+   illegible. The per-page blocks below keep the last word
+   wherever they set a size of their own (their scoped
+   selectors outrank these single-attribute ones). No
+   !important: an element's own inline font size still wins,
+   exactly as it does on the laptop. */
+@media (max-width: 639.98px) {
+  [class~="text-[11.5px]"] { font-size: 10.5px; }
+  [class~="text-[12px]"] { font-size: 11px; }
+  [class~="text-[12.5px]"] { font-size: 11px; }
+  [class~="text-[13px]"] { font-size: 11.5px; }
+  [class~="text-[13.5px]"] { font-size: 12px; }
+  [class~="text-[14px]"] { font-size: 12.5px; }
+  [class~="text-[14.5px]"] { font-size: 13px; }
+  [class~="text-[15px]"] { font-size: 13.5px; }
+  [class~="text-[15.5px]"] { font-size: 14px; }
+  [class~="text-[16px]"] { font-size: 14.5px; }
+  [class~="text-[17px]"] { font-size: 15px; }
+  [class~="text-[18px]"] { font-size: 16px; }
+  [class~="text-[19px]"] { font-size: 16.5px; }
+  [class~="text-[20px]"] { font-size: 17.5px; }
+  [class~="text-[21px]"] { font-size: 18px; }
+  [class~="text-[22px]"] { font-size: 19px; }
+  [class~="text-[24px]"] { font-size: 20.5px; }
+  [class~="text-[26px]"] { font-size: 22px; }
+  [class~="text-[28px]"] { font-size: 24px; }
+  [class~="text-[30px]"] { font-size: 25.5px; }
+  [class~="text-[32px]"] { font-size: 27px; }
+  [class~="text-[38px]"] { font-size: 31px; }
+  [class~="text-[40px]"] { font-size: 33px; }
+  [class~="text-[44px]"] { font-size: 36px; }
+}
+
 /* Site-wide phone mini (owner's direction, Nov 21 2026): every
    page that had not had the treatment yet gets it here — Home,
    the Feed, Updates, Guides, Events, Crews, Discord, Saved,
@@ -275,7 +303,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
    nicely. Every rule is phone-only and scoped to its page's view
    class; at 640px and up nothing here applies and the laptop
    keeps its full sizing exactly. Pages already done (Easter
-   Eggs, News, Ideas, Map, Bugs) keep their own blocks above and
+   Eggs, News, Map, Bugs) keep their own blocks above and
    are not touched here. */
 @media (max-width: 639.98px) {
   /* Shared primitives — the filter chips and standard pill
@@ -312,12 +340,12 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .leaderboard-view .btn-pale:not(.btn-compact), .leaderboard-view .btn-vice:not(.btn-compact),
   .messages-view .btn-primary:not(.btn-compact), .messages-view .btn-ghost:not(.btn-compact),
   .messages-view .btn-pale:not(.btn-compact), .messages-view .btn-vice:not(.btn-compact) {
-    min-height: 40px; padding: 8px 16px; font-size: 13.5px;
+    min-height: 38px; padding: 7px 15px; font-size: 12.5px;
   }
   /* The grey / blue profile-style buttons (Profile's Edit /
      Share row, Messages and sheets) step down with everything
      else. */
-  .btn-grey, .btn-blue { min-height: 38px; padding: 7px 14px; font-size: 13px; border-radius: 9px; }
+  .btn-grey, .btn-blue { min-height: 36px; padding: 6px 13px; font-size: 12px; border-radius: 9px; }
   /* Page titles: smaller, with less air under them. */
   .updates-view .section-title, .guides-view .section-title, .events-view .section-title,
   .clans-view .section-title, .discord-view .section-title, .saved-view .section-title,
@@ -327,7 +355,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .updates-view .section-title h2, .guides-view .section-title h2, .events-view .section-title h2,
   .clans-view .section-title h2, .discord-view .section-title h2, .saved-view .section-title h2,
   .premium-view .section-title h2, .database-view .section-title h2, .leaderboard-view .section-title h2 {
-    font-size: 21px; line-height: 1.2;
+    font-size: 19px; line-height: 1.2;
   }
   .updates-view .section-title p, .guides-view .section-title p, .events-view .section-title p,
   .clans-view .section-title p, .discord-view .section-title p, .saved-view .section-title p,
@@ -352,12 +380,141 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .status-view .btn-primary:not(.btn-compact), .status-view .btn-ghost:not(.btn-compact),
   .search-view .btn-primary:not(.btn-compact), .search-view .btn-ghost:not(.btn-compact),
   .notifications-view .btn-primary:not(.btn-compact), .notifications-view .btn-ghost:not(.btn-compact) {
-    min-height: 40px; padding: 8px 16px; font-size: 13.5px;
+    min-height: 38px; padding: 7px 15px; font-size: 12.5px;
   }
   .history-view .section-title, .status-view .section-title, .search-view .section-title, .notifications-view .section-title { margin-bottom: 10px; }
-  .history-view .section-title h2, .status-view .section-title h2, .search-view .section-title h2, .notifications-view .section-title h2 { font-size: 21px; line-height: 1.2; }
+  .history-view .section-title h2, .status-view .section-title h2, .search-view .section-title h2, .notifications-view .section-title h2 { font-size: 19px; line-height: 1.2; }
   .history-view .section-title p, .status-view .section-title p, .search-view .section-title p, .notifications-view .section-title p { font-size: 12px; line-height: 1.5; }
   .history-view .card, .status-view .card, .search-view .card, .notifications-view .card { padding: 14px; }
+}
+
+/* Crews — PHONE ONLY mini sizing (owner's direction, Nov 22 2026):
+   the Crews page on the phone reads as a mini version of the
+   laptop — same layout, style and order, just smaller and tidier:
+   a shorter hero banner whose title no longer clips, a compact
+   founder panel, smaller live-activity rows, compact playstyle
+   tiles and search, and the crew directory in TWO side-by-side
+   mini cards per row exactly like the laptop grid, each card
+   scaled down as one piece (shorter header, smaller emblem,
+   tighter stat tiles and buttons). The Community Events promo
+   at the foot of the page shrinks to match. At 640px and up
+   nothing here applies and the page keeps its full laptop
+   sizing. Scoped to .clans-view so no other page changes; the
+   crew-card header previews inside the founder form and Crew
+   Settings keep their full size, as honest previews should. */
+@media (max-width: 639.98px) {
+  /* View switcher (My crew / Discover crews) sits tighter. */
+  .clans-view [role="tablist"] { margin-bottom: 12px; gap: 6px; }
+  .clans-view [role="tablist"] .btn-game,
+  .clans-view [role="tablist"] .btn-ghost { min-height: 36px; padding: 6px 14px; font-size: 12.5px; }
+  /* Hero banner: shorter picture, tighter overlay copy, compact
+     stat pills — the whole banner fits the phone screen without
+     the title clipping at the top. */
+  .clans-view .clans-hero { border-radius: 18px; }
+  .clans-view .clans-hero-img { height: 134px; }
+  .clans-view .clans-hero-body { padding: 10px 12px 12px; }
+  .clans-view .clans-hero-body h2 { font-size: 19px; line-height: 1.15; }
+  .clans-view .clans-hero-body p {
+    font-size: 11.5px; line-height: 1.45; margin-top: 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .clans-view .clans-hero-body > div { margin-top: 8px; gap: 6px; }
+  .clans-view .clans-hero-body .trophy-pill { font-size: 11px; padding: 4px 9px; }
+  /* The "set your gamertag" notice steps down with the page. */
+  .clans-view > p { margin-top: 12px; padding: 10px 12px; font-size: 12px; line-height: 1.5; }
+  /* Founder panel: tighter padding, smaller display heading and
+     body, and the Create button (its size is an inline style)
+     compacts to match. */
+  .clans-view .clans-founder { margin-top: 12px; padding: 14px 16px; border-radius: 18px; }
+  .clans-view .clans-founder > p:first-of-type { font-size: 10px; letter-spacing: 0.18em; }
+  .clans-view .clans-founder h3 { font-size: 19px; line-height: 1.15; margin-top: 4px; }
+  .clans-view .clans-founder > p:nth-of-type(2) { font-size: 12px; line-height: 1.5; margin-top: 6px; }
+  .clans-view .clans-founder > div { margin-top: 10px; gap: 8px; }
+  .clans-view .clans-founder .btn-game { min-height: 38px !important; padding: 7px 16px !important; font-size: 13.5px !important; }
+  .clans-view .clans-founder > div > span { font-size: 11.5px; line-height: 1.4; }
+  /* Live crew activity: tighter card, smaller rows. */
+  .clans-view .clans-live { margin-top: 12px; padding: 12px 14px; border-radius: 14px; }
+  .clans-view .clans-live h3 { font-size: 13px; }
+  .clans-view .clans-live ul { margin-top: 8px; gap: 6px; }
+  .clans-view .clans-live li { font-size: 12px; gap: 8px; }
+  .clans-view .clans-live li > span:last-child { font-size: 11px; }
+  /* Browse heading and intro step down, closer to the filters. */
+  .clans-view .clans-browse-title { margin-top: 20px; font-size: 17px; }
+  .clans-view .clans-browse-sub { font-size: 12px; line-height: 1.5; }
+  /* Playstyle tiles: the laptop's one row of six becomes the
+     phone's tidy 3 × 2 at mini height. */
+  .clans-view .clans-filter-grid { margin-top: 12px; gap: 6px; }
+  .clans-view .picker-tile { min-height: 48px; padding: 8px 4px; font-size: 11.5px; border-radius: 12px; gap: 2px; }
+  /* Search field: shorter, in line with the mini grid. */
+  .clans-view .clans-search { min-height: 42px; padding: 8px 12px; margin-top: 10px; border-radius: 11px; }
+  /* Directory: two mini cards per row, like the laptop. */
+  .clans-view .clans-grid { grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .clans-view .clan-card { border-radius: 14px; }
+  .clans-view .crew-card-header { height: 138px !important; padding: 10px 8px 8px; }
+  .clans-view .crew-card-emblem { transform: scale(0.6); margin: -19px 0; }
+  .clans-view .crew-card-header h3 { font-size: 13.5px; margin-top: 2px; }
+  .clans-view .crew-card-header p { font-size: 11px; }
+  .clans-view .crew-card-header > div:last-child { margin-top: 6px; gap: 4px; font-size: 9.5px; }
+  .clans-view .crew-card-header > div:last-child span { padding: 2px 7px; }
+  .clans-view .clan-card-body { padding: 10px; }
+  .clans-view .clan-card-body .stat-tile { padding: 8px 4px; border-radius: 10px; }
+  .clans-view .clan-card-body .stat-tile .num { font-size: 15px; }
+  .clans-view .clan-card-body .stat-tile .lbl { font-size: 9.5px; margin-top: 2px; }
+  .clans-view .clan-card-body > p { font-size: 10px; margin-top: 8px; }
+  .clans-view .clan-card-body > div { margin-top: 8px; }
+  .clans-view .clan-card-body > div:last-child { margin-top: auto; padding-top: 10px; gap: 6px; }
+  .clans-view .clan-card-body .btn-ghost,
+  .clans-view .clan-card-body .btn-game { min-height: 36px !important; padding: 6px 8px !important; font-size: 12px !important; }
+  /* Community Events promo: shorter banner, tighter body. */
+  .clans-view .clans-events-promo { margin-top: 16px; border-radius: 14px; }
+  .clans-view .clans-events-img { height: 96px; }
+  .clans-view .clans-events-head { padding: 10px 12px 12px; }
+  .clans-view .clans-events-head h3 { font-size: 16px; }
+  .clans-view .clans-events-head p {
+    font-size: 11.5px; line-height: 1.45; margin-top: 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .clans-view .clans-events-body { padding: 12px 14px 14px; }
+  .clans-view .clans-events-body p { font-size: 12px; line-height: 1.5; }
+  .clans-view .clans-events-body .btn-primary { margin-top: 10px; }
+}
+
+/* Crew member rows — PHONE ONLY mini sizing (owner's direction,
+   Nov 22 2026: smaller phone type, spacious and premium — the
+   crew page's Members list and the Members tab roster, which
+   share renderMemberRow): the row's avatar steps down from
+   38px to 32px (its size is an inline style on .avatar-fx-wrap,
+   compacted here), the row padding tightens a touch, and the
+   coloured role chip on the right shrinks from a 34px pill to
+   a 27px one. The name and the platform / joined line already
+   step down with the fixed-pixel map above (15px → 13.5px,
+   12px → 11px). The chat Members box rows use their own
+   markup and are untouched here. At 640px and up nothing here
+   applies and the laptop keeps its full sizing. */
+@media (max-width: 639.98px) {
+  .crew-member-row { padding: 8px 10px; gap: 8px; }
+  .crew-member-row .avatar-fx-wrap { width: 32px !important; height: 32px !important; }
+  .crew-member-row .crew-role-chip { min-height: 27px !important; padding: 3px 10px; }
+}
+
+/* Crew page stat tiles — PHONE ONLY mini sizing (owner's
+   direction, Nov 22 2026: "align the boxes more, minimize text
+   — the phone looks identical but a mini version of the
+   laptop"): the crew header's four boxes (About, Members,
+   Events, Crew wallet) stay in the SAME one row of four as the
+   laptop instead of wrapping 2 × 2, with every part stepped
+   down — tighter gaps and padding, a 62px tile instead of
+   96px, smaller numbers, labels and hints — and their words
+   are already cut short in the markup, so the mini row reads
+   at a glance and all four boxes stay one even height. At
+   640px and up nothing here applies and the laptop keeps its
+   full sizing. */
+@media (max-width: 639.98px) {
+  .clan-home .crew-stat-tiles { gap: 6px; margin-top: 18px; }
+  .clan-home .crew-stat-tiles .stat-tile { padding: 8px 3px; border-radius: 10px; min-height: 62px; }
+  .clan-home .crew-stat-tiles .stat-tile .num { font-size: 14.5px; }
+  .clan-home .crew-stat-tiles .stat-tile .lbl { font-size: 8.5px; margin-top: 2px; letter-spacing: 0.04em; }
+  .clan-home .crew-stat-tiles .stat-tile .open-hint { font-size: 8.5px; margin-top: 3px; letter-spacing: 0.05em; }
 }
 
 /* Feed — PHONE ONLY mini sizing (owner's example, Nov 21 2026):
@@ -368,7 +525,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
    laptop), and each post card gets tighter spacing and a smaller
    title. The story circles shrink in their own block below. */
 @media (max-width: 639.98px) {
-  .feed-view [role="tab"] { font-size: 13.5px; }
+  .feed-view [role="tab"] { font-size: 12.5px; }
   .feed-view .chip { min-height: 32px !important; padding: 3px 10px !important; font-size: 11.5px !important; }
   .feed-explainer { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .feed-view article { padding-top: 20px; padding-bottom: 30px; }
@@ -410,9 +567,9 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
    step, and the Chat title steps down. The laptop split view
    keeps its full sizing. */
 @media (max-width: 639.98px) {
-  .messages-view .dm-chat-row { min-height: 62px; padding: 9px 14px; gap: 10px; }
-  .messages-view .dm-bubble { font-size: 13.5px; line-height: 1.4; padding: 8px 12px; border-radius: 18px; }
-  .messages-view h2 { font-size: 19px; }
+  .messages-view .dm-chat-row { min-height: 56px; padding: 8px 12px; gap: 10px; }
+  .messages-view .dm-bubble { font-size: 12px; line-height: 1.4; padding: 7px 11px; border-radius: 17px; }
+  .messages-view h2 { font-size: 16.5px; }
 }
 
 /* Profile — PHONE ONLY mini sizing: the tab bar (posts / videos /
@@ -426,42 +583,49 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
    block. Positions and layer order are untouched; the laptop
    keeps its full sizing. */
 @media (max-width: 639.98px) {
-  .ig-tab { min-height: 46px; padding: 4px 0; }
-  .ig-count { font-size: 13.5px; min-height: 38px; }
-  .ig-count b { font-size: 14.5px; }
-  .highlight-circle { width: 54px !important; height: 54px !important; }
-  /* The header picture steps down from 100-112px to 76px (its
+  .ig-tab { min-height: 42px; padding: 3px 0; }
+  .ig-count { font-size: 12.5px; min-height: 36px; }
+  .ig-count b { font-size: 13px; }
+  /* Highlight balls step down one notch on phone (84→68px
+     circles) so the bigger balls still fit the row — scoped to
+     .highlight-ball so the story viewer's small 44px picker
+     circles keep their own size. */
+  .highlight-ball .highlight-circle { width: 68px !important; height: 68px !important; }
+  /* The header picture steps down from 100-112px to 68px (its
      size is an inline style, so it is compacted here); the
      banner it overlaps is shorter in the markup, and the
      overlap pull-up shrinks to match. */
-  .profile-head-avatar .avatar-fx-wrap { width: 76px !important; height: 76px !important; }
-  /* Header mini type: display name 21→17px, top-bar name
-     19→16px, handle 14.5→13px, bio 14.5→13.5px, Joined / Born
-     lines 13.5→12.5px, posts count 13→12px. */
-  .profile-name { font-size: 17px; }
-  .profile-topname { font-size: 16px; }
-  .profile-handle { font-size: 13px; }
-  .profile-bio { font-size: 13.5px; }
-  .profile-meta-line { font-size: 12.5px; }
-  .profile-posts-count { font-size: 12px; }
+  .profile-head-avatar .avatar-fx-wrap { width: 68px !important; height: 68px !important; }
+  /* Header mini type (stepped down once more Nov 22 2026 —
+     the profile gets the same smaller, airier type as the
+     rest of the phone): display name 21→15px, top-bar name
+     19→14.5px, handle 14.5→12px, bio 14.5→12px, Joined /
+     Born lines 13.5→11.5px, posts count 13→11px. */
+  .profile-name { font-size: 15px; }
+  .profile-topname { font-size: 14.5px; }
+  .profile-handle { font-size: 12px; }
+  .profile-bio { font-size: 12px; }
+  .profile-meta-line { font-size: 11.5px; }
+  .profile-posts-count { font-size: 11px; }
   /* Header action pills (Edit profile / Share, Follow / Message
-     / Block / Report) compact to 13px text on 34px pills — their
+     / Block / Report) compact to 12px text on 32px pills — their
      sizes are inline styles, so these need !important. */
-  .profile-head-actions button { font-size: 13px !important; min-height: 34px !important; padding-top: 5px !important; padding-bottom: 5px !important; padding-left: 14px !important; padding-right: 14px !important; }
-  /* Highlight balls: 72→60px wide, labels 12→11px (the circles
-     themselves are the .highlight-circle rule above). */
-  .highlight-ball { width: 60px; }
-  .highlight-ball-label { font-size: 11px; }
-  /* The tab bar sits closer under the header (40→20px) with
-     22px icons. */
-  .profile-tabbar { margin-top: 20px; }
-  .profile-tabbar .ig-tab svg { width: 22px; height: 22px; }
-  /* The opened post's caption block steps down: likes 13.5px,
-     title / body 14px, comments link 13px, date 12px. */
-  .profile-post-card .ppc-likes { font-size: 13.5px; }
-  .profile-post-card .ppc-title, .profile-post-card .ppc-body { font-size: 14px; }
-  .profile-post-card .ppc-comments { font-size: 13px; }
-  .profile-post-card .ppc-date { font-size: 12px; }
+  .profile-head-actions button { font-size: 12px !important; min-height: 32px !important; padding-top: 4px !important; padding-bottom: 4px !important; padding-left: 12px !important; padding-right: 12px !important; }
+  /* Highlight balls: 92→76px wide, labels 13→12px (the circles
+     themselves are the .highlight-ball .highlight-circle rule
+     above). */
+  .highlight-ball { width: 76px; }
+  .highlight-ball-label { font-size: 12px; }
+  /* The tab bar sits closer under the header (40→16px) with
+     20px icons. */
+  .profile-tabbar { margin-top: 16px; }
+  .profile-tabbar .ig-tab svg { width: 20px; height: 20px; }
+  /* The opened post's caption block steps down: likes 12.5px,
+     title / body 12.5px, comments link 12px, date 11px. */
+  .profile-post-card .ppc-likes { font-size: 12.5px; }
+  .profile-post-card .ppc-title, .profile-post-card .ppc-body { font-size: 12.5px; }
+  .profile-post-card .ppc-comments { font-size: 12px; }
+  .profile-post-card .ppc-date { font-size: 11px; }
 }
 
 /* Discord — PHONE ONLY mini sizing: the server card's inner
@@ -540,6 +704,13 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .xrow .xrow-label { display: block; font-size: 15px; font-weight: 700; }
 .xrow .xrow-sub { display: block; margin-top: 1px; font-size: 13px; color: var(--dim); }
 label.flabel { display: block; font-size: 13px; font-weight: 600; color: var(--dim); margin: 16px 0 8px; letter-spacing: 0.01em; }
+/* Create a Crew's own tab (owner's direction, Nov 23 2026): the
+   founder form gets the whole page and room to breathe — every
+   section label sits well clear of the field above it instead
+   of the shared 16px label margin, so nothing reads cramped.
+   The first label in each step keeps no top margin. */
+.create-clan-form .flabel { display: block; font-size: 13px; font-weight: 600; color: var(--dim); letter-spacing: 0.01em; margin: 32px 0 10px; }
+.create-clan-form .flabel:first-child { margin-top: 0; }
 
 /* Edit profile sheet — phone fit (owner bug fix): on phone the box
    inside the Birth date section (the native date input) stuck out
@@ -637,14 +808,55 @@ label.flabel { display: block; font-size: 13px; font-weight: 600; color: var(--d
 .xp-fill.pink { background: var(--accent); box-shadow: none; }
 .xp-fill.amber { background: var(--amber); box-shadow: none; }
 
-.stat-tile { background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 14px 8px; text-align: center; }
+.stat-tile { background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface2); border: 1px solid rgba(157, 78, 221, 0.30); border-radius: 14px; padding: 14px 8px; text-align: center; }
 .stat-tile .num { font-weight: 800; font-size: 20px; line-height: 1.1; letter-spacing: -0.02em; }
 .stat-tile .lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin-top: 4px; }
+/* A stat tile that is also a button (the crew page's four tiles
+   each open their own tab below): same tile look, with a press
+   affordance and a small "Open below" hint so it reads as
+   tappable. Mobile steadiness (owner's fix, Nov 22 2026): the
+   tile never lifts or shifts when pressed — the hover lift only
+   exists on devices that truly hover, touch gets no transform
+   at all, tap highlight and double-tap zoom delay are off, and
+   a fixed minimum height keeps the grid's rows one size whether
+   the hint reads "Open below" or "Showing below", so tapping a
+   box cannot move anything else on the screen. */
+button.stat-tile { cursor: pointer; font: inherit; color: inherit; width: 100%; min-height: 96px; transition: border-color 0.12s ease; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+@media (hover: hover) and (pointer: fine) {
+  button.stat-tile { transition: transform 0.12s ease, border-color 0.12s ease; }
+  button.stat-tile:hover { border-color: var(--accent); transform: translateY(-1px); }
+  button.stat-tile:active { transform: translateY(0); }
+}
+.stat-tile .open-hint { margin-top: 6px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent2); }
 
 .trophy-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-weight: 700; font-size: 13px; border-radius: 999px; padding: 6px 12px; }
 .level-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 36px; padding: 0 10px; border-radius: 999px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-weight: 700; font-size: 13px; box-shadow: none; }
-.picker-tile { border: 1px solid var(--border); background: var(--surface); border-radius: 16px; padding: 16px 10px; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600; text-align: center; }
+.picker-tile { position: relative; border: 1px solid rgba(157, 78, 221, 0.30); background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface); border-radius: 16px; padding: 16px 10px; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600; text-align: center; }
 .picker-tile[aria-pressed="true"] { border-color: var(--text); color: var(--text); background: var(--surface2); box-shadow: none; }
+/* Radio-style picker tiles (the event visibility boxes — Public /
+   Request to join / Private — and any other role="radio" tile):
+   choosing a box MUST be obvious (owner's direction, Nov 22 2026:
+   "the effect when choosing a box"). The tiles carry aria-checked,
+   not aria-pressed, so they get their own strong selected effect:
+   a hot-pink 2px border, a pink-tinted fill, a soft ring, bright
+   text, and a ✓ badge in the top-right corner. */
+.picker-tile[aria-checked="true"] { border: 2px solid var(--accent); color: var(--text); background: linear-gradient(180deg, rgba(255, 46, 136, 0.16), rgba(157, 78, 221, 0.10) 60%, rgba(0, 229, 204, 0.04)), var(--surface2); box-shadow: 0 0 0 3px rgba(255, 46, 136, 0.16), 0 10px 24px rgba(0, 0, 0, 0.22); }
+.picker-tile[aria-checked="true"]::after { content: "✓"; position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 900; line-height: 22px; text-align: center; box-shadow: 0 4px 10px rgba(255, 46, 136, 0.4); }
+/* Event create/edit pickers (type, date & time, timezone): one
+   shared button that opens a panel under it — the button reads
+   like a roomy field and says what is picked right now. */
+.ev-picker-btn { display: flex; width: 100%; align-items: center; gap: 12px; text-align: left; background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; min-height: 58px; color: var(--text); font-size: 15.5px; cursor: pointer; }
+.ev-picker-btn:hover { border-color: var(--accent); }
+.ev-picker-btn:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+.ev-picker-panel { margin-top: 8px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface2); padding: 14px; }
+.ev-choice { display: flex; width: 100%; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--border); background: var(--surface); border-radius: 14px; padding: 10px 12px; min-height: 56px; color: var(--text); cursor: pointer; }
+.ev-choice:hover { border-color: var(--accent); }
+.ev-choice[aria-checked="true"], .ev-choice[aria-pressed="true"] { border: 2px solid var(--accent); background: linear-gradient(180deg, rgba(255, 46, 136, 0.14), rgba(157, 78, 221, 0.08)), var(--surface); box-shadow: 0 0 0 3px rgba(255, 46, 136, 0.14); }
+.ev-cal-day { display: flex; align-items: center; justify-content: center; min-height: 42px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; }
+.ev-cal-day:hover { border-color: var(--accent); }
+.ev-cal-day:disabled { color: var(--dim2); cursor: default; }
+.ev-cal-day:disabled:hover { border-color: transparent; }
+.ev-cal-day[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 800; border-color: var(--accent); box-shadow: 0 6px 16px rgba(255, 46, 136, 0.35); }
 .swatch { width: 48px; height: 48px; border-radius: 999px; cursor: pointer; border: 2px solid transparent; flex: none; }
 .swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--bg); }
 .game-tab { flex: 1 1 0; border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 10px 6px; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--dim); cursor: pointer; text-transform: none; letter-spacing: 0; }
@@ -777,8 +989,16 @@ label.flabel { display: block; font-size: 13px; font-weight: 600; color: var(--d
 
 /* Instant tactile feedback — controls respond the moment they are
    touched: colours ease over 150ms and the control dips very
-   slightly while pressed, then settles back. No grey tap flash. */
+   slightly while pressed, then settles back. No grey tap flash.
+   touch-action: manipulation removes the browser's double-tap-zoom
+   wait, so a tap on anything pressable (Equip, nav, chips, tiles)
+   registers on the FIRST touch with zero delay (owner's direction,
+   Nov 22 2026: "when i press on smth like equip theres a delay —
+   make sure theirs zero delay"). Panning and pinch-zoom still
+   work everywhere; only the double-tap gesture is given up on
+   pressable elements. */
 button { -webkit-tap-highlight-color: transparent; }
+button, a, [role="button"], .chip, .stat-tile, .sidebar-link, .bottom-nav-btn { touch-action: manipulation; }
 .btn-primary, .btn-ghost, .btn-pale, .btn-vice, .chip, .sidebar-link, .bottom-nav-btn, .pop-nav-item, .set-nav-item {
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
 }
@@ -841,6 +1061,29 @@ button { -webkit-tap-highlight-color: transparent; }
 .customise-stage-visual { display: flex; align-items: center; justify-content: center; width: 100%; max-width: 232px; height: 128px; flex: none; }
 .customise-card-body { display: flex; flex-direction: column; flex: 1; padding: 16px; }
 .customise-desc { min-height: 60px; }
+/* Aligned boxes (owner's direction, Nov 22 2026): every row of a
+   customise grid is the same height, so all the boxes line up —
+   and inside each box the title block and the challenge line keep
+   a fixed minimum height, so the description starts at the same
+   offset on every card while the action stays pinned to the
+   bottom (mt-auto in the card body). */
+.customise-grid { grid-auto-rows: 1fr; }
+.customise-card-title { min-height: 42px; }
+.customise-challenge-line { min-height: 40px; }
+
+/* The Premium Custom colour tool spans the whole Crew Colours grid
+   (owner: "make the premium box nicer, it's all over the place",
+   Nov 22 2026): instead of sitting alone in one grid column with
+   its controls wrapping loose, it is a full-width panel — on wider
+   screens the preview stage sits on the left and the labelled
+   control groups on the right; on phones it stacks like the other
+   cards. */
+.customise-tool { grid-column: 1 / -1; }
+@media (min-width: 768px) {
+  .customise-tool { flex-direction: row; }
+  .customise-tool .customise-stage { width: 264px; height: auto; }
+  .customise-tool .customise-stage-visual { height: auto; }
+}
 
 /* Avatar effects — INTEGRATED accessories fixed to the avatar
    circle. The effect artwork (AvatarFxArt in App.tsx) is drawn in
@@ -897,8 +1140,20 @@ button { -webkit-tap-highlight-color: transparent; }
 .emblem-fx-gold::after { content: ""; position: absolute; top: -25%; bottom: -25%; left: 0; width: 45%; background: linear-gradient(90deg, transparent, rgba(255,209,102,0.45), transparent); transform: translateX(-140%) skewX(-18deg); animation: vv-shine 3.4s ease-in-out infinite; }
 @keyframes vv-emblem-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 @keyframes vv-emblem-flash { 0%, 86%, 100% { opacity: 0; } 88% { opacity: 0.55; } 91% { opacity: 0.08; } 94% { opacity: 0.4; } 97% { opacity: 0; } }
+/* Premium emblems are ALIVE (owner's direction, Nov 22 2026):
+   every Premium crew emblem (Gold Crown, Diamond, Vice Crest,
+   Eclipse) moves on its own — the artwork itself drifts in a
+   slow Ken Burns move inside the tile while a golden light
+   sweeps across it and a warm glow breathes at its edges. This
+   plays everywhere ClanEmblem renders the emblem (crew card,
+   crew page, rankings, crew chat, the Emblems catalogue), on top
+   of any emblem effect the crew also has equipped. */
+.emblem-premium-art { animation: vv-emblem-drift 9s ease-in-out infinite alternate; will-change: transform; }
+@keyframes vv-emblem-drift { from { transform: scale(1.04) translate(-0.8%, -0.6%); } to { transform: scale(1.14) translate(1.2%, 1%); } }
+.emblem-fx-premium { background: radial-gradient(circle at 50% 42%, rgba(255,209,102,0.20), transparent 70%); box-shadow: inset 0 0 0 2px rgba(255,209,102,0.5), inset 0 0 18px rgba(255,209,102,0.35); animation: vv-emblem-pulse 3.2s ease-in-out infinite; }
+.emblem-fx-premium::after { content: ""; position: absolute; top: -25%; bottom: -25%; left: 0; width: 45%; background: linear-gradient(90deg, transparent, rgba(255,233,168,0.5), transparent); transform: translateX(-140%) skewX(-18deg); animation: vv-shine 3.8s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .emblem-fx, .emblem-fx::before, .emblem-fx::after { animation: none !important; }
+  .emblem-fx, .emblem-fx::before, .emblem-fx::after, .emblem-premium-art { animation: none !important; }
 }
 
 /* Guide category boxes — simple and clean on purpose: each
@@ -909,7 +1164,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .guide-cat-grid { display: grid; gap: 14px; margin-bottom: 24px; }
 @media (min-width: 640px) { .guide-cat-grid { grid-template-columns: 1fr 1fr; gap: 16px; } }
 .guide-cat-frame { border-radius: 20px; }
-.guide-cat-card { display: flex; flex-direction: column; width: 100%; height: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; cursor: pointer; padding: 0; color: var(--text); }
+.guide-cat-card { display: flex; flex-direction: column; width: 100%; height: 100%; text-align: left; background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface); border: 1px solid rgba(157, 78, 221, 0.30); border-radius: 20px; overflow: hidden; cursor: pointer; padding: 0; color: var(--text); }
 .guide-cat-card:hover { border-color: var(--border-strong); }
 .guide-cat-frame.is-active .guide-cat-card { border-color: var(--accent); }
 .guide-cat-frame-missions.is-active .guide-cat-card { border-color: var(--accent2); }
@@ -918,7 +1173,7 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (min-width: 640px) { .guide-cat-media { height: 148px; } }
 .guide-cat-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .guide-cat-count { position: absolute; top: 10px; right: 10px; z-index: 1; border-radius: 999px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; color: var(--text); background: rgba(10, 10, 18, 0.78); border: 1px solid rgba(255, 255, 255, 0.18); }
-.guide-cat-body { display: flex; flex-direction: column; gap: 6px; padding: 16px; flex: 1; background: var(--surface); }
+.guide-cat-body { display: flex; flex-direction: column; gap: 6px; padding: 16px; flex: 1; background: transparent; }
 .guide-cat-title { display: block; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; }
 .guide-cat-desc { display: block; font-size: 14px; line-height: 1.55; color: var(--dim); }
 .guide-cat-cta { margin-top: auto; padding-top: 10px; display: block; font-size: 13.5px; font-weight: 800; color: var(--accent); }
@@ -936,7 +1191,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .guide-tile-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 @media (min-width: 640px) { .guide-tile-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; } }
 @media (min-width: 1024px) { .guide-tile-grid { grid-template-columns: repeat(4, 1fr); } }
-.guide-tile { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px; min-height: 80px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.12s ease; }
+.guide-tile { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px; min-height: 80px; border-radius: 16px; border: 1px solid rgba(157, 78, 221, 0.30); background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface2); color: var(--text); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.12s ease; }
 .guide-tile:hover { border-color: var(--border-strong); }
 .guide-tile:active { transform: scale(0.98); }
 .guide-tile[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -1095,6 +1350,14 @@ button { -webkit-tap-highlight-color: transparent; }
       content on 16px-radius cards one step lighter than the panel,
       stacked with 12–16px gaps. */
 .settings-panel { background: #15151f; border: 1px solid var(--border-strong); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 70px rgba(0,0,0,0.6); }
+/* Settings is FULL SCREEN on phone (owner's direction, Nov 23
+   2026) — below the md breakpoint the panel fills the whole
+   screen: no radius, no border, no shadow, full height and
+   width. Desktop keeps the centred modal above, untouched. */
+@media (max-width: 767px) {
+  .settings-panel { border-radius: 0; border: none; box-shadow: none; }
+  .settings-panel-mobile-full { width: 100%; max-width: none; height: 100%; }
+}
 .settings-nav { background: #0f0f16; }
 .set-nav-item { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; padding: 8px 12px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--dim); cursor: pointer; border: 1.5px solid transparent; background: transparent; min-height: 40px; white-space: nowrap; flex: none; }
 .set-nav-item:hover { background: #1b1b28; color: var(--text); }
@@ -1108,7 +1371,7 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (min-width: 768px) {
   .set-nav-item { white-space: normal; min-width: 0; }
 }
-.set-card { background: #232333; border: 1px solid transparent; border-radius: 16px; padding: 18px 20px; }
+.set-card { background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), #232333; border: 1px solid rgba(157, 78, 221, 0.30); border-radius: 16px; padding: 18px 20px; }
 .set-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: #232333; border: 1px solid transparent; border-radius: 16px; padding: 16px 20px; min-height: 64px; }
 button.set-row { cursor: pointer; }
 button.set-row:hover { border-color: var(--border-strong); }
@@ -1190,7 +1453,7 @@ button.set-row:hover { border-color: var(--border-strong); }
 .search-row:active { transform: scale(0.99); }
 .search-rec-card {
   flex: none; width: 96px; border-radius: 14px; overflow: hidden; cursor: pointer;
-  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface2); border: 1px solid rgba(157, 78, 221, 0.30); color: var(--text);
   text-align: left; padding: 0; scroll-snap-align: start;
   transition: border-color 0.15s ease, transform 0.12s ease;
 }
@@ -1341,10 +1604,20 @@ button.set-row:hover { border-color: var(--border-strong); }
 }
 .ig-tab[aria-selected="true"] { color: var(--text); border-top-color: var(--text); }
 .highlight-circle {
-  width: 66px; height: 66px; border-radius: 999px; border: 1px solid var(--border-strong);
+  width: 84px; height: 84px; border-radius: 999px; border: 1px solid var(--border-strong);
   display: inline-flex; align-items: center; justify-content: center; overflow: hidden; background: var(--surface2); flex: none;
 }
-.dm-shell { display: grid; grid-template-columns: 1fr; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; background: var(--surface); min-height: calc(100dvh - 170px); }
+.dm-shell { display: grid; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); border: 1px solid rgba(157, 78, 221, 0.30); border-radius: 20px; overflow: hidden; background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface); min-height: calc(100dvh - 170px); }
+/* The row above is FIXED at the shell's height (minmax(0, 1fr)),
+   never sized by content: without it, a long chat thread grew
+   the row to fit every message, the shell's overflow:hidden then
+   clipped the message composer off the bottom of the pane, and
+   the crew chat looked like a read-only system log with no chat
+   box (owner's report, Nov 22 2026). With the row fixed, the
+   thread's own overflow-y-auto list scrolls inside the pane and
+   the composer stays pinned under it. The pane itself also
+   needs min-height: 0 so it can never force the row taller. */
+.dm-chat-pane { min-height: 0; }
 @media (min-width: 860px) { .dm-shell { grid-template-columns: 380px 1fr; } }
 /* Messages fills the full page (owner's direction): the shell
    stretches edge to edge — no fixed min-height, no rounded card
@@ -1370,22 +1643,92 @@ button.set-row:hover { border-color: var(--border-strong); }
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .dm-list-col { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
-.dm-chat-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; cursor: pointer; color: var(--text); min-height: 76px; }
-.dm-chat-row:hover { background: var(--surface2); }
+.dm-chat-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 20px; background: none; border: none; cursor: pointer; color: var(--text); min-height: 76px; transition: background 0.16s ease, box-shadow 0.16s ease; }
+.dm-chat-row:hover { background: var(--surface2); box-shadow: inset 3px 0 0 var(--accent); }
 .dm-chat-row[aria-pressed="true"] { background: var(--surface2); }
+/* DM profile hover effect (owner's direction, Nov 22 2026 —
+   "put an effect like if i hover over it on the dms part like
+   shown the website one"): like the website / X / Discord
+   hover, hovering a person in Messages lifts their picture a
+   touch with a soft accent ring, and after a short pause their
+   profile preview card fades in beside the row (the card itself
+   is rendered by MessagesView as .dm-profile-hover-card).
+   Desktop pointers only — on touch there is no hover, and the
+   card never appears (MessagesView also gates it on
+   (hover: hover) and (pointer: fine)). */
+.messages-view .dm-chat-row .avatar-fx-wrap,
+.messages-view .dm-follow-row .avatar-fx-wrap,
+.messages-view .dm-chat-pane .avatar-fx-wrap { transition: transform 0.18s ease, box-shadow 0.18s ease; border-radius: 999px; }
+.messages-view .dm-chat-row:hover .avatar-fx-wrap,
+.messages-view .dm-follow-row:hover .avatar-fx-wrap { transform: scale(1.07); box-shadow: 0 0 0 2px var(--accent), 0 6px 16px rgba(0, 0, 0, 0.35); }
+.dm-follow-row { border-radius: 16px; transition: background 0.16s ease; }
+.dm-follow-row:hover { background: var(--surface2); }
+.dm-profile-hover-card {
+  position: fixed; z-index: 120; width: 320px; max-width: calc(100vw - 24px);
+  border-radius: 20px; border: 1px solid var(--border-strong, var(--border));
+  background: var(--surface); color: var(--text); overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(157, 78, 221, 0.14);
+  animation: dmHoverIn 0.16s ease-out;
+}
+@keyframes dmHoverIn { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (hover: none), (pointer: coarse) { .dm-profile-hover-card { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .dm-profile-hover-card { animation: none; }
+  .messages-view .dm-chat-row .avatar-fx-wrap,
+  .messages-view .dm-follow-row .avatar-fx-wrap,
+  .messages-view .dm-chat-pane .avatar-fx-wrap { transition: none; }
+  .messages-view .dm-chat-row:hover .avatar-fx-wrap,
+  .messages-view .dm-follow-row:hover .avatar-fx-wrap { transform: none; }
+}
 .dm-bubble { max-width: 72%; padding: 9px 14px; border-radius: 20px; font-size: 14.5px; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
 .dm-bubble.mine { background: linear-gradient(120deg, var(--accent), #9b5de5); color: #fff; border-bottom-right-radius: 6px; margin-left: auto; }
 .dm-bubble.theirs { background: var(--surface3); color: var(--text); border-bottom-left-radius: 6px; }
 .unread-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--accent); flex: none; }
 
-/* Home boxes — ONE theme for every box on the main page (owner's
-   direction): the stat boxes, the Crew Leaderboard box, the Latest
-   & trending box, Find your people, the three minimised cards and
-   the Live Server Status box all share the ViceSunshine palette —
-   dark navy surfaces warmed with a faint hot-pink / neon-purple
-   wash, purple-tinted borders instead of plain grey, and teal
-   edging on the ghost gateway buttons. Scoped to Home's root so
-   no other page's cards change. Calm, not flashy: no glow, no
+/* Messages / chat — DESKTOP compact (owner's direction,
+   Nov 22 2026: minimize the chat size on Mac too, more
+   spacious): at the two-pane breakpoint and up, the whole
+   Messages view steps down the same mini notch the phone
+   got — the chat list column narrows from 380px to 312px,
+   list rows sit shorter with tighter padding, bubbles and
+   every fixed-pixel text size inside the view step down
+   about 1px, and the search field and the message composer
+   lose their extra height. More chats and more of the
+   conversation fit on screen at once, with the same layout,
+   order and styling — just smaller. Below 860px nothing
+   here applies; the phone keeps its own treatment above. */
+@media (min-width: 860px) {
+  .messages-view .dm-shell { grid-template-columns: 312px 1fr; }
+  .messages-view .dm-chat-row { min-height: 60px; padding: 9px 14px; gap: 10px; }
+  .messages-view .dm-bubble { max-width: 68%; font-size: 13.5px; line-height: 1.42; padding: 8px 12px; border-radius: 18px; }
+  .messages-view .dm-list-col .field { min-height: 40px !important; }
+  .messages-view .dm-chat-pane form .field { min-height: 40px !important; }
+  .messages-view .dm-chat-pane form .btn-blue { min-height: 40px !important; padding: 6px 16px !important; }
+  .messages-view [class~="text-[24px]"] { font-size: 20px; }
+  .messages-view [class~="text-[22px]"] { font-size: 19px; }
+  .messages-view [class~="text-[18px]"] { font-size: 16px; }
+  .messages-view [class~="text-[17px]"] { font-size: 15px; }
+  .messages-view [class~="text-[16px]"] { font-size: 14.5px; }
+  .messages-view [class~="text-[15.5px]"] { font-size: 14px; }
+  .messages-view [class~="text-[15px]"] { font-size: 13.5px; }
+  .messages-view [class~="text-[14.5px]"] { font-size: 13px; }
+  .messages-view [class~="text-[14px]"] { font-size: 13px; }
+  .messages-view [class~="text-[13.5px]"] { font-size: 12.5px; }
+  .messages-view [class~="text-[13px]"] { font-size: 12px; }
+  .messages-view [class~="text-[12.5px]"] { font-size: 11.5px; }
+}
+
+/* Home boxes — the main page's box theme (owner's direction):
+   the stat boxes, the Crew Leaderboard box, the Latest & trending
+   box, Find your people, the three minimised cards and the Live
+   Server Status box all share the ViceSunshine palette — dark
+   navy surfaces warmed with a faint hot-pink / neon-purple wash,
+   purple-tinted borders instead of plain grey, and teal edging
+   on the ghost gateway buttons. Since Nov 22 2026 this exact
+   palette is the site-wide standard: it lives on the shared
+   .card (see the top of this file) and the Map's floating boxes
+   use the same colours, so this rule now only adds Home's teal
+   ghost-button edging on top. Calm, not flashy: no glow, no
    animation — just colour consistency. */
 .home-themed .card {
   background: linear-gradient(180deg, rgba(157, 78, 221, 0.08), rgba(255, 46, 136, 0.03) 55%, rgba(0, 229, 204, 0.02)), var(--surface);
@@ -1465,8 +1808,75 @@ button.set-row:hover { border-color: var(--border-strong); }
   0% { transform: translateX(-140%) skewX(-14deg); }
   55%, 100% { transform: translateX(430%) skewX(-14deg); }
 }
+/* Tier-4 card treatment (the redesign): rising embers inside the
+   card and a pulsing glow on its frame in the card's own accent
+   (--cc-accent, set inline per design). Premium cards and the top
+   of the Challenge ladder only. */
+.cc-ember {
+  position: absolute;
+  border-radius: 9999px;
+  opacity: 0;
+  animation: ccEmberRise 3s linear infinite;
+  pointer-events: none;
+}
+@keyframes ccEmberRise {
+  0% { transform: translateY(6px) translateX(0); opacity: 0; }
+  18% { opacity: 0.95; }
+  60% { opacity: 0.7; }
+  100% { transform: translateY(-52px) translateX(7px); opacity: 0; }
+}
+.cc-glow { animation: ccGlowPulse 3.4s ease-in-out infinite; }
+@keyframes ccGlowPulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 0 14px -2px var(--cc-accent, rgba(255, 46, 136, 0.55)); }
+  50% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 26px 0 var(--cc-accent, rgba(255, 46, 136, 0.8)); }
+}
+/* ---- Photographic card art (redesign v2 — owner's direction:
+   premium and realistic, real-life GTA gangster vices, NOT
+   cartoon). Every calling card is now a real cinematic
+   photograph under the grade overlays. Animated cards (Premium +
+   the animated Challenge cards) get a slow Ken Burns drift so
+   the picture itself moves inside the frame, plus a soft light
+   breathing over it. ---- */
+.cc-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.cc-photo-anim {
+  animation: ccKenBurns 11s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes ccKenBurns {
+  from { transform: scale(1.07) translate(0.6%, 0.5%); }
+  to { transform: scale(1.17) translate(-1.5%, -1.3%); }
+}
+.cc-breathe {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(70% 90% at 72% 28%, rgba(255, 255, 255, 0.16) 0%, transparent 55%);
+  mix-blend-mode: screen;
+  animation: ccBreathe 4.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes ccBreathe {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
+}
+/* Searchlight beams (Block Party scene) sweep from their base. */
+.cc-beam {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: ccBeam 5.5s ease-in-out infinite;
+}
+@keyframes ccBeam {
+  0%, 100% { transform: rotate(-13deg); }
+  50% { transform: rotate(13deg); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .cc-leaf-sway, .cc-leaf-drift, .cc-flame, .cc-eye, .cc-smoke, .cc-pulse, .cc-shimmer { animation: none; }
+  .cc-leaf-sway, .cc-leaf-drift, .cc-flame, .cc-eye, .cc-smoke, .cc-pulse, .cc-shimmer, .cc-ember, .cc-glow, .cc-beam, .cc-photo-anim, .cc-breathe { animation: none; }
 }
 
 /* Ad placeholders (owner's direction: clean, aesthetic, matched to
@@ -1505,6 +1915,33 @@ button.set-row:hover { border-color: var(--border-strong); }
   text-transform: uppercase;
   color: #fff;
   background: linear-gradient(90deg, #ff2e88, #9d4edd);
+}
+/* Reserved ad space while no publisher ID is set (owner's
+   direction, Nov 22 2026): only A LITTLE visible — a faint theme
+   panel with a small Ad pill and one quiet line saying Premium
+   removes the ads, so players notice the spaces (and the
+   Premium benefit) without the page shouting about them. It
+   keeps the live unit's exact reserved size, so nothing shifts
+   when real ads arrive. Premium members never render it —
+   AdSlot returns null for them, so buying Premium removes
+   every one of these spaces completely. */
+.ad-reserved {
+  border-radius: 14px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--surface2) 50%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 14px;
+  text-align: center;
+}
+.ad-reserved-line {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--dim);
 }
 /* The sidebar never scrolls and the account trigger is pinned at
    its bottom: the sidebar's own chrome compacts on shorter
