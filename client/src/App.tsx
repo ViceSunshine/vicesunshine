@@ -13189,10 +13189,14 @@ function ClansView({
     queryKey: ["my-clan", playerKey],
     queryFn: () => api.getMyClan({ playerKey }),
     enabled: Boolean(gamertag),
+    // Live (Nov 23 2026): your crew's state stays current on its own.
+    refetchInterval: 30000,
   });
   const clans = useQuery({
     queryKey: ["clans", playstyle, search],
     queryFn: () => api.listClans({ platform: "All", playstyle, search }),
+    // Live (Nov 23 2026): new crews and member counts appear on their own.
+    refetchInterval: 30000,
   });
   const [joinNotice, setJoinNotice] = useState("");
   const join = useMutation({
@@ -13814,6 +13818,9 @@ function ClanHome({
   const clan = useQuery({
     queryKey: ["clan", clanId, playerKey],
     queryFn: () => api.getClan({ clanId, playerKey }),
+    // Live (Nov 23 2026): roster changes and applications land
+    // on an open crew page on their own, no refresh.
+    refetchInterval: 20000,
   });
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["clan", clanId] });
@@ -16712,6 +16719,9 @@ function EventCard({
     queryKey: ["attendees", ev.id],
     queryFn: () => api.eventAttendees({ eventId: ev.id }),
     enabled: participantsOpen,
+    // Live (Nov 23 2026): people joining or leaving show up
+    // while the box is open, no refresh.
+    refetchInterval: 10000,
   });
   const kickParticipant = useMutation({
     mutationFn: async (attendeeKey: string) => await api.removeEventAttendee({ playerKey, gamertag, eventId: ev.id, attendeeKey }),
@@ -16731,6 +16741,9 @@ function EventCard({
     queryKey: ["event-join-requests", ev.id],
     queryFn: () => api.listEventJoinRequests({ playerKey, gamertag, eventId: ev.id }),
     enabled: ev.canManage,
+    // Live (Nov 23 2026): a new join ask reaches the host on its
+    // own, no refresh.
+    refetchInterval: 10000,
   });
   const respondRequest = useMutation({
     mutationFn: async (input: { requestId: number; approve: boolean }) =>
@@ -17567,6 +17580,9 @@ function EventsView({
   const events = useQuery({
     queryKey: ["events", playerKey],
     queryFn: () => api.listEvents({ playerKey }),
+    // Live (Nov 23 2026): new events and changing Going counts
+    // appear on their own, no refresh.
+    refetchInterval: 20000,
   });
   const hosting = useQuery({
     queryKey: ["eventHosting", playerKey],
@@ -23870,6 +23886,10 @@ function CommentsSheet({
   const comments = useQuery({
     queryKey: ["feed-comments", postId],
     queryFn: () => api.listFeedComments({ postId, playerKey }),
+    // Live (Nov 23 2026, same fix as live chat): an open post's
+    // comments re-read every 5 seconds, so a conversation under
+    // a post flows without anyone refreshing the page.
+    refetchInterval: 5000,
   });
   const items = comments.data?.items ?? [];
   const count = comments.data ? items.length : commentCount;
@@ -24043,6 +24063,8 @@ function ProfileSuggestionsRow({ playerKey, gamertag = "", onOpenProfile, exclud
     queryKey: ["stories", playerKey],
     queryFn: () => api.listStories({ playerKey }),
     enabled: Boolean(playerKey),
+    // Live (Nov 23 2026): new stories appear on their own.
+    refetchInterval: 30000,
   });
   const [sugViewer, setSugViewer] = useState<{ groups: StoryGroup[]; groupIndex: number } | null>(null);
   const groupForSuggestion = (key: string) => (storiesQ.data?.groups ?? []).find((g) => g.authorKey === key) ?? null;
@@ -29382,8 +29404,15 @@ function CrewInviteCard({ invite, messageId, state, mine, otherName, createdAt, 
     onError: (e) => setError(e.message),
   });
   const pending = invite.pendingApplication || invite.pendingRequest;
+  // Pending-request ball (owner's direction, Nov 23 2026): while
+  // this invite is addressed to the reader and still unanswered —
+  // not joined, not declined, no request of theirs already waiting
+  // with the Leader — the card carries the red notification ball,
+  // so it cannot sit in the thread unnoticed the way it did for
+  // the owner's friend. It clears the moment they answer.
+  const awaitingAnswer = !mine && state !== "declined" && !invite.myRole && !pending;
   return (
-    <div className="w-full max-w-[430px] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface2)]" role="group" aria-label={`Crew invite to ${c.name}`} title={new Date(createdAt).toLocaleString()}>
+    <div className="w-full max-w-[430px] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface2)]" role="group" aria-label={`Crew invite to ${c.name}${awaitingAnswer ? " — a request waiting for your answer" : ""}`} title={new Date(createdAt).toLocaleString()}>
       {/* The crew's banner, resolved exactly like the crew card
           header: calling card artwork, colour finish, then the
           crew colour. */}
@@ -29400,12 +29429,13 @@ function CrewInviteCard({ invite, messageId, state, mine, otherName, createdAt, 
             <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,11,20,0.42) 0%, rgba(11,11,20,0.60) 60%, rgba(11,11,20,0.84) 100%)" }} />
           </>
         ) : null}
-        <span className="absolute left-3 top-3 rounded-full bg-[rgba(11,11,20,0.72)] px-2.5 py-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-white">{uiT("Crew invite")}</span>
+        <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-[rgba(11,11,20,0.72)] px-2.5 py-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-white">{awaitingAnswer && <span className="request-dot" style={{ width: 8, height: 8 }} aria-hidden="true" />}{uiT("Crew invite")}</span>
         <span className="absolute right-3 top-3 rounded-full bg-[rgba(11,11,20,0.72)] px-2.5 py-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-white">{privacyLabel}</span>
       </div>
       <div className="px-4 pb-4">
-        <div className="relative z-10 -mt-9">
+        <div className="relative z-10 -mt-9 w-fit">
           <ClanEmblem tag={c.tag} color={c.color} emblem={c.emblem} effect={c.emblemEffect} finish={c.colorFinish} size={72} />
+          {awaitingAnswer && <span className="request-dot absolute -right-1.5 -top-1.5" aria-hidden="true" />}
         </div>
         <h4 className="mt-2 flex min-w-0 items-center gap-2 text-[17px] font-extrabold leading-tight">
           <span className="flex-none" style={{ color: c.color }}>[{c.tag}]</span>
@@ -29543,15 +29573,20 @@ function EventInviteCard({ invite, mine, otherName, createdAt, playerKey, gamert
     },
     onError: (e) => setError(e.message),
   });
+  // Pending-request ball (owner's direction, Nov 23 2026): the
+  // same red notification ball the crew invite card carries —
+  // while this invite waits for the reader's answer (no RSVP yet,
+  // no request just sent from this card, event not started).
+  const awaitingAnswer = !mine && invite.myRsvp === "" && !ev.started && !requested;
   return (
-    <div className="w-full max-w-[430px] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface2)]" role="group" aria-label={`Event invite: ${ev.title}`} title={new Date(createdAt).toLocaleString()}>
+    <div className="w-full max-w-[430px] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface2)]" role="group" aria-label={`Event invite: ${ev.title}${awaitingAnswer ? " — a request waiting for your answer" : ""}`} title={new Date(createdAt).toLocaleString()}>
       {/* The event's picture as the banner, resolved exactly
           like the event card in a crew chat: the leader's
           uploaded picture, or the event-type artwork. */}
       <div className="relative h-[92px] overflow-hidden" style={{ background: "var(--surface3)" }} aria-hidden="true">
         <img decoding="async" src={ev.imageUrl || eventArtForType(ev.type || "Car Meet").img} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
         <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,11,20,0.30) 0%, rgba(11,11,20,0.55) 60%, rgba(11,11,20,0.82) 100%)" }} />
-        <span className="absolute left-3 top-3 rounded-full bg-[rgba(11,11,20,0.72)] px-2.5 py-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-white">{uiT("Event invite")}</span>
+        <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-[rgba(11,11,20,0.72)] px-2.5 py-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-white">{awaitingAnswer && <span className="request-dot" style={{ width: 8, height: 8 }} aria-hidden="true" />}{uiT("Event invite")}</span>
         <span className="absolute right-3 top-3 rounded-full bg-[rgba(11,11,20,0.72)] px-2.5 py-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-white">{ev.type}</span>
       </div>
       <div className="px-4 pb-4 pt-3">
@@ -29704,10 +29739,26 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
     queryFn: () => api.getSocialProfile({ playerKey, targetKey: hoverTarget!.profileId || hoverTarget!.key }),
     enabled: Boolean(hoverTarget && gamertag),
   });
+  // LIVE CHAT (owner's report, Nov 23 2026 — "the chat is not
+  // live, I have to keep refreshing my page"): the chat queries
+  // used to fetch once when Messages opened and never again, so
+  // a friend's message only appeared after a manual page
+  // refresh. The platform's actions are request/response — there
+  // is no socket to push through — so live here means polling at
+  // messenger speed: the OPEN thread re-reads every second and
+  // the conversation list every three seconds, so a message
+  // lands on the other person's screen about a second after it
+  // is sent, in both directions, with no refresh on either side.
+  // React Query pauses the interval while the tab is in the
+  // background and refetches the moment it comes back, so this
+  // costs nothing while the reader is elsewhere. Sends also
+  // render optimistically (see the send mutations below), so
+  // your own message is on screen the instant you press Send.
   const convs = useQuery({
     queryKey: ["dm-conversations", playerKey, search],
     queryFn: () => api.listDmConversations({ playerKey, search }),
     enabled: Boolean(gamertag),
+    refetchInterval: 3000,
   });
   // No Suggested people here (owner's direction, Nov 20 2026):
   // the empty inbox stays empty — no recommendations. People you
@@ -29717,6 +29768,11 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
     queryKey: ["dm-thread", playerKey, openKey],
     queryFn: () => api.listDmThread({ playerKey, otherKey: openKey }),
     enabled: Boolean(openKey && gamertag),
+    // Live chat: an open conversation re-reads every second (see
+    // the note on the conversation list above) — new messages,
+    // the other person's presence and the Seen marker all stay
+    // current without a refresh.
+    refetchInterval: 1000,
   });
   // Phone full-screen chat (owner's direction, Nov 21 2026):
   // below the 860px two-pane breakpoint, an open chat leaves the
@@ -29751,13 +29807,35 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
   }, [thread.data, openKey, qc]);
   const send = useMutation({
     mutationFn: async () => await api.sendDm({ playerKey, otherKey: openKey, body: draft.trim() }),
+    // Instant send (live chat, Nov 23 2026): your message is
+    // appended to the open thread the moment you press Send —
+    // before the server answers — so sending feels like a real
+    // messenger. The 1-second live refetch (or the invalidation
+    // on success) swaps in the server's real row right behind it;
+    // a failed send rolls the bubble back and shows why.
+    onMutate: async () => {
+      const key = ["dm-thread", playerKey, openKey];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<ApiResponse<typeof api, "listDmThread">>(key);
+      const body = draft.trim();
+      if (prev && body) {
+        qc.setQueryData(key, {
+          ...prev,
+          messages: [...prev.messages, { id: -Date.now(), mine: true, body, createdAt: new Date().toISOString(), seen: false, crewInviteId: 0, crewInviteState: "", eventInviteId: 0 }],
+        });
+      }
+      return { prev };
+    },
     onSuccess: () => {
       setDraft("");
       setSendError("");
       qc.invalidateQueries({ queryKey: ["dm-thread"] });
       qc.invalidateQueries({ queryKey: ["dm-conversations"] });
     },
-    onError: (e) => setSendError(e.message),
+    onError: (e, _v, context) => {
+      if (context?.prev) qc.setQueryData(["dm-thread", playerKey, openKey], context.prev);
+      setSendError(e.message);
+    },
   });
   // Report a private message: private DMs are never screened or
   // monitored — reporting is the only way one specific message is
@@ -29788,21 +29866,54 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
     queryKey: ["dm-followed", playerKey],
     queryFn: () => api.listFollowedPeople({ playerKey }),
     enabled: Boolean(gamertag),
+    // Live (Nov 23 2026): someone you just followed elsewhere
+    // appears in this box on its own.
+    refetchInterval: 30000,
   });
   const groupThread = useQuery({
     queryKey: ["group-thread", playerKey, openGroupId],
     queryFn: () => api.listGroupThread({ playerKey, groupId: openGroupId }),
     enabled: Boolean(openGroupId && gamertag),
+    // Live chat: an open group / crew / event chat re-reads every
+    // second, exactly like a personal thread (see the note on the
+    // conversation list above).
+    refetchInterval: 1000,
   });
   const sendGroup = useMutation({
     mutationFn: async () => await api.sendGroupMessage({ playerKey, groupId: openGroupId, body: gDraft.trim() }),
+    // Instant send, same as personal DMs: the bubble renders the
+    // moment Send is pressed and the server row replaces it on
+    // the next live read; a failure rolls it back.
+    onMutate: async () => {
+      const key = ["group-thread", playerKey, openGroupId];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<ApiResponse<typeof api, "listGroupThread">>(key);
+      const body = gDraft.trim();
+      if (prev && body) {
+        qc.setQueryData(key, {
+          ...prev,
+          messages: [...prev.messages, {
+            id: -Date.now(), mine: true, canDelete: true, senderKey: playerKey, senderName: gamertag, body, createdAt: new Date().toISOString(),
+            joinRequestId: 0, joinRequestStatus: "", joinRequestName: "",
+            eventCardId: 0, eventCardTitle: "", eventCardStartsAt: "", eventCardTimezone: "", eventCardMyRsvp: "",
+            eventCardType: "", eventCardPlatform: "", eventCardHost: "", eventCardImageUrl: "",
+            eventCardGoing: 0, eventCardNotGoing: 0,
+            eventJoinRequestId: 0, eventJoinRequestStatus: "", eventJoinRequestName: "",
+          }],
+        });
+      }
+      return { prev };
+    },
     onSuccess: () => {
       setGDraft("");
       setGError("");
       qc.invalidateQueries({ queryKey: ["group-thread"] });
       qc.invalidateQueries({ queryKey: ["dm-conversations"] });
     },
-    onError: (e) => setGError(e.message),
+    onError: (e, _v, context) => {
+      if (context?.prev) qc.setQueryData(["group-thread", playerKey, openGroupId], context.prev);
+      setGError(e.message);
+    },
   });
   // Delete a message in a group / crew / event chat: your own
   // messages always; in a crew chat the Leader and Co-Leaders can
@@ -30195,6 +30306,29 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
   // in the background).
   const eventInviteById = new Map((thread.data?.eventInvites ?? []).map((ei) => [ei.event.id, ei]));
   const lastMineSeen = [...messages].reverse().find((m) => m.mine)?.seen ?? false;
+  // A personal thread follows its newest message the same way a
+  // group thread does (see groupScrollRef above): it opens at
+  // the bottom, and when a message arrives live it scrolls down
+  // ONLY while the reader is already near the bottom (or the
+  // newest message is their own, e.g. an optimistic send) —
+  // reading back through history is never yanked away. Without
+  // this, live polling alone would land new messages below the
+  // fold of a long thread and the chat would still not FEEL live.
+  const dmScrollRef = useRef<HTMLDivElement | null>(null);
+  const dmScrollKeyRef = useRef("");
+  useEffect(() => {
+    const el = dmScrollRef.current;
+    if (!el || !openKey || thread.isPending) return;
+    const last = messages[messages.length - 1];
+    const key = `${openKey}:${last?.id ?? 0}`;
+    if (dmScrollKeyRef.current === key) return;
+    const isNewThread = !dmScrollKeyRef.current.startsWith(`${openKey}:`);
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 180;
+    dmScrollKeyRef.current = key;
+    if (isNewThread || nearBottom || last?.mine) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [openKey, messages, thread.isPending]);
   // The chat pane itself: rendered in place in the two-pane
   // shell, or — on a phone with a chat open — portalled to
   // <body> as a full-screen layer (see chatFullscreen above).
@@ -30757,7 +30891,7 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
                   </span>
                 </button>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-4 py-5" aria-label={`Conversation with ${other?.gamertag ?? "this player"}`}>
+              <div ref={dmScrollRef} className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-4 py-5" aria-label={`Conversation with ${other?.gamertag ?? "this player"}`}>
                 {thread.isPending && <p className="text-sm text-[var(--dim)]">{uiT("Loading messages…")}</p>}
                 {thread.data && messages.length === 0 && (
                   <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
@@ -30998,11 +31132,19 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
                   style={{ paddingRight: 52 }}
                   aria-pressed={openKey === c.otherKey}
                   onClick={() => { closeHoverProfile(); openDm(c.otherKey); }}
-                  aria-label={`Chat with ${c.gamertag}${c.unread ? ` — ${c.unread} unread` : ""}${c.pinned ? " — pinned" : ""}`}
+                  aria-label={`Chat with ${c.gamertag}${c.unread ? ` — ${c.unread} unread` : ""}${c.pendingRequest ? " — a request is waiting for your answer" : ""}${c.pinned ? " — pinned" : ""}`}
                 >
                   <span className="relative flex-none">
                     <CosmeticAvatar name={c.gamertag} size={46} avatarUrl={c.avatarUrl} />
                     <span className="absolute bottom-0 right-0"><PresenceDot status={c.presence} size={12} ring /></span>
+                    {/* Pending-request ball (owner's direction,
+                        Nov 23 2026): while an invite in this chat
+                        waits for the reader's answer, a red ball
+                        sits on the avatar's top corner — on top of
+                        the trailing ball below — so the request
+                        cannot blend into the list the way a plain
+                        invite card blended into the thread. */}
+                    {c.pendingRequest && <span className="request-dot absolute -right-1 -top-1" aria-hidden="true" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate text-[15px] ${c.unread ? "font-extrabold" : "font-semibold"}`}>{c.displayName.trim() || c.gamertag}{c.pinned ? <span className="ml-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--accent2)]">{uiT("Pinned")}</span> : null}</span>
@@ -31010,6 +31152,7 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
                       {c.lastMine ? uiT("You:") : ""}{c.lastBody} · {timeAgo(c.lastAt).replace(" ago", "")}
                     </span>
                   </span>
+                  {c.pendingRequest && <span className="request-dot" aria-hidden="true" />}
                   {c.unread > 0 && <span className="unread-dot" aria-hidden="true" />}
                 </button>
                 <button
@@ -32934,11 +33077,15 @@ function ProfileView({ playerKey, go, onBack, onOpenWallet }: { playerKey: strin
     queryKey: ["profile-posts", playerKey, targetKey, "posts"],
     queryFn: () => api.listProfilePosts({ playerKey, targetKey, mode: "posts" }),
     enabled: Boolean(social.data?.found),
+    // Live (Nov 23 2026): a profile's newest posts appear on their own.
+    refetchInterval: 30000,
   });
   const hubVideos = useQuery({
     queryKey: ["profile-posts", playerKey, targetKey, "clips"],
     queryFn: () => api.listProfilePosts({ playerKey, targetKey, mode: "clips" }),
     enabled: Boolean(social.data?.found),
+    // Live (Nov 23 2026): a profile's newest clips appear on their own.
+    refetchInterval: 30000,
   });
   // The eye toggles on the Personal Wallet / Events Attended
   // boxes: hide or show the number, saved on the
@@ -33313,7 +33460,7 @@ function ProfileView({ playerKey, go, onBack, onOpenWallet }: { playerKey: strin
   // instead. The stories query shares its key with ProfileHighlights
   // so it is fetched once. aboutTarget opens the X-style "About this
   // account" sheet behind the Joined date.
-  const storiesQ = useQuery({ queryKey: ["stories", playerKey], queryFn: () => api.listStories({ playerKey }), enabled: Boolean(playerKey) });
+  const storiesQ = useQuery({ queryKey: ["stories", playerKey], queryFn: () => api.listStories({ playerKey }), enabled: Boolean(playerKey), refetchInterval: 30000 });
   const [avatarZoom, setAvatarZoom] = useState<{ name: string; avatarUrl: string } | null>(null);
   const [storyViewer, setStoryViewer] = useState<{ groups: StoryGroup[]; groupIndex: number } | null>(null);
   // Create-a-highlight straight from your own story's black

@@ -1699,6 +1699,22 @@ button.set-row:hover { border-color: var(--border-strong); }
 .dm-bubble.theirs { background: var(--surface3); color: var(--text); border-bottom-left-radius: 6px; }
 .unread-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--accent); flex: none; }
 
+/* Pending-request ball (owner's direction, Nov 23 2026 — "a small
+   red ball (acting like a notification) when u have a request",
+   after a friend missed a crew invite sitting in his DM): a solid
+   RED ball, deliberately not the pink unread dot, shown wherever a
+   request is waiting for the reader's own answer — on the chat row
+   in the Messages list (trailing edge and on the avatar) and on
+   the invite card itself. It stays until the request is answered.
+   A slow soft pulse ring keeps it noticeable without flashing;
+   reduced motion keeps the solid ball with its glow. */
+@keyframes vv-request-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.5), 0 0 6px rgba(229, 72, 77, 0.65); }
+  50% { box-shadow: 0 0 0 5px rgba(229, 72, 77, 0), 0 0 6px rgba(229, 72, 77, 0.65); }
+}
+.request-dot { width: 11px; height: 11px; border-radius: 999px; background: #e5484d; flex: none; animation: vv-request-pulse 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .request-dot { animation: none; box-shadow: 0 0 6px rgba(229, 72, 77, 0.65); } }
+
 /* Messages / chat — DESKTOP compact (owner's direction,
    Nov 22 2026: minimize the chat size on Mac too, more
    spacious): at the two-pane breakpoint and up, the whole

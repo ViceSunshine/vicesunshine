@@ -13579,7 +13579,7 @@ export const Actions = {
 
 
   listDmConversations: defineAction({
-    description: "Lists the player's Instagram-style direct-message conversations: one row per person they have exchanged messages with, pinned chats first then most recent, with the last message preview, its time, the unread count, and whether it is a request (someone they do not follow messaged first and they have never replied). Also returns the Notes row: the player's own note (their custom status) plus notes from people they follow and their crewmates.",
+    description: "Lists the player's Instagram-style direct-message conversations: one row per person they have exchanged messages with, pinned chats first then most recent, with the last message preview, its time, the unread count, whether it is a request (someone they do not follow messaged first and they have never replied), and pendingRequest — true while an invite sent TO the reader in that conversation is still waiting for their answer (a crew invite they have not accepted, declined or already requested past, or an event invite they have not RSVP'd to and whose event has not started), which the chat list marks with a red notification ball. Also returns the Notes row: the player's own note (their custom status) plus notes from people they follow and their crewmates.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       search: z.string().trim().max(80).default(""),
@@ -13593,7 +13593,7 @@ export const Actions = {
       items: z.array(z.object({
         otherKey: z.string(), gamertag: z.string(), displayName: z.string(), avatarUrl: z.string(), avatarEffect: z.string(),
         presence: z.string(), lastBody: z.string(), lastAt: z.string(), lastMine: z.boolean(),
-        unread: z.number(), pinned: z.boolean(), request: z.boolean(),
+        unread: z.number(), pinned: z.boolean(), request: z.boolean(), pendingRequest: z.boolean(),
       })),
       groups: z.array(z.object({
         groupId: z.number(), kind: z.string(), name: z.string(), clanId: z.number(),
@@ -13637,6 +13637,47 @@ export const Actions = {
         const other = m.senderKey === args.playerKey ? m.recipientKey : m.senderKey;
         byOther.set(other, [...(byOther.get(other) ?? []), m]);
       }
+      // Pending-request state (owner's direction, Nov 23 2026 —
+      // a small red ball "when u have a request", after a friend
+      // missed a crew invite sitting in his DM): a conversation
+      // carries a request waiting for MY answer while it holds an
+      // invite addressed to me that I have not answered yet. A
+      // crew invite is answered once I am in the crew, once a
+      // join application / request of mine is already waiting
+      // with its Leader, or once I declined the card; an event
+      // invite is answered by any RSVP of mine and dies when the
+      // event starts. Membership is read by key OR gamertag,
+      // exactly like listDmThread reads the card's own state, so
+      // the ball and the card always agree.
+      const allMemberRows = await db.select().from(schema.clanMembers);
+      const myTagForReq = (me.gamertag ?? "").trim().toLowerCase();
+      const myMemberClanIds = new Set(allMemberRows
+        .filter((m) => m.playerKey === args.playerKey || (myTagForReq !== "" && m.gamertag.trim().toLowerCase() === myTagForReq))
+        .map((m) => m.clanId));
+      const appRowsForReq = await db.select().from(schema.clanApplications);
+      const myPendingClanIds = new Set(appRowsForReq
+        .filter((a) => a.playerKey === args.playerKey && a.status === "Pending")
+        .map((a) => a.clanId));
+      const rsvpRowsForReq = await db.select().from(schema.rsvps);
+      const myRsvpEventIds = new Set(rsvpRowsForReq
+        .filter((r) => r.playerKey === args.playerKey)
+        .map((r) => r.eventId));
+      const eventRowsForReq = await db.select().from(schema.events);
+      const eventByIdForReq = new Map(eventRowsForReq.map((e) => [e.id, e]));
+      const hasPendingRequest = (list: typeof mine): boolean => list.some((m) => {
+        if (m.recipientKey !== args.playerKey) return false;
+        if (m.crewInviteId > 0) {
+          return (m.crewInviteState ?? "") !== "declined"
+            && !myMemberClanIds.has(m.crewInviteId)
+            && !myPendingClanIds.has(m.crewInviteId);
+        }
+        if (m.eventInviteId > 0) {
+          const ev = eventByIdForReq.get(m.eventInviteId);
+          if (!ev || eventHasStarted(ev)) return false;
+          return !myRsvpEventIds.has(m.eventInviteId);
+        }
+        return false;
+      });
       const q = args.search.trim().toLowerCase();
       const items = [...byOther.entries()]
         .map(([otherKey, list]) => {
@@ -13656,6 +13697,7 @@ export const Actions = {
             unread: list.filter((m) => m.recipientKey === args.playerKey && m.seen !== 1).length,
             pinned: pinSet.has(otherKey),
             request: !iFollow.has(otherKey) && !iReplied && list.some((m) => m.senderKey === otherKey),
+            pendingRequest: hasPendingRequest(list),
           };
         })
         .filter((i) => !q || i.gamertag.toLowerCase().includes(q) || i.displayName.toLowerCase().includes(q) || i.lastBody.toLowerCase().includes(q))
