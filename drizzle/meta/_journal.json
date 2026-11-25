@@ -708,6 +708,13 @@
       "when": 1795599827232,
       "tag": "0101_fix_confirmed_entry_descriptions_that_said_not_confirmed",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "6",
+      "when": 1795601850399,
+      "tag": "0102_carry_new_news_patch_and_feed_posts_to_live",
+      "breakpoints": true
     }
   ]
 }
