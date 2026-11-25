@@ -2675,3 +2675,50 @@ The v461 Green Alien emblem/calling card and the seeded [CR7] THE GOAT crew were
 ## Google Analytics 4 (Nov 24, 2026)
 
 GA4 tracking tag (gtag.js) added to the `<head>` of `client/index.html`, directly after the existing Google AdSense verification snippet. Measurement ID `G-6WXQ8S0VS6` — the GA4 property for vicesunshine.com, created by/for the owner (officialvicesunshine@gmail.com) and supplied in the build brief. Source: `https://www.googletagmanager.com/gtag/js?id=G-6WXQ8S0VS6` with the standard inline `gtag('config', 'G-6WXQ8S0VS6')` bootstrap. Invisible to visitors; counts visits from the moment it goes live (no backfill of earlier visits). Nothing else changed.
+
+## Content fixes — migration 0098 (Nov 25, 2026)
+
+Owner-requested cleanup and post-launch corrections, migration `0098_content_fixes_dedupe_official_map_places_guides_and_clipper_videos.sql` plus code changes in `server/src/actions.ts`. Nothing published to GitHub/Railway; the live site is unchanged.
+
+- Bug tracker dedupe: duplicate auto-found rows deleted (first-person glitch ids 2, 10, 23, 35, 37, 39, 47, 51, 62 — keeper id 1; infinite-money ids 4, 17, 40, 45, 49, 55, 61, 63 — keeper id 38; Quick Resume 60fps ids 50, 56, 59 — keeper id 41; CE-108255-1 ids 33, 53 — keeper id 30), with their bug_votes / bug_reports rows. Bugs 27, 30, 43, 6, 28 (already Fixed via setbugstatus) untouched.
+- Feed: duplicate auto posts 899 (Perri Karyal brain-jet, techtroduce.com) and 898 (Kalshi hiring, insidetrackindia.com) deleted with comments/likes/reports/reposts/views/saves/hidden/preferences/notifications; keepers 901 and 896 carry the pictures.
+- News: row 119 "Untitled" (ggmania.com, duplicate of the 01.002.002 coverage) deleted.
+- Easter Eggs: id 15 deleted (same tower-climb egg as id 6); id 6's how-to merged with the xGarbett seven-minute communications-tower cutscene detail; status stays Rumor.
+- Crew: clans id 22 "lol" [LALA] deleted with clan_members + crew_join_history rows, same pattern as migration 0097.
+- Database: entry 283 "Hellspawn Comshot 12" (YouTube Short) deleted — keeper 274 with the GameRant source; entry 263 "Black Eagle gun store" deleted — keeper 279, same source video.
+- Database: 7 new Location entries (Draper Island, Millport, Belville, Waning Sands, Breakwater Quarry, Buckskin Swamp, Mile Zero Air Station), kind Location, category "Other", status "Confirmed in trailer", sourceName "Rockstar Games — official GTA VI page", sourceUrl https://www.rockstargames.com/VI (copied verbatim from the owner's brief). Descriptions state only that each is named on Rockstar's official Leonida map (released Nov 19, 2026) with details to be confirmed in-game — no invented details. Unique art: one DB_ART_SPECS entry per place in actions.ts; pictures are generated per entry by the existing seedDbArt flow (original illustrations, no Rockstar art).
+- Guides: id 9 body rewritten — Rockstar released the official map Nov 19, 2026 (free download on rockstargames.com/VI, "Leonida Map & Cover Art Poster", counties Lummox, Kelly, Leonard, Vice-Dale, Mariana); the ViceSunshine Map stays fan-made on licensed community tiles. Id 1 body rewritten as a post-launch checklist (game out Nov 19, 2026; patch 01.002.002 Nov 23, 2026; up to 212 GB free space). Bodies supplied verbatim in the owner's brief.
+- Feed videos: 4 GTA CLIPPER auto posts inserted (author key gta-clipper-ai, kind News, auto=1, sourceName youtube.com, media/source URLs are the watch URLs; embed URL is derived by the existing feedMediaOf): rz1B4B2yBZY "Grand Theft Auto VI Launch Trailer" (Rockstar Games, verified via YouTube oEmbed per the brief), agBEh5aZ_Go "GTA 6 Review" (IGN, 10/10), rAhUXOYNuH4 "Grand Theft Auto VI (GTA 6) - The Review" (GameSpot, 10/10), qsBU0bcpONA "[4K HDR] Grand Theft Auto 6: Digital Foundry Tech Review". Inserts are guarded by NOT EXISTS on the video id, and refreshFeedMedia's existing seenVideoIds dedupe (built from stored mediaUrls) prevents double-posting. The Xbox-channel upload tNf8kZJeqQo was deliberately NOT posted.
+- Code: listPins now serves stored map_pins (layer filter kept) and addPin inserts a real pin — the pre-launch gate is removed because the official map was released Nov 19, 2026. No pins were fabricated; the table stays empty until real verified pins are added. addEgg copy updated (no longer claims the official map is unreleased). FEED_VIDEO_SEARCHES gained review/launch-trailer queries: "Rockstar Games GTA VI launch trailer", "GTA VI review IGN", "GTA VI review GameSpot", "GTA VI Digital Foundry tech review" (all site:youtube.com, News kind).
+
+## Nov 25, 2026 — "Untitled" ggmania news row removed as junk (owner: "fix its title or remove it if it is junk")
+- The row (titled "Untitled", source ggmania.com, https://www.ggmania.com/cf.php3?show=67432, published 2026-11-25) was checked at its source on Nov 25, 2026: the ggmania page carries NO headline of its own — its entire text is the GTA VI patch 01.002.002 story (crashes, stuck weather, autosave, story phone calls, Wanted Level, gym deadlift bar, fence bags; ~604 MB PS5 / ~1.6 GB Xbox). ViceSunshine already covers that exact patch with properly titled rows from Polygon, TechTimes, PSU, Beebom, ComicBook, Esports.gg, Digital Foundry, Notebookcheck, gtanews.fr, applescoop.org and e2agames.com, so the row was a duplicate with a placeholder title — junk, removed rather than retitled.
+- Fix shipped three ways: (1) new idempotent action removeUntitledNews deletes stored news rows whose title is the placeholder "Untitled"/empty, re-pointing any player's save of one to the newest remaining Patch story about the same version named in its summary (01.002.002), and runs once against the durable database as this build's post-submit action; (2) refreshNews ingest now skips search results whose normalized title is "untitled", so the row cannot be re-added by the automatic refresh; (3) listNews never renders a placeholder-titled row, even if one sits in storage awaiting cleanup.
+- Sandbox proof: a replica of the exact row (same title, source, URL and summary) was inserted via addNews (it took id 126, matching the evidence capture), listNews searches for "Untitled" and "ggmania" returned nothing, removeUntitledNews removed exactly that 1 row, a second run removed 0, and the other 120 news rows — including 10 other patch 01.002.002 stories — were untouched.
+
+## 2026-11-25 — Migration 0099: Database entries confirmed after launch
+
+Database-only update (db_entries table). 76 entries set to status "Confirmed in trailer" (matched by id AND name), per Ben's instruction that everything on the site be up to date now the game has launched (Nov 19, 2026). No other tables, entries, or content changed.
+
+New sources recorded on specific entries (all URLs supplied verbatim in the brief):
+- Characters 35 (Andrés de León), 39 (Kenton): powerpyx.com — https://www.powerpyx.com/gta-6-andres-de-leon-character/ and https://www.powerpyx.com/gta-6-kenton-rees-character/
+- Vehicles 12, 14, 15, 19, 45, 52, 98, 99, 114, 247, 301: gtavi-cars.com — https://gtavi-cars.com
+- Vehicles 120 (Enduro), 126 (Squalo): Rockstar Games — official GTA VI page — https://www.rockstargames.com/VI
+- Weapons 3, 4, 7, 8, 9, 10, 180, 181, 182, 183, 184, 185, 186, 187, 206, 215: eldorado.gg — https://www.eldorado.gg/blog/grand-theft-auto-en/gta-6-weapons-list/
+- Location 262 (Pelican Valley Outpost): polygon.com — https://www.polygon.com/gta-6-giant-crab-safe-code-crabshack-vf5-smg-how-to-get-pelican-valley-outpost/
+
+All other confirmed entries kept their existing source_name/source_url.
+
+Correction (migration 0100): two of the 76 rows did not match the brief's listed name exactly, so 0099 left them untouched — id 38 is stored as "Dre'quan Priest" (brief: "Dre'Quan Priest") and id 302 is stored as "Hunter’s Laird 350" with a typographic apostrophe (brief: straight apostrophe). Migration 0100 confirms both, matching id AND the stored name, keeping their existing sources, as the brief intended.
+
+## 2026-11-25 — Migration 0101: fix descriptions contradicting confirmed status
+
+Follow-up to 0099/0100: 38 of the 76 entries marked "Confirmed in trailer" still carried their old seed descriptions saying they were NOT confirmed. Migration 0101 rewrites ONLY the `description` (plus `updated_at`) on those 38 `db_entries` rows, each matched by id AND its exact current description text. No status, source, picture, or other field changes; no new or deleted entries.
+
+- Characters 36, 37, 38, 40, 224, 225, 226, 227 → "A character in GTA VI, confirmed on Rockstar's official GTA VI page."
+- Characters 35, 39 → "A story character in GTA VI, confirmed in the game."
+- Vehicles 12, 14, 15, 19, 45, 52, 98, 99, 114 → "A vehicle in GTA VI, confirmed in the trailers and official Rockstar material."
+- Vehicles 91, 120, 126 → "A vehicle in GTA VI, named by Rockstar."
+- Weapons 3, 4, 7, 8, 9, 10, 180, 181, 182, 183, 184, 185, 186, 187, 206, 215 → "A standard-issue weapon in GTA VI, confirmed in the game's weapon list."
+
+Verified on the running artifact (listdbentries): all 38 rows carry the exact new description with status still "Confirmed in trailer". Rows still carrying the old templates are all status "Returning from GTA V" or "Unverified", so their text matches their status and stays untouched.

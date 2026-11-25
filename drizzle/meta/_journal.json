@@ -666,6 +666,48 @@
       "when": 1795465310079,
       "tag": "0095_owner_million_credits_saved_for_official_site",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "6",
+      "when": 1795497874702,
+      "tag": "0096_seed_the_goat_crew_with_green_alien_emblem_and_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "6",
+      "when": 1795498357273,
+      "tag": "0097_remove_seeded_the_goat_crew",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "6",
+      "when": 1795597438817,
+      "tag": "0098_content_fixes_dedupe_official_map_places_guides_and_clipper_videos",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "6",
+      "when": 1795599530926,
+      "tag": "0099_confirm_database_entries_after_launch",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "6",
+      "when": 1795599592321,
+      "tag": "0100_confirm_two_db_entries_with_stored_name_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "6",
+      "when": 1795599827232,
+      "tag": "0101_fix_confirmed_entry_descriptions_that_said_not_confirmed",
+      "breakpoints": true
     }
   ]
 }

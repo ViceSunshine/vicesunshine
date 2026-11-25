@@ -1,9 +1,9 @@
 // ViceSunshine actions: source-backed news/patches with a daily web-search
 // refresh, plus fully user-owned community data (bugs,
 // eggs, guides, profiles, clans with the 5-role hierarchy, LFG,
-// events, faction war). Note: the official GTA VI map has not been
-// released — there are no verified map pins until after launch on
-// Nov 19, 2026, so pin creation is disabled and listPins returns none.
+// events, faction war). Note: Rockstar released the official GTA VI
+// map on Nov 19, 2026, so verified map pins are open — listPins
+// serves the stored pins and addPin accepts new verified pins.
 
 import { defineAction, z, type ActionsModule, type Ctx } from "@hatch/space-sdk";
 import { and, asc, desc, eq, getTableColumns, inArray, like, or } from "drizzle-orm";
@@ -2955,6 +2955,10 @@ const FEED_VIDEO_SEARCHES: { query: string; kind: string; blurb: string }[] = [
   { query: "site:youtube.com GTA VI funny moments video", kind: "Funny", blurb: "Funny GTA VI moments." },
   { query: "site:youtube.com GTA VI glitch bug discovered video", kind: "Gameplay", blurb: "A newly reported GTA VI glitch / bug, posted as a community report with the source linked — confirmed issues are followed up in the Bug Tracker. Found a glitch yourself? Report it there." },
   { query: "site:youtube.com GTA VI tips and tricks video", kind: "Tutorial", blurb: "GTA VI tips and tricks from the community — checked against the source before you rely on them." },
+  { query: "site:youtube.com Rockstar Games GTA VI launch trailer", kind: "News", blurb: "The official GTA VI launch trailer from the Rockstar Games channel." },
+  { query: "site:youtube.com GTA VI review IGN", kind: "News", blurb: "IGN's GTA VI review video." },
+  { query: "site:youtube.com GTA VI review GameSpot", kind: "News", blurb: "GameSpot's GTA VI review video." },
+  { query: "site:youtube.com GTA VI Digital Foundry tech review", kind: "News", blurb: "Digital Foundry's GTA VI tech review video." },
 ];
 // The Feed's Rockstar pass — Rockstar's own site only, so these
 // never spend budget (keyed feed:rockstar:<index>).
@@ -4732,6 +4736,13 @@ const DB_ART_SPECS: Record<string, string> = {
   "Lucia's Apartment": "a peach-coloured walk-up apartment block in the city with balconies, laundry lines and neon glow from the street below, dusk",
   "Paradise Garage": "a concrete storage garage with the shutter half open, a muddy off-road muscle buggy parked inside, tools and spare tyres, dusk",
   "Electric Fang Tattoo": "the storefront of a tattoo parlour at night with a huge glowing orange fang-and-wolf neon sign (abstract shapes, no readable text), a scooter parked outside",
+  "Draper Island": "a small low-lying island seen from across turquoise water — a narrow sand shore, scattered palms and a couple of weathered stilt shacks, a small boat moored at a wooden jetty, golden hour",
+  "Millport": "a working harbour town waterfront — fishing boats and a small cargo dock along a quay, low warehouse sheds and a water tower behind, gulls overhead, bright morning light",
+  "Belville": "a quiet small-town main street — low storefronts with awnings, a pickup parked at the kerb, a water tower on the horizon, warm late-afternoon light, no readable text",
+  "Waning Sands": "a wide pale-sand shoreline at low tide — shallow pools reflecting a big sky, dunes with sea grass, a distant boardwalk silhouette, soft dusk light",
+  "Breakwater Quarry": "a coastal rock quarry — terraced pale stone faces above a deep turquoise flooded pit, a breakwater of boulders reaching into the sea, one crane silhouette, midday light",
+  "Buckskin Swamp": "a still swamp backwater — cypress trees draped with Spanish moss, lily pads and dark reflective water, a small airboat tied to a wooden post, misty dawn light",
+  "Mile Zero Air Station": "a small coastal air station — a short runway ending at the sea, a low hangar and a small propeller plane parked outside, a windsock and perimeter fence, clear morning light, no readable text",
 };
 
 // A Database entry only counts as HAVING a picture when the blob
@@ -7813,6 +7824,14 @@ export const Actions = {
         if (t) keys.push(`t:${t}`);
         return keys;
       }).keepers.sort((a, b) => b.id - a.id);
+      // Placeholder-titled rows ("Untitled" — a scraped page with
+      // no headline of its own, e.g. the ggmania.com patch story,
+      // Nov 25 2026) are junk, not stories: never render one, even
+      // if a row is still sitting in storage awaiting cleanup.
+      rows = rows.filter((r) => {
+        const t = normalizeTextKey(r.title);
+        return t !== "" && t !== "untitled";
+      });
       if (args.category !== "All") {
         rows = rows.filter((r) => r.category === args.category);
       }
@@ -7897,6 +7916,11 @@ export const Actions = {
           if (!url || !title || seenUrls.has(normalizeUrlKey(url)) || seenTitles.has(normalizeTextKey(title))) {
             continue;
           }
+          // A result whose page has no headline of its own comes
+          // back titled "Untitled" (the ggmania.com patch story,
+          // Nov 25 2026) — a placeholder, not a headline, and the
+          // story is already covered by titled rows. Never store it.
+          if (normalizeTextKey(title) === "untitled") continue;
           if (/download|apk|crack|free gta/i.test(title)) continue;
           seenUrls.add(normalizeUrlKey(url));
           seenTitles.add(normalizeTextKey(title));
@@ -8762,6 +8786,59 @@ export const Actions = {
       }
       if (bugsCleaned > 0 || newsCleaned > 0 || guidesFixed > 0) ctx.invalidateQueries();
       return { bugsCleaned, newsCleaned, guidesFixed, crazyRemoved };
+    },
+  }),
+
+  removeUntitledNews: defineAction({
+    description: "One-time cleanup (owner, Nov 25 2026: news row titled 'Untitled' from ggmania.com — 'fix its title or remove it if it is junk'): the row IS junk and is removed, not retitled. Its source page (https://www.ggmania.com/cf.php3?show=67432) was checked directly: it carries no headline of its own — its whole text is the patch 01.002.002 story, which ViceSunshine already covers with properly titled rows from a dozen sources (Polygon, TechTimes, PSU, Beebom and more), so this row adds nothing but a placeholder title. Removes every stored news row whose title is the placeholder 'Untitled' (or empty); a player who saved one of those rows keeps a save, re-pointed at the newest remaining Patch story about the same update when the junk row's summary names one (e.g. 01.002.002), and the save is dropped only when no such story remains. The refreshNews ingest now refuses 'Untitled' results and listNews never renders one, so it cannot come back. Idempotent: once clean, later runs remove nothing.",
+    request: z.object({}),
+    response: z.object({
+      removed: z.number(),
+      removedIds: z.array(z.number()),
+      savesRepointed: z.number(),
+      savesRemoved: z.number(),
+    }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.news);
+      const isJunk = (r: (typeof rows)[number]) => {
+        const t = normalizeTextKey(r.title);
+        return t === "" || t === "untitled";
+      };
+      const junk = rows.filter(isJunk);
+      const removedIds: number[] = [];
+      let savesRepointed = 0;
+      let savesRemoved = 0;
+      if (junk.length) {
+        const keepers = rows.filter((r) => !isJunk(r));
+        const allSaves = await db.select().from(schema.accountSaves);
+        for (const j of junk) {
+          // Same-story keeper for save re-pointing: the junk row's
+          // summary names the patch version it retells (the
+          // ggmania row names 01.002.002); prefer a Patch-category
+          // keeper about that version, newest first.
+          const version = j.summary.match(/\b\d{2}\.\d{3}\.\d{3}\b/)?.[0] ?? "";
+          const keeper = version
+            ? [...keepers]
+                .filter((k) => k.title.includes(version) || k.summary.includes(version))
+                .sort((a, b) => (a.category === "Patch" ? 0 : 1) - (b.category === "Patch" ? 0 : 1) || b.id - a.id)[0]
+            : undefined;
+          for (const s of allSaves.filter((x) => x.kind === "news" && x.refId === j.id)) {
+            if (keeper && !allSaves.some((x) => x.kind === "news" && x.refId === keeper.id && x.playerKey === s.playerKey)) {
+              await db.update(schema.accountSaves).set({ refId: keeper.id }).where(eq(schema.accountSaves.id, s.id));
+              s.refId = keeper.id;
+              savesRepointed += 1;
+            } else {
+              await db.delete(schema.accountSaves).where(eq(schema.accountSaves.id, s.id));
+              savesRemoved += 1;
+            }
+          }
+          await db.delete(schema.news).where(eq(schema.news.id, j.id));
+          removedIds.push(j.id);
+        }
+        ctx.invalidateQueries();
+      }
+      return { removed: removedIds.length, removedIds, savesRepointed, savesRemoved };
     },
   }),
 
@@ -9902,7 +9979,7 @@ export const Actions = {
   }),
 
   addEgg: defineAction({
-    description: "Submits a new Easter egg or secret for community verification. Location is an approximate region only — no exact map pin is created, because the official map is not released and no location is verified until after launch.",
+    description: "Submits a new Easter egg or secret for community verification. Location is an approximate region only — no exact map pin is created from an egg report; pins are added separately once a location is verified in-game.",
     request: z.object({
       name: z.string().trim().min(3).max(120),
       location: z.string().trim().max(120).default(""),
@@ -9924,8 +10001,8 @@ export const Actions = {
       const dupeEgg = existingEggs.find((e) => eggDedupeKeys(e).some((k) => newKeys.has(k)));
       if (dupeEgg) return { id: dupeEgg.id };
       // Store the find as a list entry only. Deliberately do NOT create a
-      // map pin: the official map is not released yet and exact in-game
-      // locations are unverified until after launch on Nov 19, 2026.
+      // map pin from an egg report: a pin is added separately, only once
+      // the exact in-game location has been verified.
       // New finds can never start as Confirmed — verification comes later.
       const { playerKey, ...rest } = args;
       const res = await db
@@ -10302,19 +10379,28 @@ export const Actions = {
   }),
 
   listPins: defineAction({
-    description: "Lists verified map pins. Returns none before launch: the official GTA VI map is not released yet, so no pin location is verified until after Nov 19, 2026.",
+    description: "Lists verified map pins. Rockstar released the official GTA VI map on Nov 19, 2026, so verified pins are served; the list is empty until real verified pins are added.",
     request: z.object({ layer: z.string().max(30).default("All") }),
     response: z.object({ items: z.array(pinItem) }),
-    async handler() {
-      // Honest pre-launch state: seeded/legacy pin rows claimed precise
-      // in-game positions that cannot be verified yet, so they are not
-      // served. Verified pins will be served here after launch.
-      return { items: [] };
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      let rows = await db.select().from(schema.mapPins).orderBy(asc(schema.mapPins.id));
+      if (args.layer !== "All") rows = rows.filter((r) => r.layer === args.layer);
+      return {
+        items: rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          layer: r.layer,
+          detail: r.detail,
+          x: r.x,
+          y: r.y,
+        })),
+      };
     },
   }),
 
   addPin: defineAction({
-    description: "Adds a verified pin to the interactive Leonida map. Disabled until after launch, when locations can be verified in-game.",
+    description: "Adds a verified pin to the interactive Leonida map. Open since Rockstar released the official GTA VI map on Nov 19, 2026 — only add locations verified in-game.",
     request: z.object({
       name: z.string().trim().min(2).max(120),
       layer: z
@@ -10325,10 +10411,15 @@ export const Actions = {
       y: z.number().min(2).max(98),
     }),
     response: z.object({ id: z.number() }),
-    async handler() {
-      throw new Error(
-        "Map pins are not available yet — the official map has not been released, and locations can only be verified after launch on Nov 19, 2026.",
-      );
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      assertClean(args.name, args.detail);
+      const res = await db
+        .insert(schema.mapPins)
+        .values({ name: args.name, layer: args.layer, detail: args.detail, x: args.x, y: args.y })
+        .returning({ id: schema.mapPins.id });
+      ctx.invalidateQueries();
+      return { id: res[0]?.id ?? 0 };
     },
   }),
 
