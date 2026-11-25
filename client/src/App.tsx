@@ -2264,7 +2264,7 @@ function SearchOverlay({
   /** A result or recommendation tap: close and go to the section. */
   onNavigate: (t: Tab, search?: string) => void;
   /** A Database result tap: open the Database on that kind. */
-  onDatabase: (kind: string) => void;
+  onDatabase: (kind: string, entryId?: number) => void;
   /** Enter / "See all results": open the full search results view. */
   onFullResults: (query: string) => void;
   /** A Users result tap: open THAT player by their public profile ID. */
@@ -2371,15 +2371,53 @@ function SearchOverlay({
     if (trimmed.length >= 2) record.mutate(trimmed);
     saveHistory(trimmed);
     setQuery("");
-    if (group === "news") onNavigate("news", trimmed);
-    else if (group === "feed") onNavigate("feed", trimmed);
+    // Every result tap opens the thing that was actually tapped,
+    // never just its section's list (owner's bug report, Nov 25
+    // 2026 — a crew tap landed on the Crews directory instead of
+    // the clan profile). Each section reads its hand-off key on
+    // arrival: News / Bugs / Feed ring and scroll to the tapped
+    // item, Events uses its existing vv-event-focus, Guides open
+    // the tapped guide, Crews open the tapped crew's page, Users
+    // open the tapped profile and Database opens the tapped
+    // entry's own detail page.
+    if (group === "news") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-news-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      onNavigate("news", trimmed);
+    }
+    else if (group === "feed") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-feed-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      onNavigate("feed", trimmed);
+    }
     // Videos are Feed posts (YouTube / native video) — they live
     // and play in the Feed.
-    else if (group === "videos") onNavigate("feed", trimmed);
-    else if (group === "events") onNavigate("events", trimmed);
-    else if (group === "bugs") onNavigate("bugs", trimmed);
-    else if (group === "guides") onNavigate("guides", trimmed);
-    else if (group === "crews") onNavigate("clans");
+    else if (group === "videos") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-feed-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      onNavigate("feed", trimmed);
+    }
+    else if (group === "events") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-event-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      onNavigate("events", trimmed);
+    }
+    else if (group === "bugs") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-bug-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      onNavigate("bugs", trimmed);
+    }
+    else if (group === "guides") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-open-guide", String(hit.refId)); } catch { /* storage unavailable */ } }
+      onNavigate("guides", trimmed);
+    }
+    // Crews: open the crew that was actually tapped — hand its id
+    // to the Crews tab through the vv-open-crew key (the same
+    // hand-off the Crew Leaderboard, crew chats and profile crew
+    // boxes use), so the tap lands on THAT crew's own page. Going
+    // to "clans" alone dropped the reader on the general Crews
+    // directory instead of the clan profile.
+    else if (group === "crews") {
+      if (hit.refId > 0) {
+        try { window.localStorage.setItem("vv-open-crew", String(hit.refId)); } catch { /* storage unavailable */ }
+      }
+      onNavigate("clans");
+    }
     // Users: open the player who was actually tapped — by their
     // public profile ID in the hit's `refKey` (see globalSearch).
     // There is NO gamertag fallback anymore: opening by the name
@@ -2390,7 +2428,9 @@ function SearchOverlay({
     else if (group === "players") {
       if (hit.refKey && onOpenPlayerId) onOpenPlayerId(hit.refKey);
     }
-    else onDatabase(hit.extra);
+    // Database: open the tapped entry's own detail page — `extra`
+    // carries its kind, `refId` the entry itself.
+    else onDatabase(hit.extra, hit.refId);
   };
   const pickTrending = (term: string) => {
     // A tap on a popular search runs it — the full results tab
@@ -2581,7 +2621,7 @@ function SearchResultsView({
   query: string;
   playerKey: string;
   go: (t: Tab, search?: string) => void;
-  onDatabase: (kind: string) => void;
+  onDatabase: (kind: string, entryId?: number) => void;
   onOpenSearch: () => void;
   onClear: () => void;
   /** A Users result tap: open THAT player by their public profile ID. */
@@ -2604,19 +2644,55 @@ function SearchResultsView({
   useEffect(() => { setGroupFilter("all"); }, [q]);
   const visibleGroups = SEARCH_GROUPS.filter((g) => (results.data?.[g.key] ?? []).length > 0);
   const pickHit = (group: SearchGroupKey, hit: SearchHitItem) => {
-    if (group === "news") go("news", q);
-    else if (group === "feed") go("feed", q);
-    else if (group === "videos") go("feed", q);
-    else if (group === "events") go("events", q);
-    else if (group === "bugs") go("bugs", q);
-    else if (group === "guides") go("guides", q);
-    else if (group === "crews") go("clans");
+    // Every result tap opens the thing that was actually tapped,
+    // never just its section's list (owner's bug report, Nov 25
+    // 2026 — a crew tap landed on the Crews directory instead of
+    // the clan profile). Each section reads its hand-off key on
+    // arrival — see SearchOverlay's pickHit for the full list.
+    if (group === "news") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-news-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      go("news", q);
+    }
+    else if (group === "feed") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-feed-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      go("feed", q);
+    }
+    else if (group === "videos") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-feed-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      go("feed", q);
+    }
+    else if (group === "events") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-event-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      go("events", q);
+    }
+    else if (group === "bugs") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-bug-focus", String(hit.refId)); } catch { /* storage unavailable */ } }
+      go("bugs", q);
+    }
+    else if (group === "guides") {
+      if (hit.refId > 0) { try { window.localStorage.setItem("vv-open-guide", String(hit.refId)); } catch { /* storage unavailable */ } }
+      go("guides", q);
+    }
+    // Crews: open the crew that was actually tapped — hand its id
+    // to the Crews tab through the vv-open-crew key (the same
+    // hand-off the Crew Leaderboard, crew chats and profile crew
+    // boxes use), so the tap lands on THAT crew's own page. Going
+    // to "clans" alone dropped the reader on the general Crews
+    // directory instead of the clan profile.
+    else if (group === "crews") {
+      if (hit.refId > 0) {
+        try { window.localStorage.setItem("vv-open-crew", String(hit.refId)); } catch { /* storage unavailable */ }
+      }
+      go("clans");
+    }
     // Users: open the tapped player by their public profile ID
     // (the hit's `refKey`), never by gamertag — see SearchOverlay.
     else if (group === "players") {
       if (hit.refKey && onOpenPlayerId) onOpenPlayerId(hit.refKey);
     }
-    else onDatabase(hit.extra);
+    // Database: open the tapped entry's own detail page — `extra`
+    // carries its kind, `refId` the entry itself.
+    else onDatabase(hit.extra, hit.refId);
   };
   return (
     <div className="search-view">
@@ -2849,13 +2925,17 @@ export function App() {
     go("profile");
   };
   const openFullSearchResults = (q: string) => { setSearchOpen(false); go("searchresults", q); };
-  const openDbFromSearch = (kind: string) => {
+  const openDbFromSearch = (kind: string, entryId?: number) => {
     setSearchOpen(false);
-    if (kind === "Vehicle") openDb("Vehicles", "Vehicle", "All");
-    else if (kind === "Weapon") openDb("Weapons", "Weapon", "All");
-    else if (kind === "Character") openDb("Characters", "Character", "All");
-    else if (kind === "Location") openDb("Locations", "Location", "All");
-    else openDb("All entries", "All", "All");
+    // A search tap carries the entry's own id: the Database opens
+    // straight on THAT entry's detail page, not just its kind's
+    // list (owner's bug report, Nov 25 2026 — every search result
+    // must open the thing that was tapped).
+    if (kind === "Vehicle") openDb("Vehicles", "Vehicle", "All", entryId);
+    else if (kind === "Weapon") openDb("Weapons", "Weapon", "All", entryId);
+    else if (kind === "Character") openDb("Characters", "Character", "All", entryId);
+    else if (kind === "Location") openDb("Locations", "Location", "All", entryId);
+    else openDb("All entries", "All", "All", entryId);
   };
   // Settings is a MODAL, not a page (owner's direction, modelled on
   // Muse's own Settings): it opens from the Settings button pinned
@@ -2912,7 +2992,7 @@ export function App() {
   // direction, Nov 23 2026 — "log out of here so people cannot
   // be ij my account"): this artifact used to put the owner
   // into his own account (officialvicesunshine) automatically
-  // on open through the owner auto-sign-in action; that action and
+  // on open through a signInAsOwner action; that action and
   // its auto-adoption effect are gone, so the artifact now
   // opens signed out and the owner signs in through the normal
   // sign-in gate like everyone else. The flag below records
@@ -3501,7 +3581,7 @@ export function App() {
   // Sidebar "GTA VI Database" deep links: open the Database on a
   // specific kind and/or status filter. Kind "All" is the combined
   // All-entries view (every kind together).
-  const [dbPreset, setDbPreset] = useState<{ kind: DbKindFilter; status: string; nonce: number }>({
+  const [dbPreset, setDbPreset] = useState<{ kind: DbKindFilter; status: string; nonce: number; entryId?: number }>({
     kind: "Vehicle",
     status: "All",
     nonce: 0,
@@ -3527,9 +3607,9 @@ export function App() {
     setLegalSection(s);
     go("legal");
   };
-  const openDb = (label: string, kind: "All" | "Vehicle" | "Weapon" | "Character" | "Location", status: string) => {
+  const openDb = (label: string, kind: "All" | "Vehicle" | "Weapon" | "Character" | "Location", status: string, entryId?: number) => {
     setDbActiveLabel(label);
-    setDbPreset({ kind, status, nonce: Date.now() });
+    setDbPreset({ kind, status, nonce: Date.now(), entryId });
     go("database");
   };
   const dbNavLinks: { label: string; kind: "All" | "Vehicle" | "Weapon" | "Character" | "Location"; status: string; icon: string }[] = [
@@ -4920,7 +5000,7 @@ function DatabaseView({
 }: {
   playerKey: string;
   gamertag: string;
-  preset: { kind: DbKindFilter; status: string; nonce: number };
+  preset: { kind: DbKindFilter; status: string; nonce: number; entryId?: number };
   onOpenMap: () => void;
   onOpenNews: () => void;
   premium: boolean;
@@ -4937,7 +5017,9 @@ function DatabaseView({
   const [panelOpen, setPanelOpen] = useState(false);
   const [applied, setApplied] = useState<DbFilters>(EMPTY_DB_FILTERS);
   const [draft, setDraft] = useState<DbFilters>(EMPTY_DB_FILTERS);
-  // Sidebar deep links (GTA VI Database section) land here.
+  // Sidebar deep links (GTA VI Database section) land here. A
+  // search-result tap also lands here, carrying the tapped entry's
+  // id: its detail page opens directly instead of the kind's list.
   useEffect(() => {
     if (!preset.nonce) return;
     setKind(preset.kind);
@@ -4945,7 +5027,7 @@ function DatabaseView({
     setApplied(EMPTY_DB_FILTERS);
     setDraft(EMPTY_DB_FILTERS);
     setPanelOpen(false);
-    setOpenId(null);
+    setOpenId(preset.entryId ?? null);
   }, [preset]);
   // Switching Database tab (Vehicles / Weapons / Characters /
   // Locations) or following a sidebar Database link always opens at
@@ -8501,6 +8583,35 @@ function NewsView({ search, savedStore, premium }: { search: string; savedStore?
     onError: (e) => setError(e.message),
   });
 
+  // A search-result tap hands the tapped story's id over through
+  // the "vv-news-focus" device key (the vv-event-focus pattern):
+  // the story's card renders ringed and the page scrolls to it, so
+  // the tap lands on THAT story, not just the News list.
+  const [focusNewsId] = useState<number | null>(() => {
+    try {
+      const v = window.localStorage.getItem("vv-news-focus");
+      if (v) {
+        window.localStorage.removeItem("vv-news-focus");
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
+    } catch { /* storage unavailable */ }
+    return null;
+  });
+  const focusNewsScrolledRef = useRef(0);
+  useEffect(() => {
+    if (focusNewsId == null || focusNewsScrolledRef.current === focusNewsId) return;
+    const found = (news.data?.items ?? []).some((n) => n.id === focusNewsId);
+    if (!found) return;
+    focusNewsScrolledRef.current = focusNewsId;
+    const timers = [120, 750, 1250].map((ms) =>
+      window.setTimeout(() => {
+        document.getElementById(`news-card-${focusNewsId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, ms),
+    );
+    return () => { for (const t of timers) window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNewsId, news.data]);
   const allItems = news.data?.items ?? [];
   const filteredItems = sourceType === "All News" ? allItems : allItems.filter((n) => newsSourceType(n) === sourceType);
   const featured = filteredItems.find((n) => n.category === "Official") ?? filteredItems[0];
@@ -8603,7 +8714,7 @@ function NewsView({ search, savedStore, premium }: { search: string; savedStore?
         <EmptyNote>{uiT("No news matches this filter. Try another filter, or hit Refresh to pull the latest from the web.")}</EmptyNote>
       )}
       {featured && (
-        <article className="card mb-4 overflow-hidden sm:mb-5">
+        <article id={`news-card-${featured.id}`} className="card mb-4 overflow-hidden sm:mb-5" style={{ scrollMarginTop: 90, ...(focusNewsId === featured.id ? { outline: "2px solid var(--accent)", outlineOffset: 3 } : {}) }}>
           <div className="grid sm:grid-cols-2">
             <img decoding="async" src={cardArt.get(featured.id)?.img ?? newsFeaturedUrl} alt={`Original ViceSunshine illustration related to the featured story — ${cardArt.get(featured.id)?.topic ?? "a news camera and spotlight in front of an art-deco tower"}`} className="h-32 w-full object-cover sm:h-full" />
             <div className="p-4 sm:p-6">
@@ -8638,7 +8749,7 @@ function NewsView({ search, savedStore, premium }: { search: string; savedStore?
       <div className="grid grid-cols-2 items-stretch gap-2.5 sm:gap-5">
         {restItems.flatMap((n, i) => {
           const card = (
-          <article key={n.id} className="card flex min-w-0 flex-col overflow-hidden sm:block"><div className="relative">
+          <article key={n.id} id={`news-card-${n.id}`} className="card flex min-w-0 flex-col overflow-hidden sm:block" style={{ scrollMarginTop: 90, ...(focusNewsId === n.id ? { outline: "2px solid var(--accent)", outlineOffset: 3 } : {}) }}><div className="relative">
             <img decoding="async" src={cardArt.get(n.id)?.img ?? secNewsUrl} alt={`Original ViceSunshine illustration related to this story — ${cardArt.get(n.id)?.topic ?? "a neon newsroom with screens showing a coastal city"}`} className="h-[76px] w-full object-cover sm:h-36" loading="lazy" />
             <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] font-bold text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-[10px]">{uiT("ViceSunshine illustration")}</span>
             <span className="absolute inset-x-0 top-0 h-1 sm:h-1.5" style={{ background: n.category === "Official" ? "var(--accent2)" : n.category === "Rumor" ? "var(--amber)" : "var(--border-strong)" }} aria-hidden="true" />
@@ -8918,6 +9029,35 @@ function BugsView({ search, gamertag, playerKey, savedStore, premium }: { search
     // Run once when the tracker is opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // A search-result tap hands the tapped bug's id over through
+  // the "vv-bug-focus" device key (the vv-event-focus pattern):
+  // its card renders ringed and the page scrolls to it, so the
+  // tap lands on THAT bug report, not just the tracker list.
+  const [focusBugId] = useState<number | null>(() => {
+    try {
+      const v = window.localStorage.getItem("vv-bug-focus");
+      if (v) {
+        window.localStorage.removeItem("vv-bug-focus");
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
+    } catch { /* storage unavailable */ }
+    return null;
+  });
+  const focusBugScrolledRef = useRef(0);
+  useEffect(() => {
+    if (focusBugId == null || focusBugScrolledRef.current === focusBugId) return;
+    const found = (bugs.data?.items ?? []).some((b) => b.id === focusBugId);
+    if (!found) return;
+    focusBugScrolledRef.current = focusBugId;
+    const timers = [120, 750, 1250].map((ms) =>
+      window.setTimeout(() => {
+        document.getElementById(`bug-card-${focusBugId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, ms),
+    );
+    return () => { for (const t of timers) window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusBugId, bugs.data]);
   const visibleBugs = (bugs.data?.items ?? []).filter((b) => {
     if (sourceFilter === "All") return true;
     if (sourceFilter === "Automatic") return b.auto;
@@ -9070,7 +9210,7 @@ function BugsView({ search, gamertag, playerKey, savedStore, premium }: { search
       <div className="grid gap-3 sm:gap-5">
         {visibleBugs.flatMap((b: BugItem, i: number) => {
           const card = (
-          <article key={b.id} className="card p-3.5 sm:p-5">
+          <article key={b.id} id={`bug-card-${b.id}`} className="card p-3.5 sm:p-5" style={{ scrollMarginTop: 90, ...(focusBugId === b.id ? { outline: "2px solid var(--accent)", outlineOffset: 3 } : {}) }}>
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <span className="[&_span]:px-2 [&_span]:py-0 [&_span]:text-[10px] sm:[&_span]:px-2.5 sm:[&_span]:py-0.5 sm:[&_span]:text-xs"><StatusBadge status={b.status} /></span>
               <span className="[&_span]:px-2 [&_span]:py-0 [&_span]:text-[10px] sm:[&_span]:px-2.5 sm:[&_span]:py-0.5 sm:[&_span]:text-xs"><BugOriginBadge bug={b} /></span>
@@ -12019,7 +12159,22 @@ function GuidesView({ search, savedStore, premium }: { search: string; savedStor
   // a dedicated page just for the 61 GTA 6 codes, kept separate from
   // the guide categories below.
   const [guidesTab, setGuidesTab] = useState<"library" | "codes">("library");
-  const [openId, setOpenId] = useState<number | null>(null);
+  // A search-result tap hands the tapped guide's id over through
+  // the "vv-open-guide" device key (the vv-open-crew pattern): the
+  // guide opens expanded and the page scrolls to it, so the tap
+  // lands on THAT guide, not just the library list.
+  const [guideHandOff] = useState<number | null>(() => {
+    try {
+      const v = window.localStorage.getItem("vv-open-guide");
+      if (v) {
+        window.localStorage.removeItem("vv-open-guide");
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
+    } catch { /* storage unavailable */ }
+    return null;
+  });
+  const [openId, setOpenId] = useState<number | null>(guideHandOff);
   // Guides are automatic — generated from GTA / official GTA VI
   // information, never written by customers — so there is no
   // write-a-guide form here at all.
@@ -12027,6 +12182,20 @@ function GuidesView({ search, savedStore, premium }: { search: string; savedStor
     queryKey: ["guides", category, search],
     queryFn: () => api.listGuides({ category, search }),
   });
+  const guideScrollRef = useRef(0);
+  useEffect(() => {
+    if (guideHandOff == null || guideScrollRef.current === guideHandOff) return;
+    const found = (guides.data?.items ?? []).some((g) => g.id === guideHandOff);
+    if (!found) return;
+    guideScrollRef.current = guideHandOff;
+    const timers = [120, 750, 1250].map((ms) =>
+      window.setTimeout(() => {
+        document.getElementById(`guide-card-${guideHandOff}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, ms),
+    );
+    return () => { for (const t of timers) window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guideHandOff, guides.data]);
 
   return (
     <div className="guides-view">
@@ -12125,7 +12294,7 @@ function GuidesView({ search, savedStore, premium }: { search: string; savedStor
       <div className="grid gap-4">
         {guides.data?.items.flatMap((g, i) => {
           const card = (
-          <article key={g.id} className="card overflow-hidden">
+          <article key={g.id} id={`guide-card-${g.id}`} className="card overflow-hidden" style={{ scrollMarginTop: 90 }}>
             {/* The picture carries the guide (Ben: visuals first,
                 less text): each card shows its own category's
                 topic-matched illustration as a banner — cars for a
@@ -12187,7 +12356,8 @@ const ROLE_COLORS: Record<string, string> = {
 // holds. Emblems run 4 free + 4 Premium (owner's direction,
 // Nov 22 2026: the Gold Crown and Diamond are Premium, the Royal
 // Palm is free; the crew's owner needs Premium for the Premium
-// ones, and every Premium emblem plays a moving light effect). ALL 8 named colours are FREE (owner's direction,
+// ones, and every Premium emblem plays a moving light effect).
+// ALL 8 named colours are FREE (owner's direction,
 // Nov 22 2026 — the Premium colours were removed): the Premium
 // colour perk is the CUSTOM colour tool below them (any colour,
 // plus the finishes in CREW_COLOR_FINISHES). Keep in step with
@@ -22875,6 +23045,23 @@ function FeedView({
   // empty.
   const [feedSearch, setFeedSearch] = useState("");
   const effectiveSearch = feedSearch.trim() ? feedSearch : search;
+  // A search-result tap (Feed posts and Videos alike) hands the
+  // tapped post's id over through the "vv-feed-focus" device key
+  // (the vv-event-focus pattern): the post renders ringed and the
+  // page scrolls to it, so the tap lands on THAT post, not just
+  // the Feed list.
+  const [focusPostId] = useState<number | null>(() => {
+    try {
+      const v = window.localStorage.getItem("vv-feed-focus");
+      if (v) {
+        window.localStorage.removeItem("vv-feed-focus");
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
+    } catch { /* storage unavailable */ }
+    return null;
+  });
+  const focusPostScrolledRef = useRef(0);
   const feed = useQuery({
     queryKey: ["feed", playerKey, kind, effectiveSearch, sourceFilter, sortMode, feedTab],
     // On the Following tab the SHOW / SORT chips are gone
@@ -22931,11 +23118,24 @@ function FeedView({
   };
 
   const allItems = feed.data?.items ?? [];
+  useEffect(() => {
+    if (focusPostId == null || focusPostScrolledRef.current === focusPostId) return;
+    const found = allItems.some((p) => p.id === focusPostId);
+    if (!found) return;
+    focusPostScrolledRef.current = focusPostId;
+    const timers = [120, 750, 1250].map((ms) =>
+      window.setTimeout(() => {
+        document.getElementById(`feed-post-${focusPostId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, ms),
+    );
+    return () => { for (const t of timers) window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPostId, feed.data]);
   const renderCards = (items: FeedPost[]) => (
     <div>
       {items.map((p, i) => (
         <div key={p.id}>
-          <FeedPostCard post={p} playerKey={playerKey} gamertag={gamertag} go={go} trackedStore={trackedStore} onOpenAuthorId={onOpenAuthorId} onHashtag={(tag) => { setFeedSearch(`#${tag}`); scrollPageToTopSoon(); }} />
+          <FeedPostCard post={p} playerKey={playerKey} gamertag={gamertag} go={go} trackedStore={trackedStore} onOpenAuthorId={onOpenAuthorId} onHashtag={(tag) => { setFeedSearch(`#${tag}`); scrollPageToTopSoon(); }} highlighted={focusPostId === p.id} />
           {/* AD SLOT — in-feed, one after every 4 posts, never at
               the top of the Feed (owner's direction, Nov 22 2026).
               The size follows the device: a 336x280 large
@@ -25885,6 +26085,7 @@ function FeedPostCard({
   trackedStore,
   onOpenAuthorId,
   onHashtag,
+  highlighted,
 }: {
   post: FeedPost;
   playerKey: string;
@@ -25895,6 +26096,9 @@ function FeedPostCard({
   onOpenAuthorId?: (id: string) => void;
   /** A hashtag in the caption was tapped — search the Feed for it. */
   onHashtag?: (tag: string) => void;
+  /** A search-result tap landed on this exact post: ring it so
+      the reader sees the post they tapped, not just the Feed. */
+  highlighted?: boolean;
 }) {
   const qc = useQueryClient();
   const [showComments, setShowComments] = useState(false);
@@ -26003,7 +26207,7 @@ function FeedPostCard({
     if (post.authorId && onOpenAuthorId) onOpenAuthorId(post.authorId);
   };
   return (
-    <article ref={articleRef} className="border-b border-[var(--border)] pb-12 pt-9 first:pt-3">
+    <article ref={articleRef} id={`feed-post-${post.id}`} className="border-b border-[var(--border)] pb-12 pt-9 first:pt-3" style={{ scrollMarginTop: 90, ...(highlighted ? { outline: "2px solid var(--accent)", outlineOffset: 3 } : {}) }}>
       {/* Muse-Feed header: small avatar left, bold title, time ago
           and the two-line post-menu button on the right (owner's
           Instagram-style layout — it opens the dark bottom sheet
