@@ -4108,7 +4108,7 @@ export function App() {
             {SHOW_CHALLENGES && tab === "challenges" && <ChallengesView playerKey={key} gamertag={gamertag} go={go} />}
             {tab === "profile" && <ProfileView playerKey={key} search={globalSearch} go={go} onBack={goBack} savedStore={savedStoreGated} trackedStore={trackedStoreGated} openEgg={(id) => openEgg(id)} onOpenWallet={() => openSettings("wallet")} />}
             {tab === "analytics" && <ProfileAnalyticsView playerKey={key} go={go} onBack={goBack} />}
-            {tab === "messages" && <MessagesView playerKey={key} gamertag={gamertag} go={go} onBack={goBack} />}
+            {tab === "messages" && <MessagesView playerKey={key} gamertag={gamertag} go={go} onBack={goBack} avatarUrl={profile.data?.profile?.avatarUrl ?? ""} />}
             {tab === "premium" && <PremiumView playerKey={key} go={go} onBack={goBack} />}
             {tab === "owner" && isOwner && <OwnerView playerKey={key} />}
             {tab === "owner" && !isOwner && (<p className="card p-5 text-sm text-[var(--dim)]">{uiT("This area is restricted to the ViceSunshine owner account.")}</p>)}
@@ -29859,7 +29859,7 @@ function EventInviteCard({ invite, mine, otherName, createdAt, playerKey, gamert
   );
 }
 
-function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; gamertag: string; go: (t: Tab, search?: string) => void; onBack: () => void }) {
+function MessagesView({ playerKey, gamertag, go, onBack, avatarUrl = "" }: { playerKey: string; gamertag: string; go: (t: Tab, search?: string) => void; onBack: () => void; avatarUrl?: string }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showRequests, setShowRequests] = useState(false);
@@ -30025,7 +30025,7 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
       if (prev && body) {
         qc.setQueryData(key, {
           ...prev,
-          messages: [...prev.messages, { id: -Date.now(), mine: true, body, createdAt: new Date().toISOString(), seen: false, crewInviteId: 0, crewInviteState: "", eventInviteId: 0 }],
+          messages: [...prev.messages, { id: -Date.now(), mine: true, body, createdAt: new Date().toISOString(), seen: false, senderAvatarUrl: avatarUrl, crewInviteId: 0, crewInviteState: "", eventInviteId: 0 }],
         });
       }
       return { prev };
@@ -30097,7 +30097,7 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
         qc.setQueryData(key, {
           ...prev,
           messages: [...prev.messages, {
-            id: -Date.now(), mine: true, canDelete: true, senderKey: playerKey, senderName: gamertag, body, createdAt: new Date().toISOString(),
+            id: -Date.now(), mine: true, canDelete: true, senderKey: playerKey, senderName: gamertag, senderAvatarUrl: avatarUrl, senderProfileId: "", body, createdAt: new Date().toISOString(),
             joinRequestId: 0, joinRequestStatus: "", joinRequestName: "",
             eventCardId: 0, eventCardTitle: "", eventCardStartsAt: "", eventCardTimezone: "", eventCardMyRsvp: "",
             eventCardType: "", eventCardPlatform: "", eventCardHost: "", eventCardImageUrl: "",
@@ -30533,6 +30533,34 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
       el.scrollTop = el.scrollHeight;
     }
   }, [openKey, messages, thread.isPending]);
+  // Circle profile picture beside every message (owner's
+  // direction, Nov 25 2026 — "I want the circle profile picture
+  // next to the user text as well on my main web pages on all
+  // messages part"): each chat bubble — in a one-to-one DM and
+  // in every crew / group / event chat — sits beside its
+  // author's real profile picture (CosmeticAvatar: their own
+  // picture, or the default silhouette when they have none).
+  // Tapping the picture opens that author's profile by their
+  // PUBLIC profile ID, the app-wide rule — never a raw key.
+  const msgAvatar = (name: string, url: string, profileId: string) => profileId ? (
+    <button type="button" className="flex-none self-start rounded-full transition hover:opacity-85" style={{ minHeight: 30 }} onClick={() => openProfile(profileId)} aria-label={`Open ${name}'s profile`}>
+      <CosmeticAvatar name={name} size={30} avatarUrl={url} />
+    </button>
+  ) : (
+    <span className="flex-none self-start"><CosmeticAvatar name={name} size={30} avatarUrl={url} /></span>
+  );
+  // A group-chat message's avatar: the picture and public ID
+  // listGroupThread sent for that message, with the chat's
+  // member roster (and, for your own just-sent message, your
+  // own picture) as the live fallback.
+  const groupMsgAvatar = (m: (typeof groupMessages)[number]) => {
+    const member = groupMembers.find((x) => x.playerKey === m.senderKey);
+    return msgAvatar(
+      member?.gamertag || m.senderName,
+      m.senderAvatarUrl || member?.avatarUrl || (m.mine ? avatarUrl : ""),
+      m.senderProfileId || member?.profileId || "",
+    );
+  };
   // The chat pane itself: rendered in place in the two-pane
   // shell, or — on a phone with a chat open — portalled to
   // <body> as a full-screen layer (see chatFullscreen above).
@@ -30954,14 +30982,17 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
                     </div>
                   )
                 ) : (
-                  <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
-                    {!m.mine && <span className="mb-0.5 pl-1 text-[11px] font-bold text-[var(--dim)]">{m.senderName}</span>}
-                    <div className={`flex items-center gap-1.5 ${m.mine ? "flex-row-reverse" : ""}`}>
-                      <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
-                      {m.canDelete && (
-                        <button type="button" className="flex-none text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} disabled={deleteGroupMsg.isPending} onClick={() => deleteGroupMsg.mutate(m.id)} aria-label={`Delete this message${m.mine ? "" : ` by ${m.senderName}`}: ${m.body.slice(0, 40)}`}>
-                          {uiT("Delete")}</button>
-                      )}
+                  <div key={m.id} className={`flex gap-2 ${m.mine ? "flex-row-reverse" : "flex-row"}`}>
+                    {groupMsgAvatar(m)}
+                    <div className={`flex min-w-0 flex-col ${m.mine ? "items-end" : "items-start"}`}>
+                      {!m.mine && <span className="mb-0.5 pl-1 text-[11px] font-bold text-[var(--dim)]">{m.senderName}</span>}
+                      <div className={`flex items-center gap-1.5 ${m.mine ? "flex-row-reverse" : ""}`}>
+                        <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                        {m.canDelete && (
+                          <button type="button" className="flex-none text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} disabled={deleteGroupMsg.isPending} onClick={() => deleteGroupMsg.mutate(m.id)} aria-label={`Delete this message${m.mine ? "" : ` by ${m.senderName}`}: ${m.body.slice(0, 40)}`}>
+                            {uiT("Delete")}</button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -31126,7 +31157,12 @@ function MessagesView({ playerKey, gamertag, go, onBack }: { playerKey: string; 
                     ) : eventCard ? (
                       <EventInviteCard invite={eventCard} mine={m.mine} otherName={other?.gamertag ?? "This player"} createdAt={m.createdAt} playerKey={playerKey} gamertag={gamertag} onOpenEvent={openEventFromCard} />
                     ) : (
-                      <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                      <div className={`flex gap-2 ${m.mine ? "flex-row-reverse" : "flex-row"}`}>
+                        {m.mine
+                          ? msgAvatar(gamertag, m.senderAvatarUrl || avatarUrl, "")
+                          : msgAvatar(other?.gamertag ?? "Player", m.senderAvatarUrl || other?.avatarUrl || "", other?.profileId || "")}
+                        <p className={`dm-bubble ${m.mine ? "mine" : "theirs"}`} title={new Date(m.createdAt).toLocaleString()}>{m.body}</p>
+                      </div>
                     )}
                     {!m.mine && reportMsgId !== m.id && (
                       <button type="button" className="mt-0.5 pl-1 text-[11px] font-bold text-[var(--dim)] underline" style={{ minHeight: 28, padding: "2px 6px" }} onClick={() => { setReportMsgId(m.id); setDmReportDone(""); }} aria-label={`Report this message from ${other?.gamertag ?? "this player"} to the owner for review`}>

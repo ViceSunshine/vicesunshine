@@ -13860,6 +13860,11 @@ export const Actions = {
       }).nullable(),
       messages: z.array(z.object({
         id: z.number(), mine: z.boolean(), body: z.string(), createdAt: z.string(), seen: z.boolean(),
+        // The sender's real circle profile picture, so every
+        // message bubble can sit beside its author's avatar
+        // (owner's direction, Nov 25 2026 — a circle profile
+        // picture next to the user text on all messages).
+        senderAvatarUrl: z.string(),
         // Crew invite cards (migration 0086): crewInviteId > 0
         // means this message renders as the crew invite box for
         // that clan (its live card data rides in crewInvites
@@ -13989,6 +13994,7 @@ export const Actions = {
         messages: rows.map((m) => ({
           id: m.id, mine: m.senderKey === args.playerKey, body: m.body,
           createdAt: m.createdAt.toISOString(), seen: m.seen === 1 || unseen.some((u) => u.id === m.id),
+          senderAvatarUrl: (() => { const sp = byKey.get(m.senderKey); return sp ? pickAvatar(art, customArt, sp) : ""; })(),
           crewInviteId: m.crewInviteId ?? 0, crewInviteState: m.crewInviteState ?? "",
           eventInviteId: m.eventInviteId ?? 0,
         })),
@@ -14205,6 +14211,15 @@ export const Actions = {
       }).nullable(),
       messages: z.array(z.object({
         id: z.number(), mine: z.boolean(), canDelete: z.boolean(), senderKey: z.string(), senderName: z.string(), body: z.string(), createdAt: z.string(),
+        // The sender's real circle profile picture and PUBLIC
+        // profile ID, so every message in a crew / group / event
+        // chat sits beside its author's avatar and tapping that
+        // avatar opens that author's profile by its public ID —
+        // never by raw key (owner's direction, Nov 25 2026 — a
+        // circle profile picture next to the user text on all
+        // messages). "" for automatic system messages, which
+        // render as centred lines with no avatar.
+        senderAvatarUrl: z.string(), senderProfileId: z.string(),
         // Crew join-request cards: joinRequestId > 0 marks a system
         // message as the card for that clan_applications row, and
         // joinRequestStatus is that ask's LIVE state ("Pending" /
@@ -14361,6 +14376,10 @@ export const Actions = {
       const visibleRows = rows.filter(
         (m) => m.eventCardId === 0 || (cardEventById.has(m.eventCardId) && !dismissedCardEvents.has(m.eventCardId) && !startedCardEvents.has(m.eventCardId)),
       );
+      // Each message author's PUBLIC profile ID, so tapping
+      // their circle picture beside a message opens THEIR
+      // profile (see senderProfileId on the response above).
+      const senderPubIds = await publicProfileIdMap(visibleRows.map((m) => m.senderKey).filter((k) => k !== "system"));
       const threadMessages = visibleRows.map((m) => ({
         id: m.id, mine: m.senderKey === args.playerKey,
         canDelete: m.senderKey !== "system" && (m.senderKey === args.playerKey || canModerateChat),
@@ -14368,6 +14387,8 @@ export const Actions = {
         senderName: m.senderKey === "system"
           ? "ViceSunshine"
           : byKey.get(m.senderKey)?.displayName.trim() || byKey.get(m.senderKey)?.gamertag || "Player",
+        senderAvatarUrl: m.senderKey === "system" ? "" : (() => { const sp = byKey.get(m.senderKey); return sp ? pickAvatar(art, customArt, sp) : ""; })(),
+        senderProfileId: m.senderKey === "system" ? "" : senderPubIds.get(m.senderKey) ?? "",
         body: m.body, createdAt: m.createdAt.toISOString(),
         joinRequestId: m.joinRequestId,
         joinRequestStatus: m.joinRequestId > 0 ? joinRequestStatusById.get(m.joinRequestId) ?? "" : "",
@@ -14397,6 +14418,7 @@ export const Actions = {
         threadMessages.unshift({
           id: -clanForChat.id, mine: false, canDelete: false,
           senderKey: "system", senderName: "ViceSunshine",
+          senderAvatarUrl: "", senderProfileId: "",
           body: crewFoundedText(clanForChat.name, founder?.gamertag ?? "", clanForChat.createdAt),
           createdAt: clanForChat.createdAt.toISOString(),
           joinRequestId: 0, joinRequestStatus: "", joinRequestName: "",
