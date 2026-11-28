@@ -3089,7 +3089,7 @@ export function App() {
     };
     // Stage 1 — right away: the sections a tap is most likely
     // to hit next (Feed first, as before, then News).
-    warm(["feed", key, "All", "", "All", "Top", "foryou"], () => api.listFeed({ playerKey: key, kind: "All", search: "", source: "All", sort: "Top", followingOnly: false }));
+    warm(["feed", key, "All", "", "All", "Latest", "foryou"], () => api.listFeed({ playerKey: key, kind: "All", search: "", source: "All", sort: "Latest", followingOnly: false }));
     warm(["news", "All", ""], () => api.listNews({ category: "All", search: "" }));
     // Stage 2 — a breath later: the big browse sections.
     later(() => {
@@ -23001,7 +23001,11 @@ function FeedView({
   const [videosOnly, setVideosOnly] = useState(false);
   const kind = videosOnly ? "Videos" : "All";
   const [sourceFilter, setSourceFilter] = useState<"All" | "Automatic" | "Community">("All");
-  const [sortMode, setSortMode] = useState<"Top" | "Latest">("Top");
+  // Newest first by default (owner's direction, Nov 28 2026):
+  // the Feed — For you and Following alike — opens on Latest, so
+  // a days-old most-liked post can never sit on top. Top stays
+  // available as an explicit choice in the sort row below.
+  const [sortMode, setSortMode] = useState<"Top" | "Latest">("Latest");
   const [error] = useState("");
   // X-style Feed (owner's direction): no composer and no hero banner
   // on the Feed — just For you / Following tabs and the posts.
@@ -23274,12 +23278,18 @@ function FeedView({
         />
       ) : (
       <>
-      {/* No category chooser and no SHOW / SORT row (owner's
-          direction, Nov 22 2026): the whole filter/sort row and
-          the "Videos lead this Feed…" explainer under it are
-          gone — every category shows together in one spacious
-          Feed, straight under the Stories row. The feed always
-          reads every source in the default Top order. */}
+      {/* No category chooser (owner's direction, Nov 22 2026):
+          every category shows together in one spacious Feed,
+          straight under the Stories row. The one reader choice
+          is the sort (owner's direction, Nov 28 2026): Latest —
+          newest first — is the default on For you and Following
+          alike, so no old most-liked post sits on top; Top
+          (videos first, most liked) stays one tap away. */}
+      <div className="mb-3 flex items-center gap-2" role="group" aria-label="Feed sort — Latest is newest first">
+        <span className="text-xs font-bold uppercase tracking-widest text-[var(--dim)]">{uiT("Sort")}</span>
+        <button type="button" className="chip" aria-pressed={sortMode === "Latest"} onClick={() => { setSortMode("Latest"); scrollPageToTopSoon(); }} aria-label="Latest — newest posts first">{uiT("Latest")}</button>
+        <button type="button" className="chip" aria-pressed={sortMode === "Top"} onClick={() => { setSortMode("Top"); scrollPageToTopSoon(); }} aria-label="Top — most liked posts first">{uiT("Top")}</button>
+      </div>
       {effectiveSearch.trim() && (
         <p className="mb-3 text-sm text-[var(--dim)]">Showing results for <strong className="text-[var(--text)]">“{effectiveSearch.trim()}”</strong> across every category.</p>
       )}
@@ -30094,10 +30104,19 @@ function MessagesView({ playerKey, gamertag, go, onBack, avatarUrl = "" }: { pla
       const prev = qc.getQueryData<ApiResponse<typeof api, "listGroupThread">>(key);
       const body = gDraft.trim();
       if (prev && body) {
+        // Only the chat's leader ever sees Delete (owner's rule,
+        // Nov 25 2026) — mirror the server's per-message flag on
+        // the optimistic bubble so a non-leader's own just-sent
+        // message never flashes a Delete button: crew Leader by
+        // roster role, chat owner in groups / event chats.
+        const myMemberRow = prev.group?.members.find((mm) => mm.playerKey === playerKey);
+        const iLeadThisChat = prev.group
+          ? (prev.group.kind === "crew" ? myMemberRow?.role === "Leader" : prev.group.isLeader)
+          : false;
         qc.setQueryData(key, {
           ...prev,
           messages: [...prev.messages, {
-            id: -Date.now(), mine: true, canDelete: true, senderKey: playerKey, senderName: gamertag, senderAvatarUrl: avatarUrl, senderProfileId: "", body, createdAt: new Date().toISOString(),
+            id: -Date.now(), mine: true, canDelete: iLeadThisChat, senderKey: playerKey, senderName: gamertag, senderAvatarUrl: avatarUrl, senderProfileId: "", body, createdAt: new Date().toISOString(),
             joinRequestId: 0, joinRequestStatus: "", joinRequestName: "",
             eventCardId: 0, eventCardTitle: "", eventCardStartsAt: "", eventCardTimezone: "", eventCardMyRsvp: "",
             eventCardType: "", eventCardPlatform: "", eventCardHost: "", eventCardImageUrl: "",
@@ -30119,9 +30138,10 @@ function MessagesView({ playerKey, gamertag, go, onBack, avatarUrl = "" }: { pla
       setGError(e.message);
     },
   });
-  // Delete a message in a group / crew / event chat: your own
-  // messages always; in a crew chat the Leader and Co-Leaders can
-  // delete anyone's (the server decides — canDelete comes back
+  // Delete a message in a group / crew / event chat: ONLY the
+  // chat's leader can — the crew's Leader in a crew chat, the
+  // owner in a group / event chat; nobody else, not even the
+  // message's author (the server decides — canDelete comes back
   // per message from listGroupThread).
   const deleteGroupMsg = useMutation({
     mutationFn: async (messageId: number) => await api.deleteGroupMessage({ playerKey, groupId: openGroupId, messageId }),

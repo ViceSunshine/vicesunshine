@@ -14255,10 +14255,11 @@ export const Actions = {
       const memberRows = await db.select().from(schema.chatGroupMembers).where(eq(schema.chatGroupMembers.groupId, g.id));
       const mine = memberRows.find((r) => r.playerKey === args.playerKey);
       if (!mine) return { group: null, messages: [] };
-      // Who may delete other people's messages here: in a CREW
-      // chat, ONLY the crew's Leader (owner's rule) — Co-Leaders
-      // and everyone else can delete only their own messages. In
-      // player-made groups and event chats, the chat's owner can.
+      // Who may delete messages here (owner's rule, Nov 25
+      // 2026: "only the leader can"): in a CREW chat, ONLY the
+      // crew's Leader can delete ANY message — not even the
+      // author can delete their own. In player-made groups and
+      // event chats, only the chat's owner can delete.
       let canModerateChat = g.ownerKey === args.playerKey;
       if (g.kind === "crew" && g.clanId) {
         const myCrewRow = (await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, g.clanId)))
@@ -14382,7 +14383,7 @@ export const Actions = {
       const senderPubIds = await publicProfileIdMap(visibleRows.map((m) => m.senderKey).filter((k) => k !== "system"));
       const threadMessages = visibleRows.map((m) => ({
         id: m.id, mine: m.senderKey === args.playerKey,
-        canDelete: m.senderKey !== "system" && (m.senderKey === args.playerKey || canModerateChat),
+        canDelete: m.senderKey !== "system" && canModerateChat,
         senderKey: m.senderKey,
         senderName: m.senderKey === "system"
           ? "ViceSunshine"
@@ -14507,7 +14508,7 @@ export const Actions = {
   }),
 
   deleteGroupMessage: defineAction({
-    description: "Deletes one message from a group, crew or event chat. A member can always delete their own message; in a crew chat ONLY the crew's Leader can delete other members' messages (Co-Leaders cannot), and a player-made group's owner can delete in their own group. Automatic system messages (crew life updates) can never be deleted. Non-members can never touch a chat's messages.",
+    description: "Deletes one message from a group, crew or event chat. ONLY the chat's leader can delete messages (owner's rule, Nov 25 2026): in a crew chat that is the crew's Leader alone — not Co-Leaders, and not even the message's own author; in a player-made group or event chat it is the chat's owner. Automatic system messages (crew life updates) can never be deleted. Non-members can never touch a chat's messages.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       groupId: z.number().int().positive(),
@@ -14528,19 +14529,21 @@ export const Actions = {
       if (msg.senderKey === "system") {
         throw new Error("Automatic crew updates can't be deleted.");
       }
-      let allowed = msg.senderKey === args.playerKey || g.ownerKey === args.playerKey;
+      // Only the chat's leader deletes — never the author (unless
+      // they ARE the leader). Crew chat: the crew's Leader alone,
+      // read live from the roster (the chat-owner shortcut does
+      // not apply here, leadership can move). Other chats: owner.
+      let allowed = g.ownerKey === args.playerKey;
       if (g.kind === "crew" && g.clanId) {
-        // Crew chat: only the crew's Leader deletes other members'
-        // messages — the chat-owner shortcut does not apply here.
         const myCrewRow = (await db.select().from(schema.clanMembers).where(eq(schema.clanMembers.clanId, g.clanId)))
           .find((m) => m.playerKey === args.playerKey);
-        allowed = msg.senderKey === args.playerKey || myCrewRow?.role === "Leader";
+        allowed = myCrewRow?.role === "Leader";
       }
       if (!allowed) {
         throw new Error(
           g.kind === "crew"
-            ? "Only the message's author, or the crew's Leader, can delete messages in this chat."
-            : "Only the message's author, or the chat's owner, can delete messages in this chat.",
+            ? "Only the crew's Leader can delete messages in this chat."
+            : "Only the chat's owner can delete messages in this chat.",
         );
       }
       await db.delete(schema.directMessages).where(eq(schema.directMessages.id, args.messageId));
@@ -17575,7 +17578,7 @@ export const Actions = {
   }),
 
   listFeed: defineAction({
-    description: "Lists public community feed posts with like/comment counts and the viewer's state. The Top sort puts real video posts first (streamer clips, funny videos, GTA jokes/memes, gameplay — most liked, then newest) so videos lead the Feed instead of sitting buried under text posts; Latest is newest first. kind 'Videos' returns only posts carrying a real video. isAi marks posts from the two AI automatic accounts (GTA NEWS for news, GTA CLIPPER for clips/videos) so the client can label them 'AI' next to their name. followingOnly narrows the list to the viewer's own posts plus posts from players they follow (the Feed's Following tab); Automatic posts have no followable author and stay on the For you tab. Each post carries its full media list (mediaUrls — several photos or one video), its optional attached link (linkUrl) and its hashtags; a search written with a #tag returns the posts carrying that hashtag.",
+    description: "Lists public community feed posts with like/comment counts and the viewer's state. Latest (the default, and the Feed's opening order on both the For you and Following tabs) is strictly newest first by post time, so no old post can sit on top; the Top sort remains available as an explicit reader choice and puts real video posts first (streamer clips, funny videos, GTA jokes/memes, gameplay — most liked, then newest). kind 'Videos' returns only posts carrying a real video. isAi marks posts from the two AI automatic accounts (GTA NEWS for news, GTA CLIPPER for clips/videos) so the client can label them 'AI' next to their name. followingOnly narrows the list to the viewer's own posts plus posts from players they follow (the Feed's Following tab); Automatic posts have no followable author and stay on the For you tab. Each post carries its full media list (mediaUrls — several photos or one video), its optional attached link (linkUrl) and its hashtags; a search written with a #tag returns the posts carrying that hashtag.",
     request: z.object({
       playerKey: z.string().min(1).max(80),
       kind: z.string().max(30).default("All"),
@@ -17760,6 +17763,18 @@ export const Actions = {
         }
       }
       const likeCountOf = (id: number) => likeCounts.get(id) ?? 0;
+      if (args.sort === "Latest") {
+        // Newest first, ALWAYS (owner's direction, Nov 28 2026):
+        // sort by the post's own time — the age the reader sees
+        // ("7d ago") — not by row id. Rows are not always
+        // inserted in time order (automatic and seeded posts can
+        // carry an earlier createdAt), so the id order the query
+        // arrived in could still surface an older post above a
+        // newer one. Id breaks ties, newest first.
+        rows = [...rows].sort(
+          (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id - a.id,
+        );
+      }
       if (args.sort === "Top") {
         // Videos first (owner's direction, Nov 21 2026): real
         // video posts — streamer clips, funny videos, GTA jokes
